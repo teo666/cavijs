@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>cavijs</title>
+  </head>
+  <body>
+    <div id="container">
+        <canvas id="wireCanvas" width="800" height="600"></canvas>
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            <div id="controls">
+            <h2>🎛️ World Configuration</h2>
+            
+            <div class="section">
+                <div class="control-group">
+                    <label>
+                        Mouse Radius
+                        <span class="value-display" id="mouseRadiusValue">40.0</span>
+                    </label>
+                    <input type="range" id="mouseRadius" min="10" max="100" step="1" value="40">
+                </div>
+                
+                <div class="control-group">
+                    <label>
+                        Pointer Radius
+                        <span class="value-display" id="pointerRadiusValue">20.0</span>
+                    </label>
+                    <input type="range" id="pointerRadius" min="5" max="50" step="1" value="20">
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="control-group">
+                    <label>
+                        Response Coefficient
+                        <span class="value-display" id="responseCoefValue">0.75</span>
+                    </label>
+                    <input type="range" id="responseCoef" min="0" max="2" step="0.05" value="0.75">
+                </div>
+                
+                <div class="control-group">
+                    <label>
+                        Friction
+                        <span class="value-display" id="frictionValue">0.95</span>
+                    </label>
+                    <input type="range" id="friction" min="0.5" max="1" step="0.01" value="0.95">
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="control-group">
+                    <label>
+                        Acceleration X
+                        <span class="value-display" id="accelerationXValue">0.0</span>
+                    </label>
+                    <input type="range" id="accelerationX" min="-20" max="20" step="0.5" value="0">
+                </div>
+                
+                <div class="control-group">
+                    <label>
+                        Acceleration Y
+                        <span class="value-display" id="accelerationYValue">10.0</span>
+                    </label>
+                    <input type="range" id="accelerationY" min="-20" max="20" step="0.5" value="10">
+                </div>
+            </div>
+            
+            <div class="section">
+                <h3 style="color: #4A90E2; font-size: 14px; margin-bottom: 10px;">Node Count</h3>
+                
+                <div class="control-group">
+                    <label>
+                        Wire 0
+                        <span class="value-display" id="nodeCount0Value">30</span>
+                    </label>
+                    <input type="range" id="nodeCount0" min="2" max="100" step="1" value="30">
+                </div>
+                
+                <div class="control-group">
+                    <label>
+                        Wire 1
+                        <span class="value-display" id="nodeCount1Value">25</span>
+                    </label>
+                    <input type="range" id="nodeCount1" min="2" max="100" step="1" value="25">
+                </div>
+                
+                <div class="control-group">
+                    <label>
+                        Wire 2
+                        <span class="value-display" id="nodeCount2Value">20</span>
+                    </label>
+                    <input type="range" id="nodeCount2" min="2" max="100" step="1" value="20">
+                </div>
+                
+                <button id="calculateDefault" style="padding: 8px; font-size: 12px; margin-top: 5px;">Calculate Defaults</button>
+            </div>
+            
+            <div class="section">
+                <h3 style="color: #4A90E2; font-size: 14px; margin-bottom: 10px;">Actions</h3>
+                <button id="addWireBtn">Add Random Wire</button>
+                <button id="clearBtn" style="background: #e74c3c;">Clear All Wires</button>
+            </div>
+        </div>
+        
+        <div id="debugInfo">
+            <h2 style="margin-top: 0; color: #4A90E2; font-size: 16px; border-bottom: 1px solid #444; padding-bottom: 8px;">📊 Debug Info</h2>
+            <div class="stats">FPS: <span class="highlight" id="fps">0</span></div>
+            <div class="stats">Wire Count: <span class="highlight" id="wireCount">0</span></div>
+            <div class="stats">Total Data Points: <span class="highlight" id="dataPoints">0</span></div>
+            <div class="stats">Memory Buffer: <span class="highlight" id="bufferSize">0</span> bytes</div>
+            <div class="stats">Mouse: (<span class="highlight" id="mouseX">-</span>, <span class="highlight" id="mouseY">-</span>)</div>
+            <div style="margin-top: 12px; border-top: 1px solid #444; padding-top: 12px;">
+                <div style="color: #aaa; font-size: 11px; margin-bottom: 8px;">Wire Details:</div>
+                <div id="wireDetails"></div>
+            </div>
+        </div>
+        </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
