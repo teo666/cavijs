@@ -8,7 +8,7 @@ export class Renderer implements IRenderer {
   private lastTime = performance.now();
   private fpsFrameCount = 0;
   private fps = 0;
-  private world: World; // Placeholder for the physics world
+  private world!: World; // Placeholder for the physics world
 
   private mouseX: number = 200;
   private mouseY: number = 200;
@@ -16,16 +16,19 @@ export class Renderer implements IRenderer {
   private draggedWire: number | null = null;
   private draggedEndpoint: 'start' | 'end' | null = null;
 
-  constructor(canvas: HTMLCanvasElement, world: World) {
+  constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     const context = canvas.getContext('2d');
     if (!context) {
       throw new Error('Unable to get 2D context');
     }
     this.context = context;
-    this.world = world;
 
     this.addMouseMoveListener();
+  }
+
+  public setWorld(world: World) {
+    this.world = world;
   }
 
   public clear() {
