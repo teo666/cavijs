@@ -1,5 +1,6 @@
 import { Cavi } from './cavi';
 import { Renderer } from './renderer';
+import { CaviControls } from './controls';
 import './style.css'
 
 
@@ -19,40 +20,11 @@ renderer.render();
 
 cavi.setAcceleration(0, 10.0);
 
-// Setup add node button
-const addNodeBtn = document.getElementById('addNodeBtn');
-const addNodeWireIndexInput = document.getElementById('addNodeWireIndex') as HTMLInputElement;
-const addNodePositionInput = document.getElementById('addNodePosition') as HTMLInputElement;
-
-addNodeBtn?.addEventListener('click', () => {
-    const wireIndex = parseInt(addNodeWireIndexInput.value);
-    const nodePosition = parseInt(addNodePositionInput.value);
-    
-    // Validate wire index
-    const wire = cavi.getWireByIndex(wireIndex);
-    if (!wire) {
-        alert(`Wire ${wireIndex} does not exist. Please select a valid wire index (0-${cavi.getWorld().getWasmWorld().wire_count() - 1}).`);
-        return;
-    }
-    
-    // Get node count for validation
-    const nodeCount = wire.getNodeCount();
-    if (nodePosition < 0 || nodePosition >= nodeCount) {
-        alert(`Invalid node position. Must be between 0 and ${nodeCount - 1}.`);
-        return;
-    }
-    
-    // Get the current position of the node at the specified index
-    const world = cavi.getWorld().getWasmWorld();
-    const x = world.get_wire_node_x(wireIndex, nodePosition);
-    const y = world.get_wire_node_y(wireIndex, nodePosition);
-    
-    // Add the new node at this position
-    wire.addNodeAt(nodePosition, x, y, false);
-    
-    console.log(`Added node to wire ${wireIndex} at position ${nodePosition} (${x.toFixed(2)}, ${y.toFixed(2)})`);
-    
-});
+// Initialize the controls web component
+const controlsElement = document.getElementById('controls') as CaviControls;
+if (controlsElement) {
+    controlsElement.setCavi(cavi);
+}
 
 
 // function run() {
