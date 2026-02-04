@@ -1,5 +1,5 @@
 import type { WireMeta } from "./types";
-import type { World } from "cavi";
+import type { WasmWorld } from "cavi";
 
 /**
  * Wire is the TypeScript wrapper for the WASM Wire class.
@@ -8,10 +8,10 @@ import type { World } from "cavi";
  */
 export class Wire {
     private meta: WireMeta = {};
-    private world: World | null = null;
+    private world: WasmWorld | null = null;
     private wireIndex: number = -1;
 
-    constructor(world?: World, wireIndex?: number) {
+    constructor(world?: WasmWorld, wireIndex?: number) {
         if (world !== undefined && wireIndex !== undefined) {
             this.world = world;
             this.wireIndex = wireIndex;

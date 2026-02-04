@@ -1,4 +1,4 @@
-import type { Node as WasmNode } from "cavi";
+import type { WasmNode } from "cavi";
 
 /**
  * Node is the TypeScript wrapper for the WASM Node class.

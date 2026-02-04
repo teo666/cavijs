@@ -1,4 +1,4 @@
-import type { InitOutput, World } from 'cavi';
+import type { InitOutput, WasmWorld } from 'cavi';
 import type { IRenderer } from './types';
 import { Cavi } from './cavi';
 
@@ -8,7 +8,7 @@ export class Renderer implements IRenderer {
   private lastTime = performance.now();
   private fpsFrameCount = 0;
   private fps = 0;
-  private world!: World; // Placeholder for the physics world
+  private world!: WasmWorld; // Placeholder for the physics world
 
   private mouseX: number = 200;
   private mouseY: number = 200;
@@ -27,7 +27,7 @@ export class Renderer implements IRenderer {
     this.addMouseMoveListener();
   }
 
-  public setWorld(world: World) {
+  public setWorld(world: WasmWorld) {
     this.world = world;
   }
 

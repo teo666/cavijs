@@ -1,4 +1,4 @@
-import { World as WasmWorld } from "cavi";
+import { WasmWorld } from "cavi";
 import { Wire } from "./wire";
 import type { IRenderer } from "./types";
 
