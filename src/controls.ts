@@ -365,9 +365,9 @@ export class CaviControls extends HTMLElement {
                     <div class="control-group">
                         <label>
                             Response Coefficient
-                            <span class="value-display" id="responseCoefValue">0.75</span>
+                            <span class="value-display" id="responseCoefValue">0.0</span>
                         </label>
-                        <input type="range" id="responseCoef" min="0" max="2" step="0.05" value="0.75">
+                        <input type="range" id="responseCoef" min="0" max="2" step="0.05" value="0">
                     </div>
                     
                     <div class="control-group">
@@ -526,8 +526,8 @@ export class CaviControls extends HTMLElement {
         // Add Wire Button
         const addWireBtn = this.shadowRoot.getElementById('addWireBtn');
         addWireBtn?.addEventListener('click', () => {
-            // Get canvas dimensions (assuming 800x600 default)
-            const canvasWidth = 800;
+            // Get canvas dimensions (assuming 1000x600 default)
+            const canvasWidth = 1000;
             const canvasHeight = 600;
             
             const x1 = Math.random() * (canvasWidth - 200) + 100;

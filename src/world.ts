@@ -13,6 +13,7 @@ export class World {
 
     constructor() {
         this.wasmWorld = new WasmWorld();
+        this.wasmWorld.set_response_coef(0.0); // Set default response coefficient
     }
 
     /**
