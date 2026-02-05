@@ -2,7 +2,6 @@ import type { WasmWorld } from 'cavi';
 
 export interface IRenderer {
     render: () => void;
-    setWorld: (world: WasmWorld) => void;
 }
 
 export interface WireMeta {

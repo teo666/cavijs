@@ -58,6 +58,16 @@ export class World {
     }
 
     /**
+     * Clear all wires from the world
+     */
+    public clearAllWires(): void {
+        // Delete wires in reverse order to avoid index shifting issues
+        while (this.wires.length > 0) {
+            this.deleteWire(this.wires.length - 1);
+        }
+    }
+
+    /**
      * Set the global acceleration (gravity)
      */
     public setAcceleration(x: number, y: number): void {

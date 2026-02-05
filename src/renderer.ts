@@ -1,38 +1,44 @@
-import type { InitOutput, WasmWorld } from 'cavi';
+import type { WasmWorld } from 'cavi';
 import type { IRenderer } from './types';
+import type { World } from './world';
 import { Cavi } from './cavi';
 
 export class Renderer implements IRenderer {
   private canvas: HTMLCanvasElement;
   private context: CanvasRenderingContext2D;
+  private world: World;
   private lastTime = performance.now();
   private fpsFrameCount = 0;
   private fps = 0;
-  private world!: WasmWorld; // Placeholder for the physics world
-
+  private wasmWorld: WasmWorld;
   private mouseX: number = 200;
   private mouseY: number = 200;
   private isDragging: boolean = false;
   private draggedWire: number | null = null;
   private draggedEndpoint: 'start' | 'end' | null = null;
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, world: World) {
     this.canvas = canvas;
     const context = canvas.getContext('2d');
     if (!context) {
       throw new Error('Unable to get 2D context');
     }
     this.context = context;
-
     this.addMouseMoveListener();
-  }
 
-  public setWorld(world: WasmWorld) {
     this.world = world;
+    this.wasmWorld = world.getWasmWorld();
   }
 
   public clear() {
     this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  /**
+   * Get current FPS
+   */
+  public getFPS(): number {
+    return this.fps;
   }
 
   public drawInteractionRadii(mouseX: number, mouseY: number) {
@@ -41,8 +47,8 @@ export class Renderer implements IRenderer {
       return;
     }
 
-    const mouseRadius = this.world.get_mouse_radius();
-    const pointerRadius = this.world.get_pointer_radius();
+    const mouseRadius = this.wasmWorld.get_mouse_radius();
+    const pointerRadius = this.wasmWorld.get_pointer_radius();
 
     // Draw pointer radius (inner circle)
     this.context.beginPath();
@@ -96,89 +102,90 @@ export class Renderer implements IRenderer {
       if (this.isDragging && this.draggedWire !== null && this.draggedEndpoint !== null) {
         // Update the dragged endpoint position
         if (this.draggedEndpoint === 'start') {
-          this.world.set_wire_start(this.draggedWire, this.mouseX, this.mouseY);
+          this.wasmWorld.set_wire_start(this.draggedWire, this.mouseX, this.mouseY);
         } else {
-          this.world.set_wire_end(this.draggedWire, this.mouseX, this.mouseY);
+          this.wasmWorld.set_wire_end(this.draggedWire, this.mouseX, this.mouseY);
         }
       } else {
-        this.world.set_mouse(this.mouseX, this.mouseY);
+        this.wasmWorld.set_mouse(this.mouseX, this.mouseY);
       }
     });
   }
 
-  public drawAllWiresEfficient() {
+  private drawAllWires() {
     // Access wire data directly from WASM memory (ZERO COPY!)
-    const ptr = this.world.wire_data_ptr();
-    const len = this.world.wire_data_len();
-    
+    const ptr = this.wasmWorld.wire_data_ptr();
+    const len = this.wasmWorld.wire_data_len();
+
     if (len === 0) return;
-    
+
     // Create Float32Array view directly into WASM memory (buffer is now f32)
     const wireData = new Float32Array(
-        Cavi.wasm.memory.buffer,
-        ptr,
-        len
+      Cavi.wasm.memory.buffer,
+      ptr,
+      len
     );
-    
-    const colors = ['#00ff88', '#ff00ff', '#ffaa00'];
-    const colors2 = ['#acfbd6', '#fd71ea', '#fdcd6b'];
-    const movableColors = ['#4488ff', '#ff44ff', '#ffaa44'];
-    
-    let offset = 0;
-    const wireCount = this.world.wire_count();
-    
-    for (let wireIdx = 0; wireIdx < wireCount; wireIdx++) {
-        const nodeCount = wireData[offset++];
-        const radius = wireData[offset++];
-        const renderType = wireData[offset++];
-        const pathLength = wireData[offset++];
-        
-        // Draw wire path
-        if (pathLength >= 2) {
-            this.context.strokeStyle = colors[wireIdx % colors.length];
-            this.context.lineWidth = radius * 2;
-            this.context.lineCap = 'round';
-            this.context.lineJoin = 'round';
-            
-            this.context.beginPath();
-            
-            // Start at first point
-            this.context.moveTo(wireData[offset], wireData[offset + 1]);
-            
-            offset += 2;
 
-            if (renderType === 0) {
-                // Render as segments
-                const targetOffset = offset + pathLength - 2;
-                while (offset < targetOffset) {
-                    const x = wireData[offset++];
-                    const y = wireData[offset++];
-                    this.context.lineTo(x, y);
-                }
-            } else {
-                // Render as Bezier curves
-                const targetOffset = offset + pathLength - 2;
-                while (offset < targetOffset) {
-                    const cp1x = wireData[offset++];
-                    const cp1y = wireData[offset++];
-                    const cp2x = wireData[offset++];
-                    const cp2y = wireData[offset++];
-                    const x = wireData[offset++];
-                    const y = wireData[offset++];
-                    
-                    this.context.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
-                }
-            }
-            
-            this.context.stroke();
+    // Default colors as fallback
+    const defaultColors = ['#00ff88', '#ff00ff', '#ffaa00'];
+
+    let offset = 0;
+    const wireCount = this.world.getWireCount();
+    const wires = this.world.getWires();
+
+    for (let wireIdx = 0; wireIdx < wireCount; wireIdx++) {
+      const nodeCount = wireData[offset++];
+      const radius = wireData[offset++];
+      const renderType = wireData[offset++];
+      const pathLength = wireData[offset++];
+
+      // Get wire instance to access metadata
+      const wire = wires[wireIdx];
+      const wireColor = wire?.getColor() || defaultColors[wireIdx % defaultColors.length];
+
+      // Draw wire path
+      if (pathLength >= 2) {
+        this.context.strokeStyle = wireColor;
+        this.context.lineWidth = radius * 2;
+        this.context.lineCap = 'round';
+        this.context.lineJoin = 'round';
+
+        this.context.beginPath();
+
+        // Start at first point
+        this.context.moveTo(wireData[offset], wireData[offset + 1]);
+
+        offset += 2;
+
+        if (renderType === 0) {
+          // Render as segments
+          const targetOffset = offset + pathLength - 2;
+          while (offset < targetOffset) {
+            const x = wireData[offset++];
+            const y = wireData[offset++];
+            this.context.lineTo(x, y);
+          }
         } else {
-            offset += pathLength;
+          // Render as Bezier curves
+          const targetOffset = offset + pathLength - 2;
+          while (offset < targetOffset) {
+            const cp1x = wireData[offset++];
+            const cp1y = wireData[offset++];
+            const cp2x = wireData[offset++];
+            const cp2y = wireData[offset++];
+            const x = wireData[offset++];
+            const y = wireData[offset++];
+
+            this.context.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
+          }
         }
 
-        // Draw nodes (we still use the original API for this since we need node fixed state)
-        //  drawNodesForWire(wireIdx, radius, movableColors[wireIdx % movableColors.length]);
+        this.context.stroke();
+      } else {
+        offset += pathLength;
+      }
     }
-}
+  }
 
   public render() {
     const currentTime = performance.now();
@@ -199,7 +206,7 @@ export class Renderer implements IRenderer {
     this.context.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     // // Draw all wires using efficient memory access
-    this.drawAllWiresEfficient();
+    this.drawAllWires();
 
     // // Draw wire endpoints to show they're draggable
     // drawWireEndpoints();

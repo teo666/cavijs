@@ -76,6 +76,13 @@ export class Cavi {
     }
 
     /**
+     * Clear all wires from the simulation
+     */
+    public clearAllWires(): void {
+        this.world.clearAllWires();
+    }
+
+    /**
      * Set global acceleration (gravity)
      */
     public setAcceleration(x: number, y: number): void {

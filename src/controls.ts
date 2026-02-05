@@ -8,6 +8,7 @@ import type { Cavi } from "./cavi";
 export class CaviControls extends HTMLElement {
     private cavi: Cavi | null = null;
     private world: World | null = null;
+    private statsUpdateInterval: number | null = null;
     public shadowRoot: ShadowRoot;
 
     constructor() {
@@ -26,6 +27,84 @@ export class CaviControls extends HTMLElement {
         this.cavi = cavi;
         this.world = cavi.getWorld();
         this.setupEventListeners();
+        this.startStatsUpdate();
+    }
+
+    /**
+     * Start updating stats
+     */
+    private startStatsUpdate(): void {
+        // Update stats every 100ms
+        this.statsUpdateInterval = window.setInterval(() => {
+            this.updateStats();
+        }, 100);
+    }
+
+    /**
+     * Update statistics display
+     */
+    private updateStats(): void {
+        if (!this.world || !this.cavi) return;
+
+        const renderer = this.cavi.getRenderer() as any;
+        const wasmWorld = this.world.getWasmWorld();
+        
+        // Update FPS
+        const fpsDisplay = this.shadowRoot.getElementById('fpsValue');
+        if (fpsDisplay && renderer && typeof renderer.getFPS === 'function') {
+            fpsDisplay.textContent = renderer.getFPS().toString();
+        }
+
+        // Update wire count
+        const wireCountDisplay = this.shadowRoot.getElementById('wireCountValue');
+        if (wireCountDisplay) {
+            wireCountDisplay.textContent = wasmWorld.wire_count().toString();
+        }
+
+        // Update total points
+        const totalPointsDisplay = this.shadowRoot.getElementById('totalPointsValue');
+        if (totalPointsDisplay) {
+            let totalPoints = 0;
+            const wireCount = wasmWorld.wire_count();
+            for (let i = 0; i < wireCount; i++) {
+                totalPoints += wasmWorld.get_wire_node_count(i);
+            }
+            totalPointsDisplay.textContent = totalPoints.toString();
+        }
+
+        // Update buffer size
+        const bufferSizeDisplay = this.shadowRoot.getElementById('bufferSizeValue');
+        if (bufferSizeDisplay) {
+            const bufferLen = wasmWorld.wire_data_len();
+            const bufferSizeKB = (bufferLen * 4 / 1024).toFixed(2); // Float32 = 4 bytes
+            bufferSizeDisplay.textContent = `${bufferSizeKB}KB`;
+        }
+
+        // Update mouse position
+        const mouseXDisplay = this.shadowRoot.getElementById('mouseXValue');
+        const mouseYDisplay = this.shadowRoot.getElementById('mouseYValue');
+        if (renderer && mouseXDisplay && mouseYDisplay) {
+            if (renderer.mouseX !== undefined && renderer.mouseY !== undefined) {
+                mouseXDisplay.textContent = Math.round(renderer.mouseX).toString();
+                mouseYDisplay.textContent = Math.round(renderer.mouseY).toString();
+            }
+        }
+
+        // Update acceleration values
+        const accel = wasmWorld.get_acceleration();
+        const accelXDisplay = this.shadowRoot.getElementById('accelXValue');
+        const accelYDisplay = this.shadowRoot.getElementById('accelYValue');
+        if (accelXDisplay) accelXDisplay.textContent = accel.x.toFixed(1);
+        if (accelYDisplay) accelYDisplay.textContent = accel.y.toFixed(1);
+    }
+
+    /**
+     * Clean up when element is removed
+     */
+    disconnectedCallback(): void {
+        if (this.statsUpdateInterval !== null) {
+            window.clearInterval(this.statsUpdateInterval);
+        }
     }
 
     /**
@@ -189,10 +268,80 @@ export class CaviControls extends HTMLElement {
                 button.success:hover {
                     background: #229954;
                 }
+
+                .stats-grid {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 10px;
+                    background: #1a1a1a;
+                    padding: 12px;
+                    border-radius: 6px;
+                    border: 1px solid #333;
+                }
+
+                .stat-item {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 6px 8px;
+                    background: #2a2a2a;
+                    border-radius: 4px;
+                }
+
+                .stat-label {
+                    font-size: 12px;
+                    color: #888;
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                }
+
+                .stat-value {
+                    font-size: 14px;
+                    font-weight: bold;
+                    color: #4A90E2;
+                    font-family: 'Courier New', monospace;
+                }
             </style>
 
             <div class="controls-container">
                 <h2>🎛️ World Configuration</h2>
+                
+                <div class="section">
+                    <h3>📊 Statistics</h3>
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <span class="stat-label">FPS:</span>
+                            <span class="stat-value" id="fpsValue">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Wires:</span>
+                            <span class="stat-value" id="wireCountValue">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Total Points:</span>
+                            <span class="stat-value" id="totalPointsValue">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Buffer Size:</span>
+                            <span class="stat-value" id="bufferSizeValue">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Mouse X:</span>
+                            <span class="stat-value" id="mouseXValue">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Mouse Y:</span>
+                            <span class="stat-value" id="mouseYValue">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Accel X:</span>
+                            <span class="stat-value" id="accelXValue">0.0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Accel Y:</span>
+                            <span class="stat-value" id="accelYValue">0.0</span>
+                        </div>
+                    </div>
+                </div>
                 
                 <div class="section">
                     <div class="control-group">
@@ -396,8 +545,7 @@ export class CaviControls extends HTMLElement {
         const clearBtn = this.shadowRoot.getElementById('clearBtn');
         clearBtn?.addEventListener('click', () => {
             if (confirm('Are you sure you want to clear all wires?')) {
-                // This would need to be implemented in Cavi class
-                console.warn('Clear all wires functionality not yet implemented');
+                this.cavi!.clearAllWires();
             }
         });
 
