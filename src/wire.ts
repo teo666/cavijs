@@ -1,5 +1,6 @@
 import type { WireMeta } from "./types";
 import type { WasmWorld } from "cavi";
+import { Node } from "./node";
 
 /**
  * Wire is the TypeScript wrapper for the WASM Wire class.
@@ -53,6 +54,27 @@ export class Wire {
             return this.world.get_wire_node_count(this.wireIndex);
         }
         return 0;
+    }
+
+    /**
+     * Get a node at a specific index
+     */
+    public getNode(index: number): Node | null {
+        if (this.world && this.wireIndex >= 0) {
+            const wasmNode = this.world.get_wire_node(this.wireIndex, index);
+            if (wasmNode) {
+                return new Node(
+                    wasmNode.get_x(), 
+                    wasmNode.get_y(), 
+                    wasmNode.is_fixed(), 
+                    wasmNode,
+                    this.world,
+                    this.wireIndex,
+                    index
+                );
+            }
+        }
+        return null;
     }
 
     /**
