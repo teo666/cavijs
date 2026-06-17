@@ -40,8 +40,8 @@ export class Jack extends HTMLElement {
         const style = `
             :host {
                 display: block;
-                width: 24px;
-                height: 24px;
+                width: 30px;
+                height: 30px;
                 border-radius: 50%;
                 background-color: ${color};
                 border: 2px solid #555;

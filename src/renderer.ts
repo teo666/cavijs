@@ -212,7 +212,7 @@ export class Renderer implements IRenderer {
     // drawWireEndpoints();
 
     // Draw interaction radii at mouse position
-    this.drawInteractionRadii(this.mouseX, this.mouseY);
+    // this.drawInteractionRadii(this.mouseX, this.mouseY);
 
     // Update debug info
     // updateDebugInfo();

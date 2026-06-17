@@ -87,4 +87,8 @@ export class Node {
             this.wasmNode.set_position(x, y);
         }
     }
+
+    public setMousePosition(x: number, y: number) {
+        this.world?.set_mouse(x, y);
+    }
 }

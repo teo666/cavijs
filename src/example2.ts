@@ -8,7 +8,7 @@ import './style.css';
 await Cavi.initWasm();
 
 const cavi = new Cavi();
-const container = document.getElementById('container')!;
+const container = document.getElementById('container2')!;
 const canvas = document.getElementById('wireCanvas') as HTMLCanvasElement;
 const renderer = new Renderer(canvas, cavi.getWorld());
 
@@ -16,8 +16,8 @@ cavi.setRenderer(renderer);
 cavi.setAcceleration(0, 5); // Stronger gravity for demonstration
 
 // Add a wire
-const wire = cavi.addWire(100, 100, 300, 300, 10, 6, 5, 1);
-wire.setColor("#555");
+const wire = cavi.addWire(100, 100, 300, 300, 20, 20, 5, 1);
+wire.setColor("#d69e19");
 wire.setMetaData("thickness", 4);
 
 // Create Jacks
@@ -59,13 +59,13 @@ if (endNode) {
     
     // Initially loose? Or fixed to another location?
     // Let's place it loosely near the middle
-    endNode.fixed = false;
+    endNode.fixed = true;
     endNode.setPosition(300, 300);
 }
 
 // Add another wire connected to GREEN jack
-const wire2 = cavi.addWire(800, 200, 800, 500, 25, 10, 5, 1);
-wire2.setColor("#888");
+const wire2 = cavi.addWire(800, 200, 800, 500, 25, 10, 10, 1);
+wire2.setColor("#00ffae");
 
 const startNode2 = wire2.getNode(0);
 if (startNode2) {

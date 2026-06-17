@@ -22,6 +22,16 @@ export class Plug extends HTMLElement {
         this.handleMouseUp = this.handleMouseUp.bind(this);
     }
 
+    static get observedAttributes() {
+        return ['plugged'];
+    }
+
+    attributeChangedCallback(name: string, oldValue: string, newValue: string) {
+        if (name === 'plugged') {
+            this.render();
+        }
+    }
+
     connectedCallback() {
         this.render();
         this.addEventListener('mousedown', this.handleMouseDown);
@@ -83,6 +93,8 @@ export class Plug extends HTMLElement {
         const y = e.clientY - parentRect.top;
         
         this._node.setPosition(x, y);
+        //always update mouse position in the world for physics interaction with other nodes/wires
+        this._node.setMousePosition(x, y);
         this.updatePosition(); 
     }
 
@@ -123,13 +135,16 @@ export class Plug extends HTMLElement {
                 this._node.fixed = true;
                 this.updatePosition();
                 snapped = true;
+                this.setAttribute('plugged', 'true');
                 break;
+            } else {
+                this.removeAttribute('plugged');
             }
         }
 
         if (!snapped) {
             // Unfix the node so it falls or moves with physics
-            this._node.fixed = false;
+            this._node.fixed = true;
         }
     }
 
@@ -151,6 +166,10 @@ export class Plug extends HTMLElement {
             :host(:active) {
                 cursor: grabbing;
                 border-color: #007bff;
+            }
+            :host([plugged]) {
+                background-color: #007bff;
+                border-color: #0056b3;
             }
         `;
         
