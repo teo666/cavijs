@@ -48,6 +48,8 @@ if (startNode) {
     const plug1 = new Plug();
     plug1.setNode(startNode);
     container.appendChild(plug1);
+    plug1.setAttribute('in', 'audio');
+
     
     // Fix start node to first jack
     startNode.fixed = true;
@@ -58,8 +60,10 @@ const endNode = wire.getNode(wire.getNodeCount() - 1);
 if (endNode) {
     const plug2 = new Plug();
     plug2.setNode(endNode);
+    plug2.setAttribute('out', 'audio');
 
     container.appendChild(plug2);
+
     
     // Initially loose? Or fixed to another location?
     // Let's place it loosely near the middle

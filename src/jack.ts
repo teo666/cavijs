@@ -4,8 +4,8 @@
  * Plug elements can be dropped onto Jack elements.
  */
 export class Jack extends HTMLElement {
-    private in: string[] = []
-    private out: string[] = []
+    private _in: string[] = []
+    private _out: string[] = []
 
     static get observedAttributes() {
         return ['color', 'x', 'y', 'in', 'out'];
@@ -29,10 +29,10 @@ export class Jack extends HTMLElement {
             this.updatePosition();
         }
         if (name === 'in') {
-            this.in = newValue ? newValue.split(',').map(s => s.trim()) : [];
+            this._in = newValue ? newValue.split(',').map(s => s.trim()) : [];
         }
         if (name === 'out') {
-            this.out = newValue ? newValue.split(',').map(s => s.trim()) : [];
+            this._out = newValue ? newValue.split(',').map(s => s.trim()) : [];
         }
     }
 
@@ -80,6 +80,12 @@ export class Jack extends HTMLElement {
                 <div class="inner"></div>
              `;
         }
+    }
+
+    public canAccept(plugIn: string[], plugOut: string[]): boolean {
+        const plugOutMatchesJackIn = plugOut.some(t => this._in.includes(t));
+        const plugInMatchesJackOut = plugIn.some(t => this._out.includes(t));
+        return plugOutMatchesJackIn || plugInMatchesJackOut;
     }
 
     public getCenter(): { x: number, y: number } {

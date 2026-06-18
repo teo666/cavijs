@@ -22,13 +22,22 @@ export class Plug extends HTMLElement {
         this.handleMouseUp = this.handleMouseUp.bind(this);
     }
 
+    private _in: string[] = [];
+    private _out: string[] = [];
+
     static get observedAttributes() {
-        return ['plugged'];
+        return ['plugged', 'in', 'out'];
     }
 
     attributeChangedCallback(name: string, oldValue: string, newValue: string) {
         if (name === 'plugged') {
             this.render();
+        }
+        if (name === 'in') {
+            this._in = newValue ? newValue.split(',').map(s => s.trim()) : [];
+        }
+        if (name === 'out') {
+            this._out = newValue ? newValue.split(',').map(s => s.trim()) : [];
         }
     }
 
@@ -123,7 +132,7 @@ export class Plug extends HTMLElement {
 
             const dist = Math.sqrt(Math.pow(centerX - jCenterX, 2) + Math.pow(centerY - jCenterY, 2));
             
-            if (dist < this._snapDistance) {
+            if (dist < this._snapDistance && (jack as Jack).canAccept(this._in, this._out)) {
                 // Snap!
                 // Calculate position relative to offsetParent
                 const offsetParent = this.offsetParent || document.body;
