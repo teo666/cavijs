@@ -4,8 +4,11 @@
  * Plug elements can be dropped onto Jack elements.
  */
 export class Jack extends HTMLElement {
+    private in: string[] = []
+    private out: string[] = []
+
     static get observedAttributes() {
-        return ['color', 'x', 'y'];
+        return ['color', 'x', 'y', 'in', 'out'];
     }
 
     constructor() {
@@ -25,6 +28,12 @@ export class Jack extends HTMLElement {
         if (name === 'x' || name === 'y') {
             this.updatePosition();
         }
+        if (name === 'in') {
+            this.in = newValue ? newValue.split(',').map(s => s.trim()) : [];
+        }
+        if (name === 'out') {
+            this.out = newValue ? newValue.split(',').map(s => s.trim()) : [];
+        }
     }
 
     private updatePosition() {
@@ -40,8 +49,6 @@ export class Jack extends HTMLElement {
         const style = `
             :host {
                 display: block;
-                width: 30px;
-                height: 30px;
                 border-radius: 50%;
                 background-color: ${color};
                 border: 2px solid #555;

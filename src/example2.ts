@@ -2,15 +2,18 @@ import { Cavi } from './cavi';
 import { Renderer } from './renderer';
 import { Jack } from './jack';
 import { Plug } from './plug';
-import './style.css'; 
 
 // Initialize WASM
 await Cavi.initWasm();
 
 const cavi = new Cavi();
 const container = document.getElementById('container2')!;
-const canvas = document.getElementById('wireCanvas') as HTMLCanvasElement;
-const renderer = new Renderer(canvas, cavi.getWorld());
+const observer = new MutationObserver( (mutations: MutationRecord[], observer: MutationObserver) => {
+    // Update positions of plugs when DOM changes (e.g., new jacks added)
+    
+});
+observer.observe(container, { childList: true, subtree: true });
+const renderer = new Renderer(container, cavi.getWorld());
 
 cavi.setRenderer(renderer);
 cavi.setAcceleration(0, 5); // Stronger gravity for demonstration
@@ -22,22 +25,22 @@ wire.setMetaData("thickness", 4);
 
 // Create Jacks
 const jack1 = new Jack();
-jack1.setAttribute('x', '100');
-jack1.setAttribute('y', '100');
-jack1.setAttribute('color', '#e74c3c'); // Red
-container.appendChild(jack1);
+// jack1.setAttribute('x', '100');
+// jack1.setAttribute('y', '100');
+// jack1.setAttribute('color', '#e74c3c'); // Red
+// container.appendChild(jack1);
 
-const jack2 = new Jack();
-jack2.setAttribute('x', '500');
-jack2.setAttribute('y', '400');
-jack2.setAttribute('color', '#3498db'); // Blue
-container.appendChild(jack2);
+// const jack2 = new Jack();
+// jack2.setAttribute('x', '500');
+// jack2.setAttribute('y', '400');
+// jack2.setAttribute('color', '#3498db'); // Blue
+// container.appendChild(jack2);
 
-const jack3 = new Jack();
-jack3.setAttribute('x', '800');
-jack3.setAttribute('y', '200');
-jack3.setAttribute('color', '#2ecc71'); // Green
-container.appendChild(jack3);
+// const jack3 = new Jack();
+// jack3.setAttribute('x', '800');
+// jack3.setAttribute('y', '200');
+// jack3.setAttribute('color', '#2ecc71'); // Green
+// container.appendChild(jack3);
 
 // Create Plugs
 const startNode = wire.getNode(0);
@@ -55,6 +58,7 @@ const endNode = wire.getNode(wire.getNodeCount() - 1);
 if (endNode) {
     const plug2 = new Plug();
     plug2.setNode(endNode);
+
     container.appendChild(plug2);
     
     // Initially loose? Or fixed to another location?
@@ -87,11 +91,3 @@ if (endNode2) {
 
 // Start rendering
 renderer.render();
-
-// Sync loop for Plugs
-function updatePlugs() {
-    const plugs = document.querySelectorAll('cavi-plug');
-    plugs.forEach(p => (p as Plug).update());
-    requestAnimationFrame(updatePlugs);
-}
-updatePlugs();

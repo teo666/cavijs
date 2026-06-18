@@ -4,6 +4,7 @@ import type { World } from './world';
 import { Cavi } from './cavi';
 
 export class Renderer implements IRenderer {
+  private container: HTMLElement;
   private canvas: HTMLCanvasElement;
   private context: CanvasRenderingContext2D;
   private world: World;
@@ -17,7 +18,10 @@ export class Renderer implements IRenderer {
   private draggedWire: number | null = null;
   private draggedEndpoint: 'start' | 'end' | null = null;
 
-  constructor(canvas: HTMLCanvasElement, world: World) {
+  constructor(container: HTMLElement, world: World) {
+    this.container = container;
+    const canvas = container.querySelector('#wireCanvas') as HTMLCanvasElement;
+    
     this.canvas = canvas;
     const context = canvas.getContext('2d');
     if (!context) {
@@ -94,7 +98,7 @@ export class Renderer implements IRenderer {
   }
 
   private addMouseMoveListener() {
-    this.canvas.addEventListener('mousemove', (e) => {
+    this.container.addEventListener('mousemove', (e) => {
       const rect = this.canvas.getBoundingClientRect();
       this.mouseX = e.clientX - rect.left;
       this.mouseY = e.clientY - rect.top;
@@ -202,8 +206,8 @@ export class Renderer implements IRenderer {
     this.world.update();
 
     // Clear canvas
-    this.context.fillStyle = '#0a0a0a';
-    this.context.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    // this.context.fillStyle = '#0a0a0a';
+    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     // // Draw all wires using efficient memory access
     this.drawAllWires();
@@ -212,7 +216,7 @@ export class Renderer implements IRenderer {
     // drawWireEndpoints();
 
     // Draw interaction radii at mouse position
-    // this.drawInteractionRadii(this.mouseX, this.mouseY);
+    this.drawInteractionRadii(this.mouseX, this.mouseY);
 
     // Update debug info
     // updateDebugInfo();

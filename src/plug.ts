@@ -107,6 +107,7 @@ export class Plug extends HTMLElement {
         this.style.zIndex = '';
 
         // Check for drop on Jack
+        //todo better iterate on world jacks instead of DOM query, but for now let's use DOM
         const jacks = document.querySelectorAll('cavi-jack');
         let snapped = false;
 
