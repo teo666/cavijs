@@ -12,6 +12,7 @@ import { World } from "./world";
 export class Cavi {
 
     static wasm: InitOutput;
+    static shared: Cavi | null = null;
 
     private world: World;
     private wasm: InitOutput | null = null;

@@ -40,13 +40,17 @@
     <div class="instructions">Drag plugs (grey) to jacks (colored). Drop to connect. Drag away to disconnect.</div>
     <div id="container2">
         <canvas id="wireCanvas" width="1000" height="600"></canvas>
-        <cavi-jack class="jackAudio" x="300" y="200" in="audio,cv" out="output1,output2"></cavi-jack>
-        <cavi-jack class="jackAudio" x="500" y="400" in="audio,cv" out="output1,output2"></cavi-jack>
-        <cavi-jack class="jackAudio" x="300" y="500" in="audio,input2" out="output1,output2"></cavi-jack>
-        <cavi-jack class="jackAudio" x="400" y="300" in="audio,input2" out="output1,output2"></cavi-jack>
-        <cavi-jack class="jack3" x="700" y="500" in="input1,input2" out="output1,output2"></cavi-jack>
+        <cavi-jack id="jack1" class="jackAudio" x="300" y="200" in="audio,cv" out="output1,output2"></cavi-jack>
+        <cavi-jack id="jack2" class="jackAudio" x="500" y="400" in="audio,cv" out="output1,output2"></cavi-jack>
+        <cavi-jack id="jack3" class="jackAudio" x="300" y="500" in="audio,input2" out="output1,output2"></cavi-jack>
+        <cavi-jack id="jack4" class="jackAudio" x="400" y="300" in="audio,input2" out="output1,output2"></cavi-jack>
+        <cavi-jack id="jack5" class="jack3" x="700" y="500" in="input1,input2" out="output1,output2"></cavi-jack>
 
-
+        <cavi-wire id="wire1" length="10" tension="20" size="10" renderType="bezier" color="#ccc">
+            <cavi-plug slot="0" draggable jack="jack1"></cavi-plug>
+            <cavi-plug slot="19" draggable jack="jack2"></cavi-plug>
+            <cavi-plug slot="5" draggable></cavi-plug>
+        </cavi-wire>
     </div>
     <script type="module" src="/src/example2.ts"></script>
   </body>
