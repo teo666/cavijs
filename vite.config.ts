@@ -5,6 +5,7 @@ export default defineConfig({
     exclude: ['cavi']
   },
   server: {
+    host: '0.0.0.0',
     fs: {
       allow: ['..']
     }

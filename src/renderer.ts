@@ -17,6 +17,7 @@ export class Renderer implements IRenderer {
   private isDragging: boolean = false;
   private draggedWire: number | null = null;
   private draggedEndpoint: 'start' | 'end' | null = null;
+  private debugDrawNodes: boolean = true;
 
   constructor(container: HTMLElement, world: World) {
     this.container = container;
@@ -43,6 +44,39 @@ export class Renderer implements IRenderer {
    */
   public getFPS(): number {
     return this.fps;
+  }
+
+  /**
+   * Toggles the debug overlay that draws the circumference of every wire
+   * node (its actual physics position, not just the rendered path).
+   */
+  public setDebugDrawNodes(enabled: boolean): void {
+    this.debugDrawNodes = enabled;
+  }
+
+  public getDebugDrawNodes(): boolean {
+    return this.debugDrawNodes;
+  }
+
+  private drawNodeDebug() {
+    const wires = this.world.getWires();
+
+    this.context.strokeStyle = '#00ffff'; // Cyan
+    this.context.lineWidth = 1;
+
+    for (const wire of wires) {
+      const radius = wire.getRadius();
+      const nodeCount = wire.getNodeCount();
+
+      for (let i = 0; i < nodeCount; i++) {
+        const node = wire.getNode(i);
+        if (!node) continue;
+
+        this.context.beginPath();
+        this.context.arc(node.x, node.y, radius, 0, Math.PI * 2);
+        this.context.stroke();
+      }
+    }
   }
 
   public drawInteractionRadii(mouseX: number, mouseY: number) {
@@ -214,6 +248,11 @@ export class Renderer implements IRenderer {
 
     // // Draw wire endpoints to show they're draggable
     // drawWireEndpoints();
+
+    // Debug: draw the circumference of every wire node
+    if (this.debugDrawNodes) {
+      this.drawNodeDebug();
+    }
 
     // Draw interaction radii at mouse position
     this.drawInteractionRadii(this.mouseX, this.mouseY);

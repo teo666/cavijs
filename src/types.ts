@@ -2,6 +2,8 @@ import type { WasmWorld } from 'cavi';
 
 export interface IRenderer {
     render: () => void;
+    setDebugDrawNodes: (enabled: boolean) => void;
+    getDebugDrawNodes: () => boolean;
 }
 
 export interface WireMeta {

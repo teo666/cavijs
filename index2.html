@@ -5,52 +5,127 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>cavijs - Jack & Plug</title>
     <style>
-        body { margin: 0; padding: 20px; font-family: sans-serif; background: #222; }
-        h1 { margin-bottom: 20px; text-align: center; }
-        #container2 { 
-            position: relative; 
-            width: 1000px;
-            height: 600px;
-            background: #333;
-            margin: 0 auto; 
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        #wireCanvas { width: 100%; height: 100%; display: block; }
-        .instructions { text-align: center; margin-bottom: 10px; color: #555; }
-        .jackAudio { background-color: #4CAF50; width: 40px; height: 40px; } /* Example color for jack1 */
-        .jack2 { background-color: #2196F3; width: 30px; height: 30px; } /* Example color for jack2 */
-        .jack3 { background-color: #ff00d9; width: 20px; height: 20px; } /* Example color for jack3 */
-        canvas{
-            position: absolute;
-            top: 0;
-            left: 0;
-            pointer-events: none; /* Allow clicks to pass through to jacks and plugs */
-            background: transparent; /* Ensure canvas is transparent */
-            z-index: 30; /* Ensure canvas is below jacks and plugs */
-        }
-        cavi-jack { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #555; position: absolute; box-sizing: border-box; }
-        cavi-plug[plugged]{
-            border-color: #0c7413; /* Change border color when plugged in */
-            background-color: rgb(33, 191, 12); /* Change background color when plugged in */
-        }
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: sans-serif;
+        background: #222;
+      }
+      h1 {
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      #container2 {
+        position: relative;
+        width: 1000px;
+        height: 600px;
+        background: #333;
+        margin: 0 auto;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      #wireCanvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .instructions {
+        text-align: center;
+        margin-bottom: 10px;
+        color: #555;
+      }
+      .jackAudio {
+        background-color: #4caf50;
+        width: 40px;
+        height: 40px;
+      } /* Example color for jack1 */
+      .jack2 {
+        background-color: #2196f3;
+        width: 30px;
+        height: 30px;
+      } /* Example color for jack2 */
+      .jack3 {
+        background-color: #ff00d9;
+        width: 20px;
+        height: 20px;
+      } /* Example color for jack3 */
+      canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none; /* Allow clicks to pass through to jacks and plugs */
+        background: transparent; /* Ensure canvas is transparent */
+        z-index: 30; /* Ensure canvas is below jacks and plugs */
+      }
+      cavi-jack {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        border: 2px solid #555;
+        position: absolute;
+        box-sizing: border-box;
+      }
+      cavi-plug[plugged] {
+        border-color: #0c7413; /* Change border color when plugged in */
+        background-color: rgb(33, 191, 12); /* Change background color when plugged in */
+      }
+      cavi-jack.cavi-magnet-target {
+        filter: blur(0.5px);
+        box-shadow: 0 0 0 6px rgba(255, 235, 59, 0.6);
+      }
+      cavi-plug.cavi-magnet-active {
+        filter: blur(0.5px);
+        box-shadow: 0 0 0 6px rgba(255, 235, 59, 0.6);
+      }
     </style>
   </head>
   <body>
     <h1>Jack & Plug connection demo</h1>
-    <div class="instructions">Drag plugs (grey) to jacks (colored). Drop to connect. Drag away to disconnect.</div>
+    <div class="instructions">
+      Drag plugs (grey) to jacks (colored). Drop to connect. Drag away to disconnect. Works with
+      touch too.
+    </div>
     <div id="container2">
-        <canvas id="wireCanvas" width="1000" height="600"></canvas>
-        <cavi-jack id="jack1" class="jackAudio" x="300" y="200" in="audio,cv" out="output1,output2"></cavi-jack>
-        <cavi-jack id="jack2" class="jackAudio" x="500" y="400" in="audio,cv" out="output1,output2"></cavi-jack>
-        <cavi-jack id="jack3" class="jackAudio" x="300" y="500" in="audio,input2" out="output1,output2"></cavi-jack>
-        <cavi-jack id="jack4" class="jackAudio" x="400" y="300" in="audio,input2" out="output1,output2"></cavi-jack>
-        <cavi-jack id="jack5" class="jack3" x="700" y="500" in="input1,input2" out="output1,output2"></cavi-jack>
+      <canvas id="wireCanvas" width="1000" height="600"></canvas>
+      <cavi-jack
+        id="jack1"
+        class="jackAudio"
+        x="300"
+        y="200"
+        type="audio"
+        max-plugs="1"
+      ></cavi-jack>
+      <cavi-jack id="jack2" class="jackAudio" x="500" y="400" type="audio"></cavi-jack>
+      <cavi-jack id="jack3" class="jackAudio" x="300" y="500" type="midi"></cavi-jack>
+      <cavi-jack id="jack4" class="jackAudio" x="400" y="300" type="audio"></cavi-jack>
+      <cavi-jack id="jack5" class="jack3" x="700" y="500" type="scsi"></cavi-jack>
+      <cavi-jack id="jack6" class="jack3" x="200" y="300" type="scsi"></cavi-jack>
+      <cavi-jack id="jack7" class="jack3" x="100" y="100" type="scsi"></cavi-jack>
 
-        <cavi-wire id="wire1" length="10" tension="20" size="10" renderType="bezier" color="#ccc">
-            <cavi-plug slot="0" draggable jack="jack1"></cavi-plug>
-            <cavi-plug slot="19" draggable jack="jack2"></cavi-plug>
-            <cavi-plug slot="5" draggable></cavi-plug>
-        </cavi-wire>
+
+      <cavi-wire
+        id="wire1"
+        length="10"
+        tension="20"
+        size="10"
+        renderType="bezier"
+        color="#ccc"
+        type="audio"
+      >
+        <cavi-plug node="0" jack="jack1"></cavi-plug>
+        <cavi-plug node="9" jack="jack2"></cavi-plug>
+      </cavi-wire>
+      <cavi-wire
+        id="wire1"
+        length="15"
+        tension="20"
+        size="10"
+        renderType="bezier"
+        color="#ff4400"
+        type="scsi"
+      >
+        <cavi-plug node="0" jack="jack5"></cavi-plug>
+        <cavi-plug node="14" jack="jack6"></cavi-plug>
+      </cavi-wire>
     </div>
     <script type="module" src="/src/example2.ts"></script>
   </body>

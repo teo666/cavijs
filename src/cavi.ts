@@ -134,4 +134,19 @@ export class Cavi {
             renderer.render();
         }
     }
+
+    /**
+     * Toggles the debug overlay that draws the circumference of every
+     * wire node, on the configured renderer. Global: affects every wire.
+     */
+    public setDebugDrawNodes(enabled: boolean): void {
+        this.world.getRenderer()?.setDebugDrawNodes(enabled);
+    }
+
+    /**
+     * Whether the debug node overlay is currently enabled.
+     */
+    public getDebugDrawNodes(): boolean {
+        return this.world.getRenderer()?.getDebugDrawNodes() ?? false;
+    }
 }
