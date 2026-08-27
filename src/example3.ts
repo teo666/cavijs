@@ -1,7 +1,6 @@
-import { Cavi } from './cavi';
-import { Renderer } from './renderer';
-import './jack';
-import './wirewc'; // registers cavi-wire and pulls in cavi-plug
+import type { Cavi } from './cavi';
+import type { CaviWorldElement } from './worldwc';
+import './worldwc'; // registers cavi-world, and transitively cavi-jack/cavi-wire/cavi-plug
 
 /**
  * A pre-patched connection between two jacks, materialized as a
@@ -115,45 +114,27 @@ function wireUpControls(cavi: Cavi, panel: HTMLElement): void {
   });
 }
 
-async function main(): Promise<void> {
-  await Cavi.initWasm();
-
-  const panel = document.getElementById('panel')!;
-  const canvas = panel.querySelector('#wireCanvas') as HTMLCanvasElement;
-  // The panel fills the viewport (see index3.html), so size the canvas's
-  // pixel buffer to match its actual rendered size rather than a fixed
-  // width/height attribute — this demo doesn't re-layout on window resize,
-  // matching index2.html's own fixed-size approach, just at whatever size
-  // the viewport happened to be on load.
-  canvas.width = panel.clientWidth;
-  canvas.height = panel.clientHeight;
-
-  const cavi = new Cavi();
-  const renderer = new Renderer(panel, cavi.getWorld());
-  cavi.setRenderer(renderer);
-  cavi.setAcceleration(0, 5);
-  // Renderer defaults this to true; start clean, matching the unchecked
-  // "show physics nodes" checkbox below, which then drives it live.
-  cavi.setDebugDrawNodes(false);
-  // Click-to-carry: a click detaches/creates and starts following the
-  // cursor with no button held, so native scrolling — including trackpad
-  // gestures — is never blocked while reaching for an off-screen jack.
-  // Mouse/pen only; touch keeps the default press-and-drag (see Jack/Plug's
-  // handlePointerDown for why). No auto-scroll hack needed anymore: with
-  // nothing held down mid-drag, #panelScroll's native overflow-y:auto
-  // already just works.
-  cavi.setDragMode('click');
+function main(): void {
+  // <cavi-world id="panel" gravity-y="5" drag-mode="click"> (index3.html)
+  // now owns WASM init, canvas creation, and the render loop — see
+  // src/worldwc.ts. gravity/debug-draw-nodes/drag-mode all match what this
+  // main() used to set imperatively (gravity-y="5" is worldwc's own default;
+  // debug-nodes starts unset/false, matching the unchecked "show physics
+  // nodes" checkbox below, which then drives it live).
+  const panel = document.getElementById('panel') as CaviWorldElement;
 
   materializeJacks(panel);
   materializePatches(panel);
 
-  // Make the Cavi instance available to cavi-wire web components
-  Cavi.shared = cavi;
-  document.dispatchEvent(new CustomEvent('caviready', { detail: { cavi } }));
-
-  wireUpControls(cavi, panel);
-
-  renderer.render();
+  // wireUpControls needs the real Cavi instance, which only exists once
+  // <cavi-world>'s async WASM init finishes — cavi-jack/cavi-wire/cavi-plug
+  // already key off this same event (see wirewc.ts) to defer their own
+  // setup, so this follows the same pattern rather than polling getCavi().
+  document.addEventListener(
+    'caviready',
+    (e) => wireUpControls((e as CustomEvent<{ cavi: Cavi }>).detail.cavi, panel),
+    { once: true },
+  );
 }
 
 main();
