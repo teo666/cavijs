@@ -11,4 +11,5 @@ export { Node } from './node';
 export { Renderer } from './renderer';
 export { Jack } from './jack';
 export { Plug } from './plug';
+export { CaviWorldElement } from './worldwc';
 export type { IRenderer, WireMeta } from './types';

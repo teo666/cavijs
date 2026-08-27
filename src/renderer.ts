@@ -18,6 +18,7 @@ export class Renderer implements IRenderer {
   private draggedWire: number | null = null;
   private draggedEndpoint: 'start' | 'end' | null = null;
   private debugDrawNodes: boolean = true;
+  private rafId: number | null = null;
 
   constructor(container: HTMLElement, world: World) {
     this.container = container;
@@ -265,6 +266,18 @@ export class Renderer implements IRenderer {
     // updateDebugInfo();
 
     // Continue animation
-    requestAnimationFrame(this.render.bind(this));
+    this.rafId = requestAnimationFrame(this.render.bind(this));
+  }
+
+  /**
+   * Cancels the self-rescheduling render loop started by render(). Needed by
+   * <cavi-world> (worldwc.ts) so removing it from the DOM doesn't leave a
+   * dangling rAF loop running against a detached canvas.
+   */
+  public stop(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
   }
 }

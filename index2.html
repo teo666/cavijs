@@ -94,8 +94,7 @@
       Drag plugs (grey) to jacks (colored). Drop to connect. Drag away to disconnect. Works with
       touch too.
     </div>
-    <div id="container2">
-      <canvas id="wireCanvas" width="1000" height="600"></canvas>
+    <cavi-world id="container2" gravity-y="5">
       <cavi-jack
         id="jack1"
         class="jackAudio"
@@ -138,7 +137,7 @@
         <cavi-plug node="0" jack="jack5"></cavi-plug>
         <cavi-plug node="24" jack="jack6"></cavi-plug>
       </cavi-wire>
-    </div>
+    </cavi-world>
     <script type="module" src="/src/example2.ts"></script>
   </body>
 </html>
