@@ -86,6 +86,11 @@ class FakeWire {
     this.nodes = next;
   }
 
+  /** Mirrors WasmWire::add_node_at's real semantics: a plain Vec::insert — every other node is left untouched. */
+  addNodeAt(index: number, x: number, y: number, fixed: boolean): void {
+    this.nodes.splice(index, 0, new Node(x, y, fixed));
+  }
+
   setColor(): void {}
 }
 
@@ -335,6 +340,68 @@ describe('Jack cable-creation drag — node count follows distance', () => {
 
     pointerMove(jack, 5000, 0);
     expect(wire.getNodeCount()).toBe(60);
+  });
+});
+
+describe('Jack cable-creation drag — incremental node insertion', () => {
+  it('leaves an already-settled intermediate node untouched by a later growth step', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    pointerDown(jack, { clientX: 10, clientY: 0, button: 2 });
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    const wire = wireEl.getWire() as unknown as FakeWire;
+
+    pointerMove(jack, 100, 0); // grows 4 -> 7
+    expect(wire.getNodeCount()).toBe(7);
+
+    // Simulate physics having settled this intermediate node somewhere far
+    // from wherever it was placed on insertion.
+    wire.getNode(2)!.setPosition(999, 888);
+
+    pointerMove(jack, 400, 0); // grows further, 7 -> 17
+    expect(wire.getNodeCount()).toBe(17);
+
+    const settled = wire.getNode(2)!;
+    expect(settled.x).toBe(999);
+    expect(settled.y).toBe(888);
+  });
+
+  it('spawns newly-inserted nodes interpolated toward the cursor by default', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    pointerDown(jack, { clientX: 10, clientY: 0, button: 2 });
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    const wire = wireEl.getWire() as unknown as FakeWire;
+
+    const anchor = wire.getNode(2)!; // last settled node before the free terminal
+    const anchorX = anchor.x;
+    const anchorY = anchor.y;
+
+    pointerMove(jack, 30, 0); // distance 30 -> desired 5, exactly one new node
+    expect(wire.getNodeCount()).toBe(5);
+
+    const inserted = wire.getNode(3)!; // inserted right before the shifted free terminal
+    expect(inserted.x).toBeCloseTo((anchorX + 30) / 2);
+    expect(inserted.y).toBeCloseTo(anchorY / 2);
+  });
+
+  it('spawns newly-inserted nodes stacked on the last settled node with cable-node-spawn="stack"', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('origin', 0, 0, { type: 'audio', 'cable-node-spawn': 'stack' });
+    pointerDown(jack, { clientX: 10, clientY: 0, button: 2 });
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    const wire = wireEl.getWire() as unknown as FakeWire;
+
+    const anchor = wire.getNode(2)!;
+    const anchorX = anchor.x;
+    const anchorY = anchor.y;
+
+    pointerMove(jack, 30, 0);
+    expect(wire.getNodeCount()).toBe(5);
+
+    const inserted = wire.getNode(3)!;
+    expect(inserted.x).toBe(anchorX);
+    expect(inserted.y).toBe(anchorY);
   });
 });
 

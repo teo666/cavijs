@@ -385,6 +385,54 @@ export class Jack extends HTMLElement {
     return { wireEl, wire, originPlug, followPlug, followNode };
   }
 
+  /**
+   * Grows `wire` from its current node count up to `desired`, inserting only
+   * the missing nodes (Wire.addNodeAt) one at a time rather than rebuilding
+   * the whole vector — every already-settled node keeps its live physics
+   * state (position/velocity), unlike Wire.setNodeCount which reinterpolates
+   * everything from scratch and visibly snaps the cable straight on every
+   * growth step during a drag.
+   *
+   * Each new node is inserted right before the current free terminal. Where
+   * it initially spawns is controlled by the `cable-node-spawn` attribute on
+   * this Jack:
+   * - "interpolate" (default): placed on the straight line between the last
+   *   already-settled node and the cursor (the free terminal's current
+   *   position) — smooth immediately, without touching the settled part.
+   * - "stack": placed exactly on top of the last already-settled node, then
+   *   left for the constraint solver to spread out over following frames
+   *   (same pattern used by WasmWire::new_wire for a freshly created cable).
+   *
+   * Returns the new last node, so the caller can rebind the free Plug to it.
+   */
+  private _growCable(wire: Wire, desired: number): Node {
+    const stack = this.getAttribute('cable-node-spawn') === 'stack';
+    let count = wire.getNodeCount();
+    const remaining = desired - count;
+    const anchor = wire.getNode(count - 2)!;
+    const target = wire.getNode(count - 1)!;
+    const targetX = target.x;
+    const targetY = target.y;
+
+    for (let i = 1; i <= remaining; i++) {
+      const insertIndex = count - 1;
+      let nx: number;
+      let ny: number;
+      if (stack) {
+        nx = anchor.x;
+        ny = anchor.y;
+      } else {
+        const t = i / (remaining + 1);
+        nx = anchor.x + (targetX - anchor.x) * t;
+        ny = anchor.y + (targetY - anchor.y) * t;
+      }
+      wire.addNodeAt(insertIndex, nx, ny, false);
+      count++;
+    }
+
+    return wire.getNode(count - 1)!;
+  }
+
   private handlePointerMove(e: PointerEvent): void {
     if (e.pointerId !== this._activePointerId) return;
     if (!this._creatingWire || !this._creatingFollowPlug || !this._creatingFollowNode) return;
@@ -394,8 +442,8 @@ export class Jack extends HTMLElement {
     const x = e.clientX - parentRect.left;
     const y = e.clientY - parentRect.top;
 
-    // Anchor the free terminal at the cursor before any resize below: a
-    // node-count change interpolates intermediates from this position.
+    // Anchor the free terminal at the cursor before any growth below: it's
+    // the interpolation target used for newly-inserted nodes (see _growCable).
     this._creatingFollowNode.setPosition(x, y);
 
     const center = this.getCenter();
@@ -408,10 +456,11 @@ export class Jack extends HTMLElement {
     // Only ever grow the cable while dragging, never shorten it back down
     // as the cursor approaches again — once pulled out, it stays out.
     if (desired > this._creatingWire.getNodeCount()) {
-      this._creatingWire.setNodeCount(desired);
-      // set_node_count rebuilds the node vector, so the terminal index
-      // shifts — rebind the Plug to the real new last node.
-      const newNode = this._creatingWire.getNode(desired - 1)!;
+      // Inserting only the missing nodes (rather than Wire.setNodeCount,
+      // which rebuilds and reinterpolates the whole vector) leaves every
+      // already-settled node's physics state untouched — the terminal
+      // index still shifts, so rebind the Plug to the real new last node.
+      const newNode = this._growCable(this._creatingWire, desired);
       this._creatingFollowPlug.setNode(newNode);
       this._creatingFollowNode = newNode;
     } else {
