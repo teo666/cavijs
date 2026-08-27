@@ -16,6 +16,11 @@ function makeJack(attrs: Record<string, string> = {}): Jack {
 afterEach(() => {
   document.body.innerHTML = '';
   Cavi.shared = null;
+  // Several trigger-gating tests intentionally start a cable-creation drag
+  // without ever finishing it (pointerup/pointercancel), since they only
+  // care whether it started — left alone, that would permanently leak
+  // Jack's static drag-active counter into every later test in this file.
+  (Jack as unknown as { _activeDragCount: number })._activeDragCount = 0;
 });
 
 function rect(x: number, y: number): DOMRect {
@@ -243,6 +248,40 @@ describe('Jack capacity (max-plugs)', () => {
     const jack = makeJack({ 'max-plugs': 'not-a-number' });
     jack.attach({} as unknown as Plug);
     expect(jack.canAcceptMore()).toBe(true);
+  });
+
+  it('toggles at-capacity-class unconditionally once max-plugs is reached, and clears it on detach', () => {
+    const jack = makeJack({ 'max-plugs': '1' });
+    const plug = {} as unknown as Plug;
+
+    expect(jack.classList.contains('cavi-jack-at-capacity')).toBe(false);
+
+    jack.attach(plug);
+    expect(jack.classList.contains('cavi-jack-at-capacity')).toBe(true);
+
+    jack.detach(plug);
+    expect(jack.classList.contains('cavi-jack-at-capacity')).toBe(false);
+  });
+
+  it('uses a custom class name from the at-capacity-class attribute', () => {
+    const jack = makeJack({ 'max-plugs': '1', 'at-capacity-class': 'full-jack' });
+
+    jack.attach({} as unknown as Plug);
+
+    expect(jack.classList.contains('full-jack')).toBe(true);
+    expect(jack.classList.contains('cavi-jack-at-capacity')).toBe(false);
+  });
+
+  it('applies at-capacity-class regardless of hover or Shift, unlike full-class', () => {
+    const jack = makeJack({ 'max-plugs': '1' });
+    vi.spyOn(jack, 'getBoundingClientRect').mockReturnValue(rect(0, 0));
+
+    jack.attach({} as unknown as Plug);
+
+    // Neither hovered nor Shift held — full-class (the hover+Shift preview)
+    // must stay off, but at-capacity-class (unconditional) must be on.
+    expect(jack.classList.contains('cavi-jack-at-capacity')).toBe(true);
+    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
   });
 });
 
@@ -584,6 +623,70 @@ describe('Jack "full" hover feedback while Shift is held', () => {
 
     expect(jack.classList.contains('my-forbidden')).toBe(true);
     expect(jack.classList.contains('cavi-jack-full')).toBe(false);
+  });
+});
+
+describe('Jack "full" hover feedback while a drag is active (no Shift needed)', () => {
+  // Each test below balances every setDragActive(true) with a matching
+  // (false) itself — don't add an unconditional cleanup call here, it would
+  // double-decrement an already-balanced counter and desync the next test.
+  afterEach(() => {
+    movePointerTo(-99999, -99999);
+  });
+
+  it('shows the forbidden cursor and full-class while hovered during a drag, without Shift', () => {
+    const jack = makePositionedJack('full', 0, 0, { type: 'audio', 'max-plugs': '1' });
+    jack.attach({} as unknown as Plug);
+
+    movePointerTo(0, 0);
+    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
+
+    Jack.setDragActive(true);
+    expect(jack.classList.contains('cavi-jack-full')).toBe(true);
+    expect(jack.style.cursor).toBe('not-allowed');
+
+    Jack.setDragActive(false);
+    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
+    expect(jack.style.cursor).toBe('');
+  });
+
+  it('stays active while multiple overlapping drags are in progress, clearing only once all end', () => {
+    const jack = makePositionedJack('full', 0, 0, { type: 'audio', 'max-plugs': '1' });
+    jack.attach({} as unknown as Plug);
+    movePointerTo(0, 0);
+
+    Jack.setDragActive(true); // first drag starts
+    Jack.setDragActive(true); // a second, overlapping drag starts
+    expect(jack.classList.contains('cavi-jack-full')).toBe(true);
+
+    Jack.setDragActive(false); // first drag ends
+    expect(jack.classList.contains('cavi-jack-full')).toBe(true); // second still in progress
+
+    Jack.setDragActive(false); // second drag ends
+    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
+  });
+
+  it('keeps showing full-class for an in-progress cable-creation drag even after Shift is released', () => {
+    installFakeCavi();
+    const origin = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    const target = makePositionedJack('target', 100, 0, { type: 'audio', 'max-plugs': '1' });
+    target.attach({} as unknown as Plug);
+
+    // Holding Shift and clicking starts the cable-creation drag...
+    shiftDown();
+    pointerDown(origin, { clientX: 10, clientY: 0, button: 0, shiftKey: true });
+    // ...then Shift is released while the drag is still going — you don't
+    // need to keep holding it to keep dragging the free end (existing,
+    // correct behavior) — so the forbidden preview over a full target must
+    // persist too, not just disappear the moment Shift comes up.
+    shiftUp();
+    pointerMove(origin, 100, 0);
+
+    expect(target.classList.contains('cavi-jack-full')).toBe(true);
+    expect(target.style.cursor).toBe('not-allowed');
+
+    pointerUp(origin, 9999, 9999); // release away from the (full) target
+    expect(target.classList.contains('cavi-jack-full')).toBe(false);
   });
 });
 

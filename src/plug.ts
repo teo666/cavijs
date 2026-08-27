@@ -22,6 +22,7 @@ export class Plug extends HTMLElement {
     this.handlePointerMove = this.handlePointerMove.bind(this);
     this.handlePointerUp = this.handlePointerUp.bind(this);
     this.handlePointerCancel = this.handlePointerCancel.bind(this);
+    this.handleContextMenu = this.handleContextMenu.bind(this);
   }
 
   private _type: string = '';
@@ -63,6 +64,7 @@ export class Plug extends HTMLElement {
   connectedCallback() {
     this.render();
     this.addEventListener('pointerdown', this.handlePointerDown);
+    this.addEventListener('contextmenu', this.handleContextMenu);
   }
 
   disconnectedCallback() {
@@ -70,7 +72,20 @@ export class Plug extends HTMLElement {
     this.removeEventListener('pointermove', this.handlePointerMove);
     this.removeEventListener('pointerup', this.handlePointerUp);
     this.removeEventListener('pointercancel', this.handlePointerCancel);
+    this.removeEventListener('contextmenu', this.handleContextMenu);
     this.detach();
+  }
+
+  /**
+   * While this Plug is attached to a Jack, it sits fixed exactly on that
+   * Jack's center with a higher z-index, occluding it. A right-click meant
+   * to start a new cable from that Jack (see Jack.handlePointerDown) would
+   * otherwise trigger the browser's native context menu here instead of
+   * Jack's own (occluded) contextmenu handler — suppress it the same way
+   * Jack suppresses its own.
+   */
+  private handleContextMenu(e: MouseEvent): void {
+    if (this._jack) e.preventDefault();
   }
 
   public setNode(node: Node) {
@@ -129,6 +144,18 @@ export class Plug extends HTMLElement {
   }
 
   private handlePointerDown(e: PointerEvent) {
+    // This plug sits fixed exactly on top of the jack it's attached to,
+    // with a higher z-index (see handleContextMenu above) — a right-click
+    // or Shift+left-click meant to start a NEW cable from that jack
+    // physically lands here instead of on the (occluded) jack itself.
+    // Forward it verbatim rather than silently swallowing the gesture.
+    const isRightClick = e.button === 2;
+    const isModifiedLeftClick = e.button === 0 && e.shiftKey;
+    if ((isRightClick || isModifiedLeftClick) && this._jack) {
+      this._jack.handlePointerDown(e);
+      return;
+    }
+
     if (!this._node) return;
     if (e.button !== undefined && e.button !== 0) return;
     // Shift is reserved for starting a new cable from a Jack — don't also
@@ -138,6 +165,10 @@ export class Plug extends HTMLElement {
     e.preventDefault();
     this._dragging = true;
     this._activePointerId = e.pointerId;
+    // Lets a full jack preview itself as forbidden on hover while this
+    // drag is in progress, even without Shift held — see
+    // Jack.setDragActive.
+    Jack.setDragActive(true);
 
     // Starting a drag always unplugs from the current Jack, if any,
     // so the plug immediately reflects its "unplugged" state.
@@ -195,6 +226,7 @@ export class Plug extends HTMLElement {
     }
     this.style.zIndex = '';
     this._activePointerId = null;
+    Jack.setDragActive(false);
   }
 
   private handlePointerUp(e: PointerEvent) {

@@ -31,6 +31,7 @@ export class Jack extends HTMLElement {
   private _type: string = '';
   private _magnetClass: string = 'cavi-magnet-target';
   private _fullClass: string = 'cavi-jack-full';
+  private _atCapacityClass: string = 'cavi-jack-at-capacity';
   private _plugs = new Set<Plug>();
   private _maxPlugs: number = Infinity;
 
@@ -40,8 +41,30 @@ export class Jack extends HTMLElement {
   private _creatingFollowPlug: Plug | null = null;
   private _creatingFollowNode: Node | null = null;
 
-  /** Whether Shift is currently held, tracked globally across all jacks. */
+  /**
+   * Whether Shift is currently held, tracked globally across all jacks.
+   * This is a raw modifier preview, independent of any drag actually being
+   * in progress — it already applies on a plain hover before any drag
+   * starts, so it's kept separate from _activeDragCount below.
+   */
   private static _shiftHeld: boolean = false;
+  /**
+   * How many drags that could try to connect a plug to a jack are
+   * currently in progress, tracked globally via Jack.setDragActive — a
+   * count rather than a boolean so overlapping/concurrent drags (e.g.
+   * multi-touch, or a plug drag and a cable-creation drag happening at
+   * once) don't clear each other's state early. Covers two distinct
+   * gestures: Plug relocating an existing connection (Plug.handlePointerDown/
+   * _endDrag), and Jack's own cable-creation drag (handlePointerDown/
+   * _endCableDrag below) — the latter needs this because Shift/right-click
+   * is only required to *start* that drag, not to keep it going, so
+   * _shiftHeld alone would stop reflecting an in-progress cable-creation
+   * drag the moment Shift is released mid-drag.
+   */
+  private static _activeDragCount: number = 0;
+  private static get _dragActive(): boolean {
+    return Jack._activeDragCount > 0;
+  }
   /**
    * Last known pointer position (viewport coordinates), tracked globally so
    * "is the cursor over this Jack" can be recomputed by distance rather than
@@ -54,7 +77,7 @@ export class Jack extends HTMLElement {
   private static _listenersInstalled: boolean = false;
 
   static get observedAttributes() {
-    return ['color', 'x', 'y', 'type', 'max-plugs', 'magnet-class', 'full-class'];
+    return ['color', 'x', 'y', 'type', 'max-plugs', 'magnet-class', 'full-class', 'at-capacity-class'];
   }
 
   constructor() {
@@ -107,6 +130,9 @@ export class Jack extends HTMLElement {
     if (name === 'full-class') {
       this._fullClass = newValue || 'cavi-jack-full';
     }
+    if (name === 'at-capacity-class') {
+      this._atCapacityClass = newValue || 'cavi-jack-at-capacity';
+    }
   }
 
   /**
@@ -119,16 +145,10 @@ export class Jack extends HTMLElement {
     if (Jack._listenersInstalled) return;
     Jack._listenersInstalled = true;
 
-    const refreshAll = () => {
-      for (const jack of Jack._registry) {
-        jack._refreshFullState();
-      }
-    };
-
     const setShiftHeld = (held: boolean) => {
       if (held === Jack._shiftHeld) return;
       Jack._shiftHeld = held;
-      refreshAll();
+      Jack._refreshAll();
     };
 
     document.addEventListener('keydown', (e) => {
@@ -145,28 +165,62 @@ export class Jack extends HTMLElement {
     // that already has a Plug attached has that Plug sitting exactly on
     // top of it (same position, higher z-index), which would otherwise
     // swallow hover events before they ever reach the jack underneath.
+    // This also fires while an existing Plug is being dragged (its own
+    // pointermove still bubbles up to document even under pointer
+    // capture), which is what lets the plug-drag forbidden-hover preview
+    // below track the drag position without any extra wiring.
     document.addEventListener('pointermove', (e) => {
       Jack._pointerX = e.clientX;
       Jack._pointerY = e.clientY;
-      refreshAll();
+      Jack._refreshAll();
     });
   }
 
+  private static _refreshAll(): void {
+    for (const jack of Jack._registry) {
+      jack._refreshFullState();
+    }
+  }
+
   /**
-   * Previews an at-capacity Jack as forbidden — "not-allowed" cursor plus
-   * `full-class` — whenever the cursor is over it while Shift (the
-   * cable-creation modifier) is held. Re-evaluated on every pointer move,
-   * on Shift change, and whenever this Jack's own capacity changes
-   * (attach/detach), so it stays correct without needing the pointer to
-   * move again.
+   * Called whenever a drag that could try to connect a plug to a jack
+   * starts/stops — by Plug (relocating an existing connection) and by
+   * this class itself (a cable-creation drag, see handlePointerDown/
+   * _endCableDrag below) — so a full jack previews itself as forbidden on
+   * hover for the whole duration of either gesture, not just while Shift
+   * happens to be held.
+   */
+  public static setDragActive(active: boolean): void {
+    const before = Jack._dragActive;
+    Jack._activeDragCount += active ? 1 : -1;
+    if (Jack._dragActive !== before) Jack._refreshAll();
+  }
+
+  /**
+   * Refreshes two independent, capacity-driven visual states on every
+   * pointer move, Shift change, drag start/end, and whenever this Jack's
+   * own capacity changes (attach/detach/max-plugs), so all stay correct
+   * without needing the pointer to move again:
+   * - `at-capacity-class`: unconditional — on for as long as this Jack has
+   *   reached `max-plugs`, regardless of hover, Shift, or dragging.
+   * - `full-class` + "not-allowed" cursor: a hover-only preview, shown
+   *   while the cursor is over an at-capacity Jack during either Shift
+   *   being held (previewing before a cable-creation drag even starts) or
+   *   an active drag that could try to connect here — relocating an
+   *   existing Plug, or an in-progress cable-creation drag (which, once
+   *   started, no longer needs Shift held to keep going — see
+   *   handlePointerDown).
    */
   private _refreshFullState(): void {
+    const atCapacity = !this.canAcceptMore();
+    this.classList.toggle(this._atCapacityClass, atCapacity);
+
     const c = this.getCenter();
     const hovering =
       Jack._pointerX !== null &&
       Jack._pointerY !== null &&
       Math.hypot(Jack._pointerX - c.x, Jack._pointerY - c.y) <= CABLE_SNAP_DISTANCE;
-    const blocked = hovering && Jack._shiftHeld && !this.canAcceptMore();
+    const blocked = hovering && (Jack._shiftHeld || Jack._dragActive) && atCapacity;
     this.classList.toggle(this._fullClass, blocked);
     this.style.cursor = blocked ? 'not-allowed' : '';
   }
@@ -285,8 +339,19 @@ export class Jack extends HTMLElement {
    * <cavi-plug> terminals — one attached here, the other following the
    * cursor — then drives that free end exactly like Plug drives its own
    * drag (magnet preview, snap-to-jack on release).
+   *
+   * Public because Plug forwards to it directly: once a Plug is attached
+   * to this Jack, it's fixed exactly at the Jack's center with a higher
+   * z-index (see the occlusion notes on _pointerX/_pointerY above), so a
+   * real click meant to start a new cable here physically lands on that
+   * Plug instead — Plug.handlePointerDown detects that case and calls
+   * this method directly rather than the event ever reaching this Jack's
+   * own listener. Works correctly even then: setPointerCapture doesn't
+   * require the original event target, and the listeners added below are
+   * on this Jack, which receives every subsequent pointer event for this
+   * pointerId once it holds capture.
    */
-  private handlePointerDown(e: PointerEvent): void {
+  public handlePointerDown(e: PointerEvent): void {
     const isRightClick = e.button === 2;
     const isModifiedLeftClick = e.button === 0 && e.shiftKey;
     if (!isRightClick && !isModifiedLeftClick) return;
@@ -300,6 +365,10 @@ export class Jack extends HTMLElement {
     this._creatingWire = cable.wire;
     this._creatingFollowPlug = cable.followPlug;
     this._creatingFollowNode = cable.followNode;
+    // Shift/right-click is only needed to *start* this drag, not to keep
+    // it going — this keeps the full-jack forbidden-hover preview correct
+    // for the whole drag even if Shift is released partway through.
+    Jack.setDragActive(true);
 
     if (typeof this.setPointerCapture === 'function') {
       try {
@@ -542,6 +611,7 @@ export class Jack extends HTMLElement {
     this._creatingWire = null;
     this._creatingFollowPlug = null;
     this._creatingFollowNode = null;
+    Jack.setDragActive(false);
   }
 
   /**
