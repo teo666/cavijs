@@ -5,6 +5,7 @@ export interface IRenderer {
     setDebugDrawNodes: (enabled: boolean) => void;
     getDebugDrawNodes: () => boolean;
     getContainer: () => HTMLElement;
+    stop: () => void;
 }
 
 export interface WireMeta {
