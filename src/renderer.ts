@@ -253,13 +253,13 @@ export class Renderer implements IRenderer {
     // // Draw wire endpoints to show they're draggable
     // drawWireEndpoints();
 
-    // Debug: draw the circumference of every wire node
+    // Debug: draw the circumference of every wire node, and the
+    // mouse/pointer interaction radii — both gated behind the same debug
+    // toggle (see setDebugDrawNodes).
     if (this.debugDrawNodes) {
       this.drawNodeDebug();
+      this.drawInteractionRadii(this.mouseX, this.mouseY);
     }
-
-    // Draw interaction radii at mouse position
-    this.drawInteractionRadii(this.mouseX, this.mouseY);
 
     // Update debug info
     // updateDebugInfo();

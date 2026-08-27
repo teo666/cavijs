@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>cavijs - Modular Patchbay</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0b0b0b;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        color: #ddd;
+      }
+
+      #app {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        width: 100vw;
+      }
+
+      /* ---------- Header / control bar ---------- */
+
+      header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        padding: 10px 20px;
+        background: linear-gradient(#1c1c1c, #141414);
+        border-bottom: 1px solid #000;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+        z-index: 100;
+      }
+      header h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #eee;
+      }
+      header h1 span {
+        color: #3fc6d8;
+      }
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        margin-left: auto;
+        font-size: 12px;
+        color: #aaa;
+      }
+      .controls label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .controls select {
+        background: #222;
+        color: #ddd;
+        border: 1px solid #444;
+        border-radius: 3px;
+        padding: 2px 4px;
+        font-size: 12px;
+      }
+      .controls button {
+        background: #2a2a2a;
+        color: #ddd;
+        border: 1px solid #444;
+        border-radius: 3px;
+        padding: 4px 10px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .controls button:hover {
+        background: #383838;
+      }
+
+      /* ---------- Panel (the rack itself) ---------- */
+
+      /*
+       * #panelScroll (viewport) vs #panel (content) are deliberately split:
+       * #panel is sized to its own content (min-height:100%, grows taller
+       * with enough module rows) and never clips — it's also the element
+       * passed to Renderer/Cavi as the "container" (jack x/y coordinates,
+       * canvas sizing, and CaviWireElement's auto-cleanup bounds check are
+       * all relative to it, see src/example3.ts). #panelScroll is the one
+       * that actually clips + scrolls. Auto-cleanup deletes a cable once
+       * every plug drifts outside `_container.getBoundingClientRect()` —
+       * if #panel itself were the scrolling+clipping element, that rect
+       * would be just the currently-visible scrolled window, so merely
+       * scrolling a cable out of view (not dragging it anywhere) would
+       * make it look "outside" and delete it. With the split, #panel's
+       * rect is always its full content size regardless of scroll
+       * position, so only actually dragging a cable past the whole rack's
+       * edge triggers cleanup — scrolling never does.
+       */
+      #panelScroll {
+        position: relative;
+        flex: 1 1 auto;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
+      #panel {
+        position: relative;
+        overflow: clip;
+        min-height: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        align-content: flex-start;
+        gap: 26px;
+        padding: 26px 26px 48px;
+        background:
+          repeating-linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.015) 0px,
+            rgba(255, 255, 255, 0.015) 1px,
+            transparent 1px,
+            transparent 3px
+          ),
+          radial-gradient(ellipse at 50% -10%, #3a3a3a 0%, #232323 45%, #161616 100%);
+      }
+
+      #wireCanvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none; /* let clicks pass through to jacks/plugs */
+        background: transparent;
+        z-index: 30;
+      }
+
+      /* Warm wood trim along the bottom edge, Moog-cabinet style */
+      #woodTrim {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 22px;
+        z-index: 5;
+        background:
+          repeating-linear-gradient(
+            90deg,
+            rgba(0, 0, 0, 0.12) 0px,
+            rgba(0, 0, 0, 0.12) 1px,
+            transparent 1px,
+            transparent 5px
+          ),
+          linear-gradient(#8a5a34, #6e4526 45%, #5c3a1f);
+        box-shadow:
+          inset 0 2px 2px rgba(255, 255, 255, 0.1),
+          inset 0 -2px 3px rgba(0, 0, 0, 0.5),
+          0 -1px 0 rgba(0, 0, 0, 0.6);
+      }
+
+      /* ---------- Modules ---------- */
+
+      .module {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 220px;
+        flex: 0 0 auto;
+        padding: 16px 12px 20px;
+        background: linear-gradient(#1f1f1f, #171717);
+        border: 1px solid #050505;
+        border-radius: 5px;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.05),
+          0 4px 10px rgba(0, 0, 0, 0.6);
+        z-index: 20;
+      }
+      .module-title {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        color: #9fd8e0;
+        margin-bottom: 12px;
+        text-align: center;
+      }
+
+      .knob-row {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+      .knob-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+      }
+      .knob {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 30%, #6b6b6b 0%, #3a3a3a 55%, #161616 100%);
+        box-shadow:
+          0 2px 3px rgba(0, 0, 0, 0.7),
+          inset 0 1px 1px rgba(255, 255, 255, 0.25);
+        position: relative;
+      }
+      .knob::after {
+        content: '';
+        position: absolute;
+        top: 4px;
+        left: 50%;
+        width: 3px;
+        height: 12px;
+        background: #ddd;
+        border-radius: 1px;
+        transform-origin: 50% 15px;
+        transform: translateX(-50%) rotate(var(--angle, -30deg));
+      }
+      .knob-label {
+        font-size: 9px;
+        letter-spacing: 0.06em;
+        color: #777;
+        text-transform: uppercase;
+      }
+
+      .jack-row {
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        flex-wrap: wrap;
+        gap: 20px;
+        row-gap: 28px;
+      }
+      .jack-slot {
+        position: relative;
+        width: 40px;
+        height: 40px;
+      }
+      /* Three socket sizes, Moog-style, matching signal importance:
+         audio in/out = large, CV = medium (the default), gate/trigger/sync
+         = small. Only the box size changes — the hex clip-path is defined
+         in percentages, so it scales with whatever box it's applied to. */
+      .jack-slot[data-size='sm'] {
+        width: 30px;
+        height: 30px;
+      }
+      .jack-slot[data-size='lg'] {
+        width: 52px;
+        height: 52px;
+      }
+      .jack-label {
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        margin-top: 6px;
+        transform: translateX(-50%);
+        font-size: 9px;
+        letter-spacing: 0.06em;
+        color: #999;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      /* ---------- Moog-style hex jack nut ---------- */
+      /* A real 1/4" jack socket is a hex nut (like a bolt head) with a
+         round black hole through the middle — not a plain chrome disc.
+         clip-path draws the hex facets; a conic-gradient fakes the way
+         each facet catches the light at a different angle. box-shadow
+         would be clipped away along with the corners, so the ambient
+         drop shadow and the interactive glows below use filter:
+         drop-shadow() instead, which follows the clipped silhouette. */
+      /* !important throughout this section: Jack/Plug's own shadow-DOM
+         :host rule (background-color/border/width/height) has the same
+         (0,1,0) specificity as a plain "cavi-jack {}" type selector would
+         need to beat — as an author style with no !important of its own,
+         it otherwise wins ties by being the later-evaluated stylesheet. */
+      cavi-jack {
+        --hex-metal: conic-gradient(
+          from 200deg at 50% 50%,
+          #f4f4f4 0deg,
+          #8f8f8f 35deg,
+          #242424 70deg,
+          #b8b8b8 105deg,
+          #f6f6f6 145deg,
+          #6d6d6d 185deg,
+          #181818 225deg,
+          #d0d0d0 265deg,
+          #f4f4f4 305deg,
+          #7a7a7a 340deg,
+          #f4f4f4 360deg
+        );
+        width: 40px !important;
+        height: 40px !important;
+        box-sizing: border-box !important;
+        position: absolute !important;
+        border: none !important;
+        /* Jacks are absolutely-positioned children of #panel, coinciding
+           on-screen with their .module's opaque background (z-index: 20)
+           — without this they'd paint fully hidden behind it. */
+        z-index: 25 !important;
+        /* clip-path: polygon(25% 2%, 75% 2%, 100% 50%, 75% 98%, 25% 98%, 0% 50%) !important; */
+        background: var(--hex-metal) !important;
+        filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.75)) !important;
+      }
+      cavi-jack.size-sm {
+        width: 30px !important;
+        height: 30px !important;
+      }
+      cavi-jack.size-lg {
+        width: 52px !important;
+        height: 52px !important;
+      }
+
+      cavi-plug {
+        width: 22px !important;
+        height: 22px !important;
+        border-radius: 50% !important;
+        box-sizing: border-box !important;
+        border: 1px solid #0a0a0a !important;
+        background: radial-gradient(circle at 32% 26%, #eee 0%, #b9b9b9 40%, #444 100%) !important;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6) !important;
+        z-index: 26 !important;
+      }
+      cavi-plug[plugged] {
+        border-color: #0d3d42 !important;
+        background: radial-gradient(circle at 32% 26%, #d6f7fb 0%, #6fd6e2 45%, #1f7c88 100%) !important;
+      }
+
+      cavi-jack.cavi-magnet-target {
+        filter:
+          drop-shadow(0 2px 2px rgba(0, 0, 0, 0.75))
+          drop-shadow(0 0 5px rgba(255, 191, 64, 0.95))
+          drop-shadow(0 0 12px rgba(255, 191, 64, 0.6)) !important;
+      }
+      cavi-plug.cavi-magnet-active {
+        box-shadow:
+          0 0 0 5px rgba(255, 191, 64, 0.55),
+          0 0 14px 4px rgba(255, 191, 64, 0.5) !important;
+      }
+      cavi-jack.cavi-jack-full {
+        filter:
+          drop-shadow(0 2px 2px rgba(0, 0, 0, 0.75))
+          drop-shadow(0 0 5px rgba(255, 60, 60, 0.95))
+          drop-shadow(0 0 12px rgba(255, 60, 60, 0.6)) !important;
+      }
+      /* Persistent, unconditional "at capacity" tell — a small red LED
+         baked into the hex face, visible even without hovering/dragging. */
+      cavi-jack.cavi-jack-at-capacity {
+        background: radial-gradient(circle at 78% 78%, #ff5a4a 0%, #b3170a 40%, transparent 42%),
+          var(--hex-metal) !important;
+      }
+
+      /* ---------- Cables ---------- */
+      /* Teal patch-cable color, set on <cavi-wire color> / cable-color. */
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <header>
+        <h1>CAVI<span>·</span>MODULAR</h1>
+        <div class="controls">
+          <label><input type="checkbox" id="debugNodes" /> show physics nodes</label>
+          <label>
+            new-cable spawn:
+            <select id="spawnMode">
+              <option value="interpolate">interpolate</option>
+              <option value="stack">stack</option>
+            </select>
+          </label>
+          <button id="clearPatches">clear all patches</button>
+        </div>
+      </header>
+
+      <div id="panelScroll">
+      <div id="panel">
+        <canvas id="wireCanvas"></canvas>
+        <div id="woodTrim"></div>
+
+        <!--
+          Each .module is a decorative synth module: a title, a couple of
+          purely-cosmetic knobs, and a row of .jack-slot placeholders. The
+          slots carry data-* attributes describing the real <cavi-jack> that
+          example3.ts materializes at the slot's on-screen position once the
+          page has laid out (see src/example3.ts) — keeping the responsive
+          panel layout (CSS) separate from the jacks' absolute x/y physics
+          coordinates (computed at runtime from the rendered layout).
+        -->
+
+        <div class="module">
+          <div class="module-title">VCO 1</div>
+          <div class="knob-row">
+            <div class="knob-wrap"><div class="knob" style="--angle: -60deg"></div><span class="knob-label">freq</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: 10deg"></div><span class="knob-label">fine</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: 50deg"></div><span class="knob-label">wave</span></div>
+          </div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="vco1-cv" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
+            <div class="jack-slot" data-id="vco1-fm" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">fm</span></div>
+            <div class="jack-slot" data-id="vco1-sync" data-type="gate" data-size="sm" data-cable-color="#e0c23f"><span class="jack-label">sync</span></div>
+            <div class="jack-slot" data-id="vco1-out" data-type="audio" data-size="lg" data-max-plugs="4" data-cable-color="#3fc6d8"><span class="jack-label">out</span></div>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="module-title">VCO 2</div>
+          <div class="knob-row">
+            <div class="knob-wrap"><div class="knob" style="--angle: 40deg"></div><span class="knob-label">freq</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: -20deg"></div><span class="knob-label">fine</span></div>
+          </div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="vco2-cv" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
+            <div class="jack-slot" data-id="vco2-sync" data-type="gate" data-size="sm" data-cable-color="#e0c23f"><span class="jack-label">sync</span></div>
+            <div class="jack-slot" data-id="vco2-out" data-type="audio" data-size="lg" data-max-plugs="4" data-cable-color="#5aa8e8"><span class="jack-label">out</span></div>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="module-title">VCO 3</div>
+          <div class="knob-row">
+            <div class="knob-wrap"><div class="knob" style="--angle: -15deg"></div><span class="knob-label">freq</span></div>
+          </div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="vco3-cv" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
+            <div class="jack-slot" data-id="vco3-out" data-type="audio" data-size="lg" data-max-plugs="3" data-cable-color="#8ed65a"><span class="jack-label">out</span></div>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="module-title">NOISE</div>
+          <div class="knob-row">
+            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">level</span></div>
+          </div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="noise-out" data-type="audio" data-size="lg" data-max-plugs="3" data-cable-color="#e8834a"><span class="jack-label">out</span></div>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="module-title">LFO 1</div>
+          <div class="knob-row">
+            <div class="knob-wrap"><div class="knob" style="--angle: -10deg"></div><span class="knob-label">rate</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: 30deg"></div><span class="knob-label">depth</span></div>
+          </div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="lfo1-sync" data-type="gate" data-size="sm" data-cable-color="#e0c23f"><span class="jack-label">sync</span></div>
+            <div class="jack-slot" data-id="lfo1-out" data-type="cv" data-max-plugs="6" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="module-title">LFO 2</div>
+          <div class="knob-row">
+            <div class="knob-wrap"><div class="knob" style="--angle: 25deg"></div><span class="knob-label">rate</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: -35deg"></div><span class="knob-label">shape</span></div>
+          </div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="lfo2-out" data-type="cv" data-max-plugs="6" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="module-title">S&amp;H</div>
+          <div class="knob-row">
+            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">rate</span></div>
+          </div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="sh-in" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
+            <div class="jack-slot" data-id="sh-clock" data-type="gate" data-size="sm" data-cable-color="#e0c23f"><span class="jack-label">clk</span></div>
+            <div class="jack-slot" data-id="sh-out" data-type="cv" data-max-plugs="3" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="module-title">VCF</div>
+          <div class="knob-row">
+            <div class="knob-wrap"><div class="knob" style="--angle: 55deg"></div><span class="knob-label">cutoff</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: -45deg"></div><span class="knob-label">res</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">env</span></div>
+          </div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="vcf-in" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">in</span></div>
+            <div class="jack-slot" data-id="vcf-cv" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
+            <div class="jack-slot" data-id="vcf-out" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">out</span></div>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="module-title">VCA</div>
+          <div class="knob-row">
+            <div class="knob-wrap"><div class="knob" style="--angle: 20deg"></div><span class="knob-label">gain</span></div>
+          </div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="vca-in" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#e8834a"><span class="jack-label">in</span></div>
+            <div class="jack-slot" data-id="vca-cv" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
+            <div class="jack-slot" data-id="vca-out" data-type="audio" data-size="lg" data-max-plugs="2" data-cable-color="#e8834a"><span class="jack-label">out</span></div>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="module-title">ENV</div>
+          <div class="knob-row">
+            <div class="knob-wrap"><div class="knob" style="--angle: -70deg"></div><span class="knob-label">a</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: -10deg"></div><span class="knob-label">d</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: 5deg"></div><span class="knob-label">s</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: 15deg"></div><span class="knob-label">r</span></div>
+          </div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="env-trig" data-type="gate" data-size="sm" data-cable-color="#e0c23f"><span class="jack-label">trig</span></div>
+            <div class="jack-slot" data-id="env-out" data-type="cv" data-max-plugs="4" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="module-title">RING MOD</div>
+          <div class="knob-row">
+            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">mix</span></div>
+          </div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="ring-a" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#5aa8e8"><span class="jack-label">a</span></div>
+            <div class="jack-slot" data-id="ring-b" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#5aa8e8"><span class="jack-label">b</span></div>
+            <div class="jack-slot" data-id="ring-out" data-type="audio" data-size="lg" data-max-plugs="2" data-cable-color="#5aa8e8"><span class="jack-label">out</span></div>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="module-title">DELAY</div>
+          <div class="knob-row">
+            <div class="knob-wrap"><div class="knob" style="--angle: 30deg"></div><span class="knob-label">time</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: -20deg"></div><span class="knob-label">fbk</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">mix</span></div>
+          </div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="delay-in" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#8ed65a"><span class="jack-label">in</span></div>
+            <div class="jack-slot" data-id="delay-out" data-type="audio" data-size="lg" data-max-plugs="2" data-cable-color="#8ed65a"><span class="jack-label">out</span></div>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="module-title">MULTIPLE</div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="mult-in" data-type="cv" data-max-plugs="1" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
+            <div class="jack-slot" data-id="mult-out1" data-type="cv" data-max-plugs="4" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
+            <div class="jack-slot" data-id="mult-out2" data-type="cv" data-max-plugs="4" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
+            <div class="jack-slot" data-id="mult-out3" data-type="cv" data-max-plugs="4" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
+          </div>
+        </div>
+
+        <div class="module">
+          <div class="module-title">MIXER / OUT</div>
+          <div class="knob-row">
+            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">ch1</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">ch2</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">ch3</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">ch4</span></div>
+            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">mstr</span></div>
+          </div>
+          <div class="jack-row">
+            <div class="jack-slot" data-id="mix-in1" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">in1</span></div>
+            <div class="jack-slot" data-id="mix-in2" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">in2</span></div>
+            <div class="jack-slot" data-id="mix-in3" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">in3</span></div>
+            <div class="jack-slot" data-id="mix-in4" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">in4</span></div>
+            <div class="jack-slot" data-id="mix-out" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">out</span></div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+    <script type="module" src="/src/example3.ts"></script>
+  </body>
+</html>
