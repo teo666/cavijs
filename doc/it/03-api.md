@@ -24,6 +24,7 @@ setMouse(x: number, y: number): void
 render(): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
+getContainer(): HTMLElement | null
 ```
 
 `Cavi.wasm: InitOutput` (statico) contiene il modulo WASM caricato, incluso `.memory`, usato da `Renderer` per l'accesso a copia zero al buffer. `Cavi.shared` è uno slot statico per un'istanza condivisa (attualmente non usato dalla demo — verificare prima di farci affidamento).
@@ -54,7 +55,9 @@ setFriction(friction: number): void
 getFriction(): number
 ```
 
-Il costruttore di `World` imposta `response_coef` a `0.0` di default (risposta alla self-collision dei cavi disabilitata a meno di attivazione esplicita). Mantiene un proprio array `Wire[]` sincronizzato con gli indici dei cavi WASM — `deleteWire` ricrea i wrapper `Wire` per ogni cavo successivo a quello eliminato, poiché gli indici si spostano.
+Il costruttore di `World` imposta `response_coef` a `0.0` di default (risposta alla self-collision dei cavi disabilitata a meno di attivazione esplicita). Mantiene un proprio array `Wire[]` sincronizzato con gli indici dei cavi WASM — `deleteWire` ricrea i wrapper `Wire` per ogni cavo successivo a quello eliminato, poiché gli indici si spostano, riportando anche sul nuovo wrapper i metadati (`meta`, es. `color`) del vecchio — dato che vivono solo lato JS e non in WASM, andrebbero altrimenti persi silenziosamente (bug corretto qui, non nel livello `CaviWireElement`/DOM, dato che è un problema puramente di `World`/`Wire`).
+
+> **Attenzione**: `deleteWire`/`Cavi.deleteWire` ricreano solo i wrapper `Wire` interni di `World`. Qualunque `Wire`/`Node` ottenuto **prima** della cancellazione e tenuto altrove (una cache, una chiusura, ecc.) mantiene il vecchio indice e continua silenziosamente a leggere/scrivere il cavo sbagliato dopo che gli indici si sono spostati. `CaviWireElement` (`src/wirewc.ts`) gestisce già questo caso per i cavi dichiarativi/creati da `Jack` tramite un proprio registro statico e un ri-aggancio (`_rebindAfterIndexShift`) eseguito subito dopo ogni `deleteWire` — vedi la sezione auto-cleanup in [`Jack`/`Plug`](./05-jack-plug.md). Chi chiama `deleteWire` al di fuori di `CaviWireElement` (es. direttamente su `World`/`Cavi`) deve gestire da sé il ri-aggancio di eventuali riferimenti già in cache.
 
 ## `Wire` (`src/wire.ts`)
 
@@ -118,6 +121,7 @@ getFPS(): number
 drawInteractionRadii(x: number, y: number): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
+getContainer(): HTMLElement   // l'elemento passato al costruttore
 ```
 
 **Caratteristiche:**
@@ -137,6 +141,7 @@ interface IRenderer {
     render: () => void;
     setDebugDrawNodes: (enabled: boolean) => void;
     getDebugDrawNodes: () => boolean;
+    getContainer: () => HTMLElement;
 }
 ```
 

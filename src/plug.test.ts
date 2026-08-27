@@ -150,6 +150,23 @@ describe('Plug drag & drop', () => {
   });
 });
 
+describe('Plug pointerdown with Shift held', () => {
+  it('does not start a drag when Shift is held (reserved for cable creation from a Jack)', () => {
+    const jack = makeJack('j1', 100, 100, { type: 'audio' });
+    const { plug, node } = makePlug(101, 100, 'audio');
+
+    plug.dispatchEvent(
+      new PointerEvent('pointerdown', { pointerId: 1, bubbles: true, button: 0, shiftKey: true })
+    );
+    move(plug);
+    plug.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }));
+
+    expect(node.fixed).toBe(false);
+    expect(jack.plugCount).toBe(0);
+    expect(plug.hasAttribute('plugged')).toBe(false);
+  });
+});
+
 describe('Plug magnet highlighting during drag', () => {
   it('activates magnet classes on both jack and plug when within snap range', () => {
     const jack = makeJack('j1', 100, 100, { type: 'audio' });

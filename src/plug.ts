@@ -131,6 +131,9 @@ export class Plug extends HTMLElement {
   private handlePointerDown(e: PointerEvent) {
     if (!this._node) return;
     if (e.button !== undefined && e.button !== 0) return;
+    // Shift is reserved for starting a new cable from a Jack — don't also
+    // move this plug's own node while it's held.
+    if (e.shiftKey) return;
 
     e.preventDefault();
     this._dragging = true;

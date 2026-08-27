@@ -149,4 +149,13 @@ export class Cavi {
     public getDebugDrawNodes(): boolean {
         return this.world.getRenderer()?.getDebugDrawNodes() ?? false;
     }
+
+    /**
+     * The container element the renderer was initialized with — the
+     * "world bounds" used by CaviWireElement's auto-cleanup mechanism to
+     * detect when a wire has drifted entirely off-screen.
+     */
+    public getContainer(): HTMLElement | null {
+        return this.world.getRenderer()?.getContainer() ?? null;
+    }
 }

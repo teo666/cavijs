@@ -35,6 +35,10 @@ export class Renderer implements IRenderer {
     this.wasmWorld = world.getWasmWorld();
   }
 
+  public getContainer(): HTMLElement {
+    return this.container;
+  }
+
   public clear() {
     this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }

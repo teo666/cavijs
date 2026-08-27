@@ -52,8 +52,17 @@ export class World {
             this.wires.splice(index, 1);
             // Update indices for remaining wires
             for (let i = index; i < this.wires.length; i++) {
-                // Wire indices are now shifted down by 1
-                this.wires[i] = new Wire(this.wasmWorld, i);
+                // Wire indices are now shifted down by 1. Metadata (color,
+                // etc.) lives only on the JS-side Wire wrapper, never in
+                // WASM, so it must be carried over by hand onto the new
+                // wrapper or it would silently reset (e.g. the wire's color
+                // reverting to the renderer's index-based fallback palette).
+                const meta = this.wires[i].getAllMetaData();
+                const wire = new Wire(this.wasmWorld, i);
+                for (const [key, value] of Object.entries(meta)) {
+                    wire.setMetaData(key, value);
+                }
+                this.wires[i] = wire;
             }
         }
     }

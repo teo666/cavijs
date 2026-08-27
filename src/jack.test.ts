@@ -96,6 +96,14 @@ class FakeCavi {
     this.lastWire = new FakeWire(x1, y1, x2, y2, nodes);
     return this.lastWire;
   }
+
+  // CaviWireElement._setup() always calls this; not exercised by these
+  // cable-creation-drag tests (auto-cleanup isn't set), so a stub suffices.
+  getContainer(): HTMLElement {
+    return document.body;
+  }
+
+  deleteWire(): void {}
 }
 
 function installFakeCavi(): FakeCavi {
@@ -130,6 +138,25 @@ function pointerUp(target: HTMLElement, clientX: number, clientY: number, pointe
 
 function pointerCancel(target: HTMLElement, pointerId = 1): void {
   target.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId }));
+}
+
+function shiftDown(): void {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+}
+
+function shiftUp(): void {
+  document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', bubbles: true }));
+}
+
+/**
+ * Moves the globally-tracked pointer position used by Jack's "full jack"
+ * hover preview. A document-level pointermove is used (rather than
+ * pointerenter/pointerleave on the jack itself) because an attached Plug
+ * sits exactly on top of its Jack and would otherwise swallow native hover
+ * events before they reach the jack underneath.
+ */
+function movePointerTo(clientX: number, clientY: number): void {
+  document.dispatchEvent(new PointerEvent('pointermove', { clientX, clientY, pointerId: 1 }));
 }
 
 describe('Jack.canAccept', () => {
@@ -386,5 +413,115 @@ describe('Jack cable-creation drag — release away from any jack', () => {
     const wire = wireEl.getWire() as unknown as FakeWire;
     const followNode = wire.getNode(wire.getNodeCount() - 1)!;
     expect(followNode.fixed).toBe(false);
+  });
+});
+
+describe('Jack "full" hover feedback while Shift is held', () => {
+  afterEach(() => {
+    shiftUp(); // avoid leaking "shift held" state into other tests
+    movePointerTo(-99999, -99999); // avoid leaking the last hover position too
+  });
+
+  it('shows the forbidden cursor and full-class only once both hovered AND Shift is held', () => {
+    const jack = makePositionedJack('full', 0, 0, { type: 'audio', 'max-plugs': '1' });
+    jack.attach({} as unknown as Plug);
+
+    movePointerTo(0, 0);
+    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
+    expect(jack.style.cursor).toBe('');
+
+    shiftDown();
+    expect(jack.classList.contains('cavi-jack-full')).toBe(true);
+    expect(jack.style.cursor).toBe('not-allowed');
+
+    shiftUp();
+    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
+    expect(jack.style.cursor).toBe('');
+  });
+
+  it('does not show the forbidden state for a jack with room, even hovered with Shift held', () => {
+    const jack = makePositionedJack('open', 0, 0, { type: 'audio' });
+    movePointerTo(0, 0);
+    shiftDown();
+
+    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
+    expect(jack.style.cursor).toBe('');
+  });
+
+  it('clears the forbidden state once the pointer moves away, even while Shift stays held', () => {
+    const jack = makePositionedJack('full', 0, 0, { type: 'audio', 'max-plugs': '1' });
+    jack.attach({} as unknown as Plug);
+    shiftDown();
+    movePointerTo(0, 0);
+    expect(jack.classList.contains('cavi-jack-full')).toBe(true);
+
+    movePointerTo(9999, 9999);
+    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
+    expect(jack.style.cursor).toBe('');
+  });
+
+  it('does not trigger for a jack far from the current pointer position', () => {
+    const jack = makePositionedJack('full', 500, 500, { type: 'audio', 'max-plugs': '1' });
+    jack.attach({} as unknown as Plug);
+    shiftDown();
+    movePointerTo(0, 0);
+
+    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
+  });
+
+  it('re-evaluates live when the jack frees up while still hovered and Shift held', () => {
+    const jack = makePositionedJack('full', 0, 0, { type: 'audio', 'max-plugs': '1' });
+    const plug = {} as unknown as Plug;
+    jack.attach(plug);
+    shiftDown();
+    movePointerTo(0, 0);
+    expect(jack.classList.contains('cavi-jack-full')).toBe(true);
+
+    jack.detach(plug);
+    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
+    expect(jack.style.cursor).toBe('');
+  });
+
+  it('uses a custom class name from the full-class attribute', () => {
+    const jack = makePositionedJack('full', 0, 0, {
+      type: 'audio',
+      'max-plugs': '1',
+      'full-class': 'my-forbidden',
+    });
+    jack.attach({} as unknown as Plug);
+    shiftDown();
+    movePointerTo(0, 0);
+
+    expect(jack.classList.contains('my-forbidden')).toBe(true);
+    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
+  });
+});
+
+describe('Jack cable-creation drag — style inherited from the jack', () => {
+  it('applies cable-tension/cable-size/cable-color from the jack to the new wire', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('origin', 0, 0, {
+      type: 'audio',
+      'cable-tension': '42',
+      'cable-size': '9',
+      'cable-color': '#ff0000',
+    });
+    pointerDown(jack, { clientX: 10, clientY: 0, button: 2 });
+
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    expect(wireEl.getAttribute('tension')).toBe('42');
+    expect(wireEl.getAttribute('size')).toBe('9');
+    expect(wireEl.getAttribute('color')).toBe('#ff0000');
+  });
+
+  it('leaves tension/size/color unset (default) when the jack does not specify them', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    pointerDown(jack, { clientX: 10, clientY: 0, button: 2 });
+
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    expect(wireEl.hasAttribute('tension')).toBe(false);
+    expect(wireEl.hasAttribute('size')).toBe(false);
+    expect(wireEl.hasAttribute('color')).toBe(false);
   });
 });

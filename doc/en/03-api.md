@@ -24,6 +24,7 @@ setMouse(x: number, y: number): void
 render(): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
+getContainer(): HTMLElement | null
 ```
 
 `Cavi.wasm: InitOutput` (static) holds the loaded WASM module, including `.memory`, used by `Renderer` for zero-copy buffer access. `Cavi.shared` is a static slot for a shared instance (currently unused by the demo — check before relying on it).
@@ -54,7 +55,9 @@ setFriction(friction: number): void
 getFriction(): number
 ```
 
-`World`'s constructor sets `response_coef` to `0.0` by default (wire self-collision response disabled unless explicitly enabled). It keeps its own `Wire[]` array in sync with WASM wire indices — `deleteWire` re-creates `Wire` wrappers for every wire after the deleted index, since indices shift.
+`World`'s constructor sets `response_coef` to `0.0` by default (wire self-collision response disabled unless explicitly enabled). It keeps its own `Wire[]` array in sync with WASM wire indices — `deleteWire` re-creates `Wire` wrappers for every wire after the deleted index, since indices shift, also carrying that old wrapper's metadata (`meta`, e.g. `color`) over onto the new one — since it lives only in JS, never in WASM, it would otherwise silently reset (fixed here, at the `World`/`Wire` level, rather than in `CaviWireElement`/DOM, since it's a plain `World`/`Wire` concern).
+
+> **Careful**: `deleteWire`/`Cavi.deleteWire` only re-create `World`'s own internal `Wire` wrappers. Any `Wire`/`Node` obtained **before** the deletion and held elsewhere (a cache, a closure, etc.) keeps its old index and silently keeps reading/writing the wrong wire once indices shift. `CaviWireElement` (`src/wirewc.ts`) already handles this for declarative and `Jack`-created cables via its own static registry plus a rebind step (`_rebindAfterIndexShift`) run right after every `deleteWire` — see the auto-cleanup section in [`Jack`/`Plug`](./05-jack-plug.md). Anything that calls `deleteWire` outside of `CaviWireElement` (e.g. directly on `World`/`Cavi`) needs to rebind any already-cached references itself.
 
 ## `Wire` (`src/wire.ts`)
 
@@ -118,6 +121,7 @@ getFPS(): number
 drawInteractionRadii(x: number, y: number): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
+getContainer(): HTMLElement   // the element passed to the constructor
 ```
 
 **Features:**
@@ -137,6 +141,7 @@ interface IRenderer {
     render: () => void;
     setDebugDrawNodes: (enabled: boolean) => void;
     getDebugDrawNodes: () => boolean;
+    getContainer: () => HTMLElement;
 }
 ```
 

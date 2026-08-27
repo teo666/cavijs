@@ -16,6 +16,7 @@
         text-align: center;
       }
       #container2 {
+        overflow: hidden;
         position: relative;
         width: 1000px;
         height: 600px;
@@ -47,6 +48,12 @@
         background-color: #ff00d9;
         width: 20px;
         height: 20px;
+      } /* Example color for jack3 */
+
+       .jackMidi {
+        background-color: #7b7b7b;
+        width: 30px;
+        height: 30px;
       } /* Example color for jack3 */
       canvas {
         position: absolute;
@@ -95,11 +102,13 @@
         max-plugs="1"
       ></cavi-jack>
       <cavi-jack id="jack2" class="jackAudio" x="500" y="400" type="audio"></cavi-jack>
-      <cavi-jack id="jack3" class="jackAudio" x="300" y="500" type="midi"></cavi-jack>
+      <cavi-jack id="jack3" class="jackMidi" x="300" y="300" type="midi"></cavi-jack>
+      
       <cavi-jack id="jack4" class="jackAudio" x="400" y="300" type="audio"></cavi-jack>
       <cavi-jack id="jack5" class="jack3" x="700" y="500" type="scsi"></cavi-jack>
       <cavi-jack id="jack6" class="jack3" x="200" y="300" type="scsi"></cavi-jack>
       <cavi-jack id="jack7" class="jack3" x="100" y="100" type="scsi"></cavi-jack>
+      <cavi-jack id="jack8" class="jackMidi" x="700" y="300" type="midi" cable-color="#7b7b7b" cable-tension=40" cable-size="20"></cavi-jack>
 
 
       <cavi-wire

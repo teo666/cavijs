@@ -30,6 +30,7 @@ export class Jack extends HTMLElement {
 
   private _type: string = '';
   private _magnetClass: string = 'cavi-magnet-target';
+  private _fullClass: string = 'cavi-jack-full';
   private _plugs = new Set<Plug>();
   private _maxPlugs: number = Infinity;
 
@@ -39,8 +40,21 @@ export class Jack extends HTMLElement {
   private _creatingFollowPlug: Plug | null = null;
   private _creatingFollowNode: Node | null = null;
 
+  /** Whether Shift is currently held, tracked globally across all jacks. */
+  private static _shiftHeld: boolean = false;
+  /**
+   * Last known pointer position (viewport coordinates), tracked globally so
+   * "is the cursor over this Jack" can be recomputed by distance rather than
+   * native hover events — a Jack that already has a Plug attached has that
+   * Plug sitting exactly on top of it (higher z-index), which would
+   * otherwise swallow pointerenter/pointerleave before they ever reach it.
+   */
+  private static _pointerX: number | null = null;
+  private static _pointerY: number | null = null;
+  private static _listenersInstalled: boolean = false;
+
   static get observedAttributes() {
-    return ['color', 'x', 'y', 'type', 'max-plugs', 'magnet-class'];
+    return ['color', 'x', 'y', 'type', 'max-plugs', 'magnet-class', 'full-class'];
   }
 
   constructor() {
@@ -56,6 +70,7 @@ export class Jack extends HTMLElement {
 
   connectedCallback() {
     Jack._registry.add(this);
+    Jack._installGlobalListeners();
     this.render();
     this.updatePosition();
     this.addEventListener('pointerdown', this.handlePointerDown);
@@ -84,10 +99,76 @@ export class Jack extends HTMLElement {
     if (name === 'max-plugs') {
       const n = newValue ? parseInt(newValue, 10) : NaN;
       this._maxPlugs = Number.isFinite(n) && n > 0 ? n : Infinity;
+      this._refreshFullState();
     }
     if (name === 'magnet-class') {
       this._magnetClass = newValue || 'cavi-magnet-target';
     }
+    if (name === 'full-class') {
+      this._fullClass = newValue || 'cavi-jack-full';
+    }
+  }
+
+  /**
+   * Installs the document-level Shift + pointer-position tracking used to
+   * preview a "full jack" as forbidden while hovering it with the
+   * cable-creation modifier held — installed once, shared by every Jack
+   * instance via the static registry.
+   */
+  private static _installGlobalListeners(): void {
+    if (Jack._listenersInstalled) return;
+    Jack._listenersInstalled = true;
+
+    const refreshAll = () => {
+      for (const jack of Jack._registry) {
+        jack._refreshFullState();
+      }
+    };
+
+    const setShiftHeld = (held: boolean) => {
+      if (held === Jack._shiftHeld) return;
+      Jack._shiftHeld = held;
+      refreshAll();
+    };
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Shift') setShiftHeld(true);
+    });
+    document.addEventListener('keyup', (e) => {
+      if (e.key === 'Shift') setShiftHeld(false);
+    });
+    // A keyup can be missed if focus leaves the page while Shift is held
+    // (e.g. alt-tab) — clear the stuck state once focus returns elsewhere.
+    window.addEventListener('blur', () => setShiftHeld(false));
+
+    // Tracked by distance rather than pointerenter/pointerleave: a Jack
+    // that already has a Plug attached has that Plug sitting exactly on
+    // top of it (same position, higher z-index), which would otherwise
+    // swallow hover events before they ever reach the jack underneath.
+    document.addEventListener('pointermove', (e) => {
+      Jack._pointerX = e.clientX;
+      Jack._pointerY = e.clientY;
+      refreshAll();
+    });
+  }
+
+  /**
+   * Previews an at-capacity Jack as forbidden — "not-allowed" cursor plus
+   * `full-class` — whenever the cursor is over it while Shift (the
+   * cable-creation modifier) is held. Re-evaluated on every pointer move,
+   * on Shift change, and whenever this Jack's own capacity changes
+   * (attach/detach), so it stays correct without needing the pointer to
+   * move again.
+   */
+  private _refreshFullState(): void {
+    const c = this.getCenter();
+    const hovering =
+      Jack._pointerX !== null &&
+      Jack._pointerY !== null &&
+      Math.hypot(Jack._pointerX - c.x, Jack._pointerY - c.y) <= CABLE_SNAP_DISTANCE;
+    const blocked = hovering && Jack._shiftHeld && !this.canAcceptMore();
+    this.classList.toggle(this._fullClass, blocked);
+    this.style.cursor = blocked ? 'not-allowed' : '';
   }
 
   private updatePosition() {
@@ -167,6 +248,7 @@ export class Jack extends HTMLElement {
    */
   public attach(plug: Plug): void {
     this._plugs.add(plug);
+    this._refreshFullState();
   }
 
   /**
@@ -174,6 +256,7 @@ export class Jack extends HTMLElement {
    */
   public detach(plug: Plug): void {
     this._plugs.delete(plug);
+    this._refreshFullState();
   }
 
   public get plugCount(): number {
@@ -251,6 +334,15 @@ export class Jack extends HTMLElement {
     const wireEl = document.createElement('cavi-wire') as CaviWireElement;
     wireEl.setAttribute('type', this.type);
     wireEl.setAttribute('length', String(CABLE_MIN_NODES));
+
+    // Cable style is opt-in per Jack — omitted attributes fall back to
+    // <cavi-wire>'s own fixed defaults, unchanged from before.
+    const cableTension = this.getAttribute('cable-tension');
+    if (cableTension !== null) wireEl.setAttribute('tension', cableTension);
+    const cableSize = this.getAttribute('cable-size');
+    if (cableSize !== null) wireEl.setAttribute('size', cableSize);
+    const cableColor = this.getAttribute('cable-color');
+    if (cableColor !== null) wireEl.setAttribute('color', cableColor);
 
     // Children must exist before the wire is inserted: _setup() reads
     // this.children synchronously at connectedCallback time.
