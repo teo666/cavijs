@@ -343,6 +343,29 @@ describe('Jack cable-creation drag — node count follows distance', () => {
   });
 });
 
+describe('Jack cable-creation drag — world-mouse interaction', () => {
+  it('keeps feeding the world-mouse position on every pointermove', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    const setMouseSpy = vi.spyOn(Node.prototype, 'setMousePosition');
+    try {
+      pointerDown(jack, { clientX: 10, clientY: 0, button: 2 });
+
+      pointerMove(jack, 42, 7);
+
+      // Guards against a regression to the bug this call fixes: Jack's own
+      // preventDefault() in handlePointerDown (needed to suppress text
+      // selection during Shift+drag) suppresses the native mousemove that
+      // Renderer's world-mouse listener relies on for the rest of the
+      // interaction, freezing physics repulsion of other wires unless the
+      // free node's setMousePosition keeps feeding it directly.
+      expect(setMouseSpy).toHaveBeenCalledWith(42, 7);
+    } finally {
+      setMouseSpy.mockRestore();
+    }
+  });
+});
+
 describe('Jack cable-creation drag — incremental node insertion', () => {
   it('leaves an already-settled intermediate node untouched by a later growth step', () => {
     installFakeCavi();

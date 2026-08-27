@@ -49,6 +49,10 @@ class FakeWireStore {
     this.wireNodes.splice(index, 1);
   }
 
+  addNodeAt(wireIndex: number, nodeIndex: number, node: Node): void {
+    this.wireNodes[wireIndex]?.splice(nodeIndex, 0, node);
+  }
+
   getNode(wireIndex: number, nodeIndex: number): Node | null {
     return this.wireNodes[wireIndex]?.[nodeIndex] ?? null;
   }
@@ -78,6 +82,11 @@ class FakeWire {
 
   getIndex(): number {
     return this.index;
+  }
+
+  /** Mirrors WasmWire::add_node_at — a plain insert that leaves every other node untouched. */
+  addNodeAt(nodeIndex: number, x: number, y: number, fixed: boolean): void {
+    this.store.addNodeAt(this.index, nodeIndex, new Node(x, y, fixed));
   }
 
   meta: Record<string, unknown> = {};
@@ -305,5 +314,44 @@ describe('CaviWireElement auto-cleanup (auto-cleanup attribute)', () => {
     plugB0.update();
     expect(plugB0.style.left).toBe('111px');
     expect(plugB0.style.top).toBe('222px');
+  });
+
+  it('rebinds a grown free plug to its real (shifted) terminal, not the stale creation-time index', () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    Cavi.shared = cavi as unknown as Cavi;
+
+    const wireA = makeWireEl({ length: '4', 'auto-cleanup': '' });
+    const wireB = makeWireEl({ length: '4' });
+
+    // Simulate Jack._growCable growing wireB's free end from node 3 to
+    // node 5, by inserting two nodes right before the current last node —
+    // exactly like the real cable-creation drag does — then updating the
+    // free plug's `node` attribute to match, as Jack now does on every
+    // growth step. Without that attribute update, the rebind below would
+    // snap the plug back to the stale index 3 (now a mid-cable node)
+    // instead of the real terminal (5) — this is the bug the user reported
+    // as "il plug mi compare a metà cavo" after deleting a cable.
+    const wireBWire = wireB.getWire()!;
+    const originalTerminal = wireBWire.getNode(3)!;
+    const originalX = originalTerminal.x;
+    const originalY = originalTerminal.y;
+    wireBWire.addNodeAt(3, -1, -1, false);
+    wireBWire.addNodeAt(4, -2, -2, false);
+    const followPlugB = wireB.querySelectorAll('cavi-plug')[1] as HTMLElement;
+    followPlugB.setAttribute('node', String(wireBWire.getNodeCount() - 1));
+
+    const plugsA = wireA.querySelectorAll('cavi-plug');
+    vi.spyOn(plugsA[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    vi.spyOn(plugsA[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+
+    runCleanupCheck(wireA);
+
+    expect(wireB.getWire()!.getIndex()).toBe(0);
+    expect(wireB.getWire()!.getNodeCount()).toBe(6);
+    // _rebindAfterIndexShift already calls Plug.setNode -> updatePosition
+    // synchronously, so the DOM position reflects the rebind immediately.
+    expect(followPlugB.style.left).toBe(`${originalX}px`);
+    expect(followPlugB.style.top).toBe(`${originalY}px`);
   });
 });

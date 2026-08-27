@@ -20,8 +20,6 @@ export class CaviWireElement extends HTMLElement {
 
   private _wire: Wire | null = null;
   private _plugs: Plug[] = [];
-  /** Parallel to _plugs: the terminal node index (0 or nodeCount-1) each plug is bound to. */
-  private _plugNodeIndices: number[] = [];
   private _rafId: number | null = null;
   private _cavi: Cavi | null = null;
   private _container: HTMLElement | null = null;
@@ -124,7 +122,6 @@ export class CaviWireElement extends HTMLElement {
       plug.setType(type);
       plug.setNode(node);
       this._plugs.push(plug);
-      this._plugNodeIndices.push(nodeIdx);
 
       if (jackId) {
         const jackEl = document.getElementById(jackId) as unknown as Jack | null;
@@ -229,12 +226,22 @@ export class CaviWireElement extends HTMLElement {
     this.remove();
   }
 
-  /** Rebinds this element's Wire and every Plug's Node after a sibling deletion shifted our index — see _destroy. */
+  /**
+   * Rebinds this element's Wire and every Plug's Node after a sibling
+   * deletion shifted our index — see _destroy. Each plug's `node`
+   * attribute is the live ground truth for which node index it's bound to
+   * (kept in sync by whoever moves a plug to a different node — e.g.
+   * Jack's cable-creation drag updates it on every growth step), so it's
+   * re-read here rather than relying on a value cached at setup time,
+   * which would go stale the moment the wire's node count changed after
+   * this element was first connected.
+   */
   private _rebindAfterIndexShift(newWire: Wire): void {
     this._wire = newWire;
-    for (let i = 0; i < this._plugs.length; i++) {
-      const node = newWire.getNode(this._plugNodeIndices[i]);
-      if (node) this._plugs[i].setNode(node);
+    for (const plug of this._plugs) {
+      const nodeIdx = parseInt(plug.getAttribute('node') ?? '0');
+      const node = newWire.getNode(nodeIdx);
+      if (node) plug.setNode(node);
     }
   }
 

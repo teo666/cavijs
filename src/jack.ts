@@ -445,6 +445,12 @@ export class Jack extends HTMLElement {
     // Anchor the free terminal at the cursor before any growth below: it's
     // the interpolation target used for newly-inserted nodes (see _growCable).
     this._creatingFollowNode.setPosition(x, y);
+    // Mirrors Plug.handlePointerMove: keep feeding the world-mouse physics
+    // interaction (repulsion of other cables) while this pointer is
+    // captured by the Jack — preventDefault() on pointerdown (see
+    // handlePointerDown) suppresses the native mousemove that Renderer
+    // would otherwise use to drive it, freezing it for the drag's duration.
+    this._creatingFollowNode.setMousePosition(x, y);
 
     const center = this.getCenter();
     const distance = Math.hypot(e.clientX - center.x, e.clientY - center.y);
@@ -463,6 +469,14 @@ export class Jack extends HTMLElement {
       const newNode = this._growCable(this._creatingWire, desired);
       this._creatingFollowPlug.setNode(newNode);
       this._creatingFollowNode = newNode;
+      // Keep the DOM in sync with reality: CaviWireElement treats a
+      // <cavi-plug node="N"> attribute as the ground truth for which node
+      // index it's bound to (e.g. when re-deriving it after a sibling
+      // wire's deletion shifts this wire's WASM index — see
+      // _rebindAfterIndexShift in wirewc.ts). Leaving it at its
+      // creation-time value here would make that later rebind snap the
+      // plug back to a now-intermediate node instead of the real terminal.
+      this._creatingFollowPlug.setAttribute('node', String(desired - 1));
     } else {
       this._creatingFollowPlug.update();
     }
