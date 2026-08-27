@@ -20,6 +20,6 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
-    "cavi": "file:../cavi/pkg"
+    "cavi": "^0.1.0"
   }
 }

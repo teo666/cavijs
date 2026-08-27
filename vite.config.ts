@@ -1,13 +1,17 @@
 import { defineConfig } from 'vite'
 
 export default defineConfig({
+  base: '/cavijs/',
   optimizeDeps: {
     exclude: ['cavi']
   },
   build: {
     rollupOptions: {
       input: {
-        app: './index3.html', // default
+        main: './index.html',
+        basic: './demo-basic.html',
+        jackPlug: './demo-jack-plug.html',
+        patchbay: './demo-patchbay.html',
       },
     },
   },

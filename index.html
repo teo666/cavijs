@@ -5,12 +5,129 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>cavijs</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #0b0b0b;
+        color: #ddd;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        display: flex;
+        justify-content: center;
+      }
+      main {
+        max-width: 760px;
+        width: 100%;
+        padding: 60px 24px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 2.4rem;
+      }
+      .tagline {
+        color: #999;
+        margin: 0 0 40px;
+        line-height: 1.5;
+      }
+      h2 {
+        font-size: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #999;
+        margin: 40px 0 16px;
+      }
+      .cards {
+        display: grid;
+        gap: 14px;
+      }
+      .card {
+        display: block;
+        padding: 18px 20px;
+        border: 1px solid #333;
+        border-radius: 8px;
+        background: #161616;
+        color: #ddd;
+        text-decoration: none;
+        transition: border-color 0.15s ease, background 0.15s ease;
+      }
+      .card:hover {
+        border-color: #666;
+        background: #1c1c1c;
+      }
+      .card strong {
+        display: block;
+        font-size: 1.05rem;
+        margin-bottom: 4px;
+      }
+      .card span {
+        color: #999;
+        font-size: 0.9rem;
+      }
+      ul.links {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 8px;
+      }
+      ul.links a {
+        color: #6cb6ff;
+        text-decoration: none;
+      }
+      ul.links a:hover {
+        text-decoration: underline;
+      }
+      footer {
+        margin-top: 50px;
+        color: #666;
+        font-size: 0.85rem;
+      }
+      footer a {
+        color: #999;
+      }
+    </style>
   </head>
   <body>
-    <div id="container">
-        <canvas id="wireCanvas" width="1000" height="600"></canvas>
-        <cavi-controls id="controls"></cavi-controls>
-    </div>
-    <script type="module" src="/src/main.ts"></script>
+    <main>
+      <h1>cavijs</h1>
+      <p class="tagline">
+        A TypeScript wrapper around the cavi Rust/WASM physics engine for
+        cables, jacks and plugs — handles cable simulation and mouse
+        interaction, and lets you own the rendering.
+      </p>
+
+      <h2>Demos</h2>
+      <div class="cards">
+        <a class="card" href="demo-basic.html">
+          <strong>Basic cable demo</strong>
+          <span>Drag a cable directly on canvas.</span>
+        </a>
+        <a class="card" href="demo-jack-plug.html">
+          <strong>Jack &amp; Plug</strong>
+          <span>Drag plugs into jacks to connect and disconnect cables.</span>
+        </a>
+        <a class="card" href="demo-patchbay.html">
+          <strong>Modular Patchbay</strong>
+          <span>A larger patchbay-style demo with multiple cable types.</span>
+        </a>
+      </div>
+
+      <h2>Documentation</h2>
+      <ul class="links">
+        <li><a href="https://github.com/teo666/cavijs/blob/dev/doc/en/01-overview.md">Overview</a></li>
+        <li><a href="https://github.com/teo666/cavijs/blob/dev/doc/en/02-architecture.md">Architecture</a></li>
+        <li><a href="https://github.com/teo666/cavijs/blob/dev/doc/en/03-api.md">API</a></li>
+        <li><a href="https://github.com/teo666/cavijs/blob/dev/doc/en/04-getting-started.md">Getting started</a></li>
+        <li><a href="https://github.com/teo666/cavijs/blob/dev/doc/en/05-jack-plug.md">Jack &amp; Plug</a></li>
+        <li><a href="https://github.com/teo666/cavijs/tree/dev/doc/it">Italiano</a></li>
+      </ul>
+
+      <footer>
+        <a href="https://github.com/teo666/cavijs">github.com/teo666/cavijs</a>
+      </footer>
+    </main>
   </body>
 </html>
