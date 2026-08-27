@@ -5,119 +5,129 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>cavijs</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #0b0b0b;
+        color: #ddd;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        display: flex;
+        justify-content: center;
+      }
+      main {
+        max-width: 760px;
+        width: 100%;
+        padding: 60px 24px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 2.4rem;
+      }
+      .tagline {
+        color: #999;
+        margin: 0 0 40px;
+        line-height: 1.5;
+      }
+      h2 {
+        font-size: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #999;
+        margin: 40px 0 16px;
+      }
+      .cards {
+        display: grid;
+        gap: 14px;
+      }
+      .card {
+        display: block;
+        padding: 18px 20px;
+        border: 1px solid #333;
+        border-radius: 8px;
+        background: #161616;
+        color: #ddd;
+        text-decoration: none;
+        transition: border-color 0.15s ease, background 0.15s ease;
+      }
+      .card:hover {
+        border-color: #666;
+        background: #1c1c1c;
+      }
+      .card strong {
+        display: block;
+        font-size: 1.05rem;
+        margin-bottom: 4px;
+      }
+      .card span {
+        color: #999;
+        font-size: 0.9rem;
+      }
+      ul.links {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 8px;
+      }
+      ul.links a {
+        color: #6cb6ff;
+        text-decoration: none;
+      }
+      ul.links a:hover {
+        text-decoration: underline;
+      }
+      footer {
+        margin-top: 50px;
+        color: #666;
+        font-size: 0.85rem;
+      }
+      footer a {
+        color: #999;
+      }
+    </style>
   </head>
   <body>
-    <div id="container">
-        <canvas id="wireCanvas" width="800" height="600"></canvas>
-        <div style="display: flex; flex-direction: column; gap: 20px;">
-            <div id="controls">
-            <h2>🎛️ World Configuration</h2>
-            
-            <div class="section">
-                <div class="control-group">
-                    <label>
-                        Mouse Radius
-                        <span class="value-display" id="mouseRadiusValue">40.0</span>
-                    </label>
-                    <input type="range" id="mouseRadius" min="10" max="100" step="1" value="40">
-                </div>
-                
-                <div class="control-group">
-                    <label>
-                        Pointer Radius
-                        <span class="value-display" id="pointerRadiusValue">20.0</span>
-                    </label>
-                    <input type="range" id="pointerRadius" min="5" max="50" step="1" value="20">
-                </div>
-            </div>
-            
-            <div class="section">
-                <div class="control-group">
-                    <label>
-                        Response Coefficient
-                        <span class="value-display" id="responseCoefValue">0.75</span>
-                    </label>
-                    <input type="range" id="responseCoef" min="0" max="2" step="0.05" value="0.75">
-                </div>
-                
-                <div class="control-group">
-                    <label>
-                        Friction
-                        <span class="value-display" id="frictionValue">0.95</span>
-                    </label>
-                    <input type="range" id="friction" min="0.5" max="1" step="0.01" value="0.95">
-                </div>
-            </div>
-            
-            <div class="section">
-                <div class="control-group">
-                    <label>
-                        Acceleration X
-                        <span class="value-display" id="accelerationXValue">0.0</span>
-                    </label>
-                    <input type="range" id="accelerationX" min="-20" max="20" step="0.5" value="0">
-                </div>
-                
-                <div class="control-group">
-                    <label>
-                        Acceleration Y
-                        <span class="value-display" id="accelerationYValue">10.0</span>
-                    </label>
-                    <input type="range" id="accelerationY" min="-20" max="20" step="0.5" value="10">
-                </div>
-            </div>
-            
-            <div class="section">
-                <h3 style="color: #4A90E2; font-size: 14px; margin-bottom: 10px;">Node Count</h3>
-                
-                <div class="control-group">
-                    <label>
-                        Wire 0
-                        <span class="value-display" id="nodeCount0Value">30</span>
-                    </label>
-                    <input type="range" id="nodeCount0" min="2" max="100" step="1" value="30">
-                </div>
-                
-                <div class="control-group">
-                    <label>
-                        Wire 1
-                        <span class="value-display" id="nodeCount1Value">25</span>
-                    </label>
-                    <input type="range" id="nodeCount1" min="2" max="100" step="1" value="25">
-                </div>
-                
-                <div class="control-group">
-                    <label>
-                        Wire 2
-                        <span class="value-display" id="nodeCount2Value">20</span>
-                    </label>
-                    <input type="range" id="nodeCount2" min="2" max="100" step="1" value="20">
-                </div>
-                
-                <button id="calculateDefault" style="padding: 8px; font-size: 12px; margin-top: 5px;">Calculate Defaults</button>
-            </div>
-            
-            <div class="section">
-                <h3 style="color: #4A90E2; font-size: 14px; margin-bottom: 10px;">Actions</h3>
-                <button id="addWireBtn">Add Random Wire</button>
-                <button id="clearBtn" style="background: #e74c3c;">Clear All Wires</button>
-            </div>
-        </div>
-        
-        <div id="debugInfo">
-            <h2 style="margin-top: 0; color: #4A90E2; font-size: 16px; border-bottom: 1px solid #444; padding-bottom: 8px;">📊 Debug Info</h2>
-            <div class="stats">FPS: <span class="highlight" id="fps">0</span></div>
-            <div class="stats">Wire Count: <span class="highlight" id="wireCount">0</span></div>
-            <div class="stats">Total Data Points: <span class="highlight" id="dataPoints">0</span></div>
-            <div class="stats">Memory Buffer: <span class="highlight" id="bufferSize">0</span> bytes</div>
-            <div class="stats">Mouse: (<span class="highlight" id="mouseX">-</span>, <span class="highlight" id="mouseY">-</span>)</div>
-            <div style="margin-top: 12px; border-top: 1px solid #444; padding-top: 12px;">
-                <div style="color: #aaa; font-size: 11px; margin-bottom: 8px;">Wire Details:</div>
-                <div id="wireDetails"></div>
-            </div>
-        </div>
-        </div>
-    </div>
-    <script type="module" src="/src/main.ts"></script>
+    <main>
+      <h1>cavijs</h1>
+      <p class="tagline">
+        A TypeScript wrapper around the cavi Rust/WASM physics engine for
+        cables, jacks and plugs — handles cable simulation and mouse
+        interaction, and lets you own the rendering.
+      </p>
+
+      <h2>Demos</h2>
+      <div class="cards">
+        <!-- <a class="card" href="demo-basic.html">
+          <strong>Basic cable demo</strong>
+          <span>Drag a cable directly on canvas.</span>
+        </a>
+        <a class="card" href="demo-jack-plug.html">
+          <strong>Jack &amp; Plug</strong>
+          <span>Drag plugs into jacks to connect and disconnect cables.</span>
+        </a> -->
+        <a class="card" href="demo-patchbay.html">
+          <strong>Modular Patchbay</strong>
+          <span>A larger patchbay-style demo with multiple cable types.</span>
+        </a>
+      </div>
+
+      <h2>Documentation</h2>
+      <ul class="links">
+        <li><a href="https://github.com/teo666/cavijs/blob/dev/doc/en/01-overview.md">Overview</a></li>
+        <li><a href="https://github.com/teo666/cavijs/blob/dev/doc/en/02-architecture.md">Architecture</a></li>
+        <li><a href="https://github.com/teo666/cavijs/blob/dev/doc/en/03-api.md">API</a></li>
+        <li><a href="https://github.com/teo666/cavijs/blob/dev/doc/en/04-getting-started.md">Getting started</a></li>
+        <li><a href="https://github.com/teo666/cavijs/blob/dev/doc/en/05-jack-plug.md">Jack &amp; Plug</a></li>
+        <li><a href="https://github.com/teo666/cavijs/tree/dev/doc/it">Italiano</a></li>
+      </ul>
+
+      <footer>
+        <a href="https://github.com/teo666/cavijs">github.com/teo666/cavijs</a>
+      </footer>
+    </main>
   </body>
 </html>
