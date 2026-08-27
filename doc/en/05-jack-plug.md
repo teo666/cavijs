@@ -15,6 +15,17 @@
 - Z-order: `Plug` must always render above `Jack`, which renders above the canvas — so the plug is never occluded while dragging.
 - Drag-and-drop works with both mouse and touch/pen via unified Pointer Events.
 
+## Interaction mode: `hold` vs `click-to-carry` (`Cavi.setDragMode()`)
+
+Both dragging an existing `Plug` and dragging out a new cable from a `Jack` support two interaction modes, chosen with a single **world-level** option — not per element:
+
+- **`Cavi.setDragMode('hold')`** (default, unchanged): the classic press-drag-release. `pointerdown` starts the drag and calls `setPointerCapture`, so every subsequent pointer event for that pointer stays routed to the element even if the cursor leaves its bounds; `pointerup` (or `pointercancel`) ends it. **While the button stays held, native browser scrolling — a trackpad's two-finger gesture in particular — typically stops being recognized** (a common limitation of many drivers, not specific to this library): if the target jack sits outside the visible portion of a scrollable container, there's no way to reach it mid-drag.
+- **`Cavi.setDragMode('click')`**: a click (no need to hold it) starts the drag — detaches from the current jack (or creates the new cable, for `Jack`) and the node starts following the cursor via a `document`-level `pointermove` listener, **with no button held down**. This means native browser scrolling (wheel, trackpad, gestures) works for the whole drag exactly as when nothing is being dragged — no application-side auto-scroll mechanism is needed. A second click (any primary-button click, wherever it happens to land — in practice always on the carried node itself, since it's following the cursor) finishes the drag: attaches to the nearest compatible jack if one is in range, otherwise drops it in place (same `freeze-on-drop`/free-fall semantics as `hold`, just triggered by a click instead of a release). A non-primary-button click (e.g. right-click) during the carry is ignored, it doesn't finish it. There's no explicit cancel gesture: clicking anywhere without a jack underneath just drops the node there, exactly like an empty release in `hold` mode — it can be picked back up and repositioned with another click.
+
+**Touch exception**: `click-to-carry` only applies to mouse and pen (`e.pointerType !== 'touch'`) — touch always uses `hold` regardless of the global mode set, because the natural finger-drag gesture doesn't have the scroll conflict described above (swipe is a different gesture, already disabled during the drag by `touch-action: none`) and is already the best experience on that input type.
+
+`Jack.setDragActive()` (see below, the "full jack" hover preview) stays active for the whole duration of the drag in either mode, not just while a button is held.
+
 ## `Jack` (`src/jack.ts`)
 
 A custom element (`cavi-jack`) with Shadow DOM.

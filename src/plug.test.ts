@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Jack } from './jack';
 import { Plug } from './plug';
 import { Node } from './node';
+import { Cavi } from './cavi';
 
 function rect(x: number, y: number): DOMRect {
   return {
@@ -56,6 +57,7 @@ function move(plug: Plug, pointerId = 1): void {
 
 afterEach(() => {
   document.body.innerHTML = '';
+  Cavi.shared = null;
 });
 
 describe('Plug drag & drop', () => {
@@ -147,6 +149,78 @@ describe('Plug drag & drop', () => {
     expect(plug.hasAttribute('plugged')).toBe(false);
 
     plug.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }));
+  });
+});
+
+describe('Plug drag — click-to-carry mode (Cavi.getDragMode() === "click")', () => {
+  it('picks up on a click (no release needed), follows document pointermove, and snaps on the next click', () => {
+    const jack = makeJack('j1', 100, 100, { type: 'audio' });
+    const { plug, node } = makePlug(500, 500, 'audio');
+    Cavi.shared = { getDragMode: () => 'click' } as unknown as Cavi;
+
+    plug.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, bubbles: true, button: 0 }));
+    // Detached and fixed immediately, same as hold mode — but note no
+    // pointerup was dispatched, unlike every hold-mode test above.
+    expect(node.fixed).toBe(true);
+    expect(plug.hasAttribute('plugged')).toBe(false);
+
+    // The node follows a plain document pointermove — no button held, no
+    // pointer capture involved.
+    document.dispatchEvent(new PointerEvent('pointermove', { clientX: 60, clientY: 40 }));
+    expect(node.x).toBe(60);
+    expect(node.y).toBe(40);
+
+    vi.spyOn(plug, 'getBoundingClientRect').mockReturnValue(rect(101, 100));
+    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 0 }));
+
+    expect(node.fixed).toBe(true);
+    expect(plug.hasAttribute('plugged')).toBe(true);
+    expect(jack.plugCount).toBe(1);
+  });
+
+  it('drops in place when the finishing click is not over any compatible jack', () => {
+    const { plug, node } = makePlug(500, 500, 'audio');
+    Cavi.shared = { getDragMode: () => 'click' } as unknown as Cavi;
+
+    plug.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, bubbles: true, button: 0 }));
+    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 0 }));
+
+    expect(node.fixed).toBe(false);
+    expect(plug.hasAttribute('plugged')).toBe(false);
+  });
+
+  it('ignores a non-primary-button click while carrying — only a primary click finishes it', () => {
+    const jack = makeJack('j1', 100, 100, { type: 'audio' });
+    const { plug } = makePlug(500, 500, 'audio');
+    Cavi.shared = { getDragMode: () => 'click' } as unknown as Cavi;
+
+    plug.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, bubbles: true, button: 0 }));
+    vi.spyOn(plug, 'getBoundingClientRect').mockReturnValue(rect(101, 100));
+
+    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 2 }));
+    expect(jack.plugCount).toBe(0);
+
+    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 3, bubbles: true, button: 0 }));
+    expect(jack.plugCount).toBe(1);
+  });
+
+  it('keeps using hold-mode (press-drag-release) for touch even when click-to-carry is enabled', () => {
+    const jack = makeJack('j1', 100, 100, { type: 'audio' });
+    const { plug } = makePlug(101, 100, 'audio');
+    Cavi.shared = { getDragMode: () => 'click' } as unknown as Cavi;
+
+    plug.dispatchEvent(
+      new PointerEvent('pointerdown', { pointerId: 1, bubbles: true, button: 0, pointerType: 'touch' })
+    );
+
+    // A document-level click — which would finish a click-to-carry — must
+    // NOT end a touch drag.
+    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 0 }));
+    expect(jack.plugCount).toBe(0);
+
+    // Only releasing on the plug itself, like hold mode, does.
+    plug.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }));
+    expect(jack.plugCount).toBe(1);
   });
 });
 

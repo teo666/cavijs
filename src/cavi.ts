@@ -16,6 +16,18 @@ export class Cavi {
 
     private world: World;
     private wasm: InitOutput | null = null;
+    /**
+     * How Plug/Jack interpret a pointer-driven drag: 'hold' (default) is
+     * today's press-drag-release, gated by setPointerCapture; 'click' is
+     * click-to-carry — a click detaches/creates and starts following the
+     * cursor with no button held (so native scrolling, including trackpad
+     * gestures, is never blocked), and a second click attaches to a jack
+     * underneath or drops in place. Pure JS-side interaction state, not a
+     * physics concept — never touches World/WASM. World-level rather than
+     * per-element so it's one app-wide interaction choice, not something
+     * that could vary jack-by-jack.
+     */
+    private dragMode: 'hold' | 'click' = 'hold';
 
     constructor() {
         this.world = new World();
@@ -148,6 +160,23 @@ export class Cavi {
      */
     public getDebugDrawNodes(): boolean {
         return this.world.getRenderer()?.getDebugDrawNodes() ?? false;
+    }
+
+    /**
+     * Sets the pointer-drag interaction mode for every Plug/Jack — see the
+     * `dragMode` field above. Applies to mouse/pen only: touch always uses
+     * 'hold' (the natural press-and-drag-with-your-finger gesture already
+     * works well there and has no scroll conflict to work around).
+     */
+    public setDragMode(mode: 'hold' | 'click'): void {
+        this.dragMode = mode;
+    }
+
+    /**
+     * The current pointer-drag interaction mode. Defaults to 'hold'.
+     */
+    public getDragMode(): 'hold' | 'click' {
+        return this.dragMode;
     }
 
     /**

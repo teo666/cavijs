@@ -101,6 +101,12 @@ class FakeWire {
 
 class FakeCavi {
   public lastWire: FakeWire | null = null;
+  /** Mirrors Cavi's real dragMode field/getDragMode() — 'hold' by default, settable per test. */
+  public dragMode: 'hold' | 'click' = 'hold';
+
+  getDragMode(): 'hold' | 'click' {
+    return this.dragMode;
+  }
 
   addWire(x1: number, y1: number, x2: number, y2: number, nodes: number): FakeWire {
     this.lastWire = new FakeWire(x1, y1, x2, y2, nodes);
@@ -542,6 +548,102 @@ describe('Jack cable-creation drag — release away from any jack', () => {
     const wire = wireEl.getWire() as unknown as FakeWire;
     const followNode = wire.getNode(wire.getNodeCount() - 1)!;
     expect(followNode.fixed).toBe(false);
+  });
+});
+
+describe('Jack cable-creation drag — click-to-carry mode (Cavi.getDragMode() === "click")', () => {
+  it('starts on a click (no release needed), grows via document pointermove, and snaps on the next click', () => {
+    const fake = installFakeCavi();
+    fake.dragMode = 'click';
+    const origin = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    const target = makePositionedJack('target', 100, 0, { type: 'audio' });
+
+    pointerDown(origin, { clientX: 10, clientY: 0, button: 2 }); // no matching pointerup anywhere
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    expect(wireEl).not.toBeNull();
+    const wire = wireEl.getWire() as unknown as FakeWire;
+    expect(wire.getNodeCount()).toBe(4);
+
+    const followPlugEl = wireEl.querySelectorAll('cavi-plug')[1] as HTMLElement;
+    vi.spyOn(followPlugEl, 'getBoundingClientRect').mockReturnValue(rect(90, 0));
+
+    document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 90, clientY: 0 }));
+    expect(wire.getNodeCount()).toBe(7); // distance 90 -> 4 + floor(90/30) = 7, same growth math as hold mode
+    expect(target.classList.contains('cavi-magnet-target')).toBe(true);
+
+    vi.spyOn(followPlugEl, 'getBoundingClientRect').mockReturnValue(rect(100, 0));
+    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 100, clientY: 0 }));
+
+    expect(target.plugCount).toBe(1);
+    expect(origin.plugCount).toBe(1);
+    expect(followPlugEl.hasAttribute('plugged')).toBe(true);
+  });
+
+  it('leaves the free end dangling when the finishing click is not over any compatible jack', () => {
+    const fake = installFakeCavi();
+    fake.dragMode = 'click';
+    const origin = makePositionedJack('origin', 0, 0, { type: 'audio' });
+
+    pointerDown(origin, { clientX: 300, clientY: 300, button: 2 });
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    const followPlugEl = wireEl.querySelectorAll('cavi-plug')[1] as HTMLElement;
+    vi.spyOn(followPlugEl, 'getBoundingClientRect').mockReturnValue(rect(9999, 9999));
+
+    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 300, clientY: 300 }));
+
+    expect(origin.plugCount).toBe(1);
+    expect(followPlugEl.hasAttribute('plugged')).toBe(false);
+    const wire = wireEl.getWire() as unknown as FakeWire;
+    const followNode = wire.getNode(wire.getNodeCount() - 1)!;
+    expect(followNode.fixed).toBe(false);
+  });
+
+  it('ignores a non-primary-button click while carrying — only a primary click finishes it', () => {
+    const fake = installFakeCavi();
+    fake.dragMode = 'click';
+    const origin = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    const target = makePositionedJack('target', 100, 0, { type: 'audio' });
+
+    pointerDown(origin, { clientX: 10, clientY: 0, button: 2 });
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    const followPlugEl = wireEl.querySelectorAll('cavi-plug')[1] as HTMLElement;
+    vi.spyOn(followPlugEl, 'getBoundingClientRect').mockReturnValue(rect(100, 0));
+
+    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 2, clientX: 100, clientY: 0 }));
+    expect(target.plugCount).toBe(0);
+
+    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 100, clientY: 0 }));
+    expect(target.plugCount).toBe(1);
+  });
+
+  it('keeps using hold-mode (press-drag-release) for touch even when click-to-carry is enabled', () => {
+    const fake = installFakeCavi();
+    fake.dragMode = 'click';
+    const origin = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    const target = makePositionedJack('target', 100, 0, { type: 'audio' });
+
+    origin.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        bubbles: true,
+        button: 2,
+        clientX: 10,
+        clientY: 0,
+        pointerId: 1,
+        pointerType: 'touch',
+      })
+    );
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    const followPlugEl = wireEl.querySelectorAll('cavi-plug')[1] as HTMLElement;
+    vi.spyOn(followPlugEl, 'getBoundingClientRect').mockReturnValue(rect(100, 0));
+
+    // A document-level click — which would finish a click-to-carry — must
+    // NOT end a touch drag.
+    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 100, clientY: 0 }));
+    expect(target.plugCount).toBe(0);
+
+    // Only releasing on the jack itself, like hold mode, does.
+    pointerUp(origin, 100, 0);
+    expect(target.plugCount).toBe(1);
   });
 });
 

@@ -1,5 +1,6 @@
 import { Node } from './node';
 import { Jack } from './jack'; // Ensure Jack is imported if we check types
+import { Cavi } from './cavi';
 
 /**
  * Plug represents a movable terminal of a cable.
@@ -12,6 +13,12 @@ export class Plug extends HTMLElement {
   private _snapDistance: number = 20;
   private _activePointerId: number | null = null;
   private _magnetJack: Jack | null = null;
+  /**
+   * Which interaction mode the drag currently in progress is using — decided
+   * once, when the drag starts, from Cavi's world-level dragMode (plus the
+   * touch exception, see handlePointerDown). null while idle.
+   */
+  private _activeDragKind: 'hold' | 'click' | null = null;
 
   constructor() {
     super();
@@ -23,6 +30,9 @@ export class Plug extends HTMLElement {
     this.handlePointerUp = this.handlePointerUp.bind(this);
     this.handlePointerCancel = this.handlePointerCancel.bind(this);
     this.handleContextMenu = this.handleContextMenu.bind(this);
+    this.handleCarryMove = this.handleCarryMove.bind(this);
+    this.handleCarryFinish = this.handleCarryFinish.bind(this);
+    this.handleCarryCancel = this.handleCarryCancel.bind(this);
   }
 
   private _type: string = '';
@@ -177,33 +187,50 @@ export class Plug extends HTMLElement {
 
     // Interaction usually fixes the node temporarily while dragging
     this._node.fixed = true;
-
-    if (typeof this.setPointerCapture === 'function') {
-      try {
-        this.setPointerCapture(e.pointerId);
-      } catch {
-        // Not supported in this environment (e.g. jsdom) — the drag
-        // still works via the listeners added below.
-      }
-    }
-
-    this.addEventListener('pointermove', this.handlePointerMove);
-    this.addEventListener('pointerup', this.handlePointerUp);
-    this.addEventListener('pointercancel', this.handlePointerCancel);
-
     this.style.zIndex = '1000';
+
+    // 'click' (click-to-carry): a click detaches and starts following the
+    // cursor with no button held — see Cavi.setDragMode — so native
+    // scrolling (including trackpad gestures) is never blocked, unlike
+    // 'hold', which relies on setPointerCapture for the whole gesture.
+    // Touch always uses 'hold': there's no scroll conflict to work around
+    // (touch-action: none already keeps a touch drag from scrolling the
+    // page), and press-and-drag-with-your-finger is already the natural
+    // touch gesture.
+    const clickToCarry = Cavi.shared?.getDragMode?.() === 'click' && e.pointerType !== 'touch';
+    this._activeDragKind = clickToCarry ? 'click' : 'hold';
+
+    if (clickToCarry) {
+      document.addEventListener('pointermove', this.handleCarryMove);
+      // capture: true so this sees the finishing click before it can be
+      // reinterpreted as, say, a fresh click on whatever jack it lands on.
+      document.addEventListener('pointerdown', this.handleCarryFinish, true);
+      document.addEventListener('pointercancel', this.handleCarryCancel);
+    } else {
+      if (typeof this.setPointerCapture === 'function') {
+        try {
+          this.setPointerCapture(e.pointerId);
+        } catch {
+          // Not supported in this environment (e.g. jsdom) — the drag
+          // still works via the listeners added below.
+        }
+      }
+      this.addEventListener('pointermove', this.handlePointerMove);
+      this.addEventListener('pointerup', this.handlePointerUp);
+      this.addEventListener('pointercancel', this.handlePointerCancel);
+    }
   }
 
-  private handlePointerMove(e: PointerEvent) {
-    if (e.pointerId !== this._activePointerId) return;
-    if (!this._dragging || !this._node) return;
+  /** Shared by both 'hold' pointermove and 'click' carry-move — see handlePointerMove/handleCarryMove. */
+  private _updateCarriedPosition(clientX: number, clientY: number): void {
+    if (!this._node) return;
 
     // Calculate position relative to the offset parent (the container)
     const offsetParent = this.offsetParent || document.body;
     const parentRect = offsetParent.getBoundingClientRect();
 
-    const x = e.clientX - parentRect.left;
-    const y = e.clientY - parentRect.top;
+    const x = clientX - parentRect.left;
+    const y = clientY - parentRect.top;
 
     this._node.setPosition(x, y);
     //always update mouse position in the world for physics interaction with other nodes/wires
@@ -213,36 +240,57 @@ export class Plug extends HTMLElement {
     this._setMagnetTarget(this._findSnapTarget());
   }
 
-  private _endDrag(pointerId: number): void {
-    this.removeEventListener('pointermove', this.handlePointerMove);
-    this.removeEventListener('pointerup', this.handlePointerUp);
-    this.removeEventListener('pointercancel', this.handlePointerCancel);
-    if (typeof this.releasePointerCapture === 'function') {
-      try {
-        this.releasePointerCapture(pointerId);
-      } catch {
-        // Not supported / not captured — safe to ignore.
+  private handlePointerMove(e: PointerEvent) {
+    if (e.pointerId !== this._activePointerId) return;
+    if (!this._dragging) return;
+    this._updateCarriedPosition(e.clientX, e.clientY);
+  }
+
+  /** 'click' mode's equivalent of handlePointerMove — see handlePointerDown. */
+  private handleCarryMove(e: PointerEvent): void {
+    if (!this._dragging) return;
+    this._updateCarriedPosition(e.clientX, e.clientY);
+  }
+
+  /**
+   * Ends the current drag's listeners/visual state, whichever mode started
+   * it (this._activeDragKind) — shared by both modes' pointerup/cancel and
+   * click-to-carry's finish/cancel. `pointerId` is only meaningful for
+   * 'hold' (to release capture); pass null from the 'click' paths.
+   */
+  private _endDrag(pointerId: number | null): void {
+    if (this._activeDragKind === 'click') {
+      document.removeEventListener('pointermove', this.handleCarryMove);
+      document.removeEventListener('pointerdown', this.handleCarryFinish, true);
+      document.removeEventListener('pointercancel', this.handleCarryCancel);
+    } else {
+      this.removeEventListener('pointermove', this.handlePointerMove);
+      this.removeEventListener('pointerup', this.handlePointerUp);
+      this.removeEventListener('pointercancel', this.handlePointerCancel);
+      if (pointerId !== null && typeof this.releasePointerCapture === 'function') {
+        try {
+          this.releasePointerCapture(pointerId);
+        } catch {
+          // Not supported / not captured — safe to ignore.
+        }
       }
     }
     this.style.zIndex = '';
     this._activePointerId = null;
+    this._activeDragKind = null;
     Jack.setDragActive(false);
   }
 
-  private handlePointerUp(e: PointerEvent) {
-    if (e.pointerId !== this._activePointerId) return;
-    if (!this._dragging || !this._node) return;
-
-    this._dragging = false;
-    // Recompute rather than trusting the last pointermove's magnet target:
-    // a drop can happen with no intervening move (e.g. a tap-release), and
-    // the snap decision must reflect the plug's actual final position.
-    const bestJack = this._findSnapTarget();
-    this._setMagnetTarget(null);
-    this._endDrag(e.pointerId);
+  /**
+   * Attaches to the best jack under the plug right now, or — if none is in
+   * range — drops it in place (falling under physics unless freeze-on-drop
+   * is set). Shared by every way a drag/carry can end: 'hold' release,
+   * 'click' finish, and both modes' cancel path (which passes `null`).
+   */
+  private _settleDrag(bestJack: Jack | null): void {
+    if (!this._node) return;
 
     if (bestJack) {
-      // Snap! Calculate position relative to offsetParent
       const offsetParent = this.offsetParent || document.body;
       const parentRect = offsetParent.getBoundingClientRect();
       const c = bestJack.getCenter();
@@ -263,19 +311,61 @@ export class Plug extends HTMLElement {
     }
   }
 
+  private handlePointerUp(e: PointerEvent) {
+    if (e.pointerId !== this._activePointerId) return;
+    if (!this._dragging) return;
+
+    this._dragging = false;
+    // Recompute rather than trusting the last pointermove's magnet target:
+    // a drop can happen with no intervening move (e.g. a tap-release), and
+    // the snap decision must reflect the plug's actual final position.
+    const bestJack = this._findSnapTarget();
+    this._setMagnetTarget(null);
+    this._endDrag(e.pointerId);
+    this._settleDrag(bestJack);
+  }
+
   private handlePointerCancel(e: PointerEvent) {
     if (e.pointerId !== this._activePointerId) return;
-    if (!this._dragging || !this._node) return;
+    if (!this._dragging) return;
 
     this._dragging = false;
     this._setMagnetTarget(null);
     this._endDrag(e.pointerId);
-
     // A cancelled gesture (e.g. interrupted by the OS/browser) is treated
     // like a drop away from any Jack: same freeze-on-drop handling applies.
-    this.detach();
-    this._node.fixed = this._freezeOnDrop;
-    this.removeAttribute('plugged');
+    this._settleDrag(null);
+  }
+
+  /**
+   * 'click' mode's equivalent of handlePointerUp: the *next* primary-button
+   * click anywhere (not necessarily on this plug — it's carried at the
+   * cursor already, so in practice it always lands here) finalizes the
+   * carry. capture:true (see handlePointerDown) plus stopPropagation here
+   * keeps this click from also being reinterpreted as a fresh interaction
+   * by whatever element it happens to land on.
+   */
+  private handleCarryFinish(e: PointerEvent): void {
+    if (e.button !== undefined && e.button !== 0) return;
+    if (!this._dragging) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    this._dragging = false;
+    const bestJack = this._findSnapTarget();
+    this._setMagnetTarget(null);
+    this._endDrag(null);
+    this._settleDrag(bestJack);
+  }
+
+  /** 'click' mode's equivalent of handlePointerCancel. */
+  private handleCarryCancel(): void {
+    if (!this._dragging) return;
+
+    this._dragging = false;
+    this._setMagnetTarget(null);
+    this._endDrag(null);
+    this._settleDrag(null);
   }
 
   /**

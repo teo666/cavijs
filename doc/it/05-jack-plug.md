@@ -15,6 +15,17 @@
 - Ordine Z: `Plug` deve sempre essere renderizzato sopra `Jack`, che a sua volta è sopra il canvas — così il plug non è mai occluso durante il trascinamento.
 - Il drag-and-drop funziona sia con mouse sia con touch/penna tramite Pointer Events unificati.
 
+## Modalità di interazione: `hold` vs `click-to-carry` (`Cavi.setDragMode()`)
+
+Sia il trascinamento di un `Plug` esistente sia il trascinamento di creazione cavo da un `Jack` supportano due modalità di interazione, scelte con un'unica opzione **globale a livello di mondo** — non per singolo elemento:
+
+- **`Cavi.setDragMode('hold')`** (default, invariato): premi-trascina-rilascia classico. Il `pointerdown` avvia il drag e chiama `setPointerCapture`, così tutti gli eventi pointer successivi per quel puntatore restano instradati all'elemento anche se il cursore esce dai suoi confini; il `pointerup` (o `pointercancel`) lo conclude. **Mentre il pulsante resta premuto, lo scroll nativo del browser — in particolare il gesto a due dita del touchpad — smette tipicamente di essere riconosciuto** (limitazione comune di molti driver, non specifica di questa libreria): se il jack di destinazione è fuori dalla porzione visibile di un container scrollabile, non c'è modo di raggiungerlo durante il drag.
+- **`Cavi.setDragMode('click')`**: un click (senza tenerlo premuto) avvia il trascinamento — sgancia dal jack corrente (o crea il nuovo cavo, per `Jack`) e il nodo comincia a seguire il cursore tramite un listener `pointermove` a livello di `document`, **senza che nessun pulsante resti premuto**. Questo significa che lo scroll nativo del browser (rotellina, touchpad, gesture) funziona per tutta la durata del trascinamento esattamente come quando non si sta trascinando nulla — non serve alcun meccanismo di auto-scroll lato applicazione. Un secondo click (qualsiasi pulsante primario, ovunque avvenga — in pratica cade sempre sul nodo trascinato, dato che lo sta seguendo) conclude il trascinamento: aggancia al jack compatibile più vicino se ce n'è uno in prossimità, altrimenti lo lascia cadere lì (stessa semantica di `freeze-on-drop`/caduta libera di `hold`, solo innescata da un click anziché da un rilascio). Un click con pulsante non primario (es. tasto destro) durante il trasporto viene ignorato, non lo conclude. Non esiste un gesto di annullamento esplicito: cliccare comunque da qualche parte senza un jack sotto fa cadere il nodo lì, esattamente come un rilascio a vuoto in modalità `hold` — può essere riafferrato e riposizionato con un altro click.
+
+**Eccezione touch**: `click-to-carry` si applica solo a mouse e pen (`e.pointerType !== 'touch'`) — il touch usa sempre `hold` a prescindere dalla modalità globale impostata, perché il trascinamento naturale col dito non ha il conflitto con lo scroll descritto sopra (lo swipe è un gesto diverso, già disabilitato durante il drag da `touch-action: none`) ed è già l'esperienza migliore su quel tipo di dispositivo.
+
+`Jack.setDragActive()` (vedi sotto, anteprima "jack pieno" durante il drag) resta attivo per l'intera durata del trascinamento in entrambe le modalità, non solo mentre un pulsante è premuto.
+
 ## `Jack` (`src/jack.ts`)
 
 Un custom element (`cavi-jack`) con Shadow DOM.

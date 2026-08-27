@@ -40,6 +40,13 @@ export class Jack extends HTMLElement {
   private _creatingWire: Wire | null = null;
   private _creatingFollowPlug: Plug | null = null;
   private _creatingFollowNode: Node | null = null;
+  /**
+   * Which interaction mode the cable-creation drag currently in progress is
+   * using — decided once, when the drag starts, from Cavi's world-level
+   * dragMode (plus the touch exception, see handlePointerDown). null while
+   * no cable is being created. Mirrors Plug's own field of the same name.
+   */
+  private _activeDragKind: 'hold' | 'click' | null = null;
 
   /**
    * Whether Shift is currently held, tracked globally across all jacks.
@@ -89,6 +96,9 @@ export class Jack extends HTMLElement {
     this.handlePointerUp = this.handlePointerUp.bind(this);
     this.handlePointerCancel = this.handlePointerCancel.bind(this);
     this.handleContextMenu = this.handleContextMenu.bind(this);
+    this.handleCarryMove = this.handleCarryMove.bind(this);
+    this.handleCarryFinish = this.handleCarryFinish.bind(this);
+    this.handleCarryCancel = this.handleCarryCancel.bind(this);
   }
 
   connectedCallback() {
@@ -370,18 +380,34 @@ export class Jack extends HTMLElement {
     // for the whole drag even if Shift is released partway through.
     Jack.setDragActive(true);
 
-    if (typeof this.setPointerCapture === 'function') {
-      try {
-        this.setPointerCapture(e.pointerId);
-      } catch {
-        // Not supported in this environment (e.g. jsdom) — the drag
-        // still works via the listeners added below.
-      }
-    }
+    // 'click' (click-to-carry): a click creates the cable and starts
+    // following the cursor with no button held — see Cavi.setDragMode —
+    // so native scrolling (including trackpad gestures) is never blocked,
+    // unlike 'hold', which relies on setPointerCapture for the whole
+    // gesture. Touch always uses 'hold' — see Plug.handlePointerDown for
+    // why (same reasoning applies here verbatim).
+    const clickToCarry = Cavi.shared?.getDragMode?.() === 'click' && e.pointerType !== 'touch';
+    this._activeDragKind = clickToCarry ? 'click' : 'hold';
 
-    this.addEventListener('pointermove', this.handlePointerMove);
-    this.addEventListener('pointerup', this.handlePointerUp);
-    this.addEventListener('pointercancel', this.handlePointerCancel);
+    if (clickToCarry) {
+      document.addEventListener('pointermove', this.handleCarryMove);
+      // capture: true so this sees the finishing click before it can be
+      // reinterpreted as, say, a fresh click on whatever jack it lands on.
+      document.addEventListener('pointerdown', this.handleCarryFinish, true);
+      document.addEventListener('pointercancel', this.handleCarryCancel);
+    } else {
+      if (typeof this.setPointerCapture === 'function') {
+        try {
+          this.setPointerCapture(e.pointerId);
+        } catch {
+          // Not supported in this environment (e.g. jsdom) — the drag
+          // still works via the listeners added below.
+        }
+      }
+      this.addEventListener('pointermove', this.handlePointerMove);
+      this.addEventListener('pointerup', this.handlePointerUp);
+      this.addEventListener('pointercancel', this.handlePointerCancel);
+    }
   }
 
   /**
@@ -502,27 +528,27 @@ export class Jack extends HTMLElement {
     return wire.getNode(count - 1)!;
   }
 
-  private handlePointerMove(e: PointerEvent): void {
-    if (e.pointerId !== this._activePointerId) return;
+  /** Shared by both 'hold' pointermove and 'click' carry-move — see handlePointerMove/handleCarryMove. */
+  private _updateCreatingCable(clientX: number, clientY: number): void {
     if (!this._creatingWire || !this._creatingFollowPlug || !this._creatingFollowNode) return;
 
     const offsetParent = this.offsetParent || document.body;
     const parentRect = offsetParent.getBoundingClientRect();
-    const x = e.clientX - parentRect.left;
-    const y = e.clientY - parentRect.top;
+    const x = clientX - parentRect.left;
+    const y = clientY - parentRect.top;
 
     // Anchor the free terminal at the cursor before any growth below: it's
     // the interpolation target used for newly-inserted nodes (see _growCable).
     this._creatingFollowNode.setPosition(x, y);
-    // Mirrors Plug.handlePointerMove: keep feeding the world-mouse physics
-    // interaction (repulsion of other cables) while this pointer is
-    // captured by the Jack — preventDefault() on pointerdown (see
-    // handlePointerDown) suppresses the native mousemove that Renderer
-    // would otherwise use to drive it, freezing it for the drag's duration.
+    // Mirrors Plug's own drag: keep feeding the world-mouse physics
+    // interaction (repulsion of other cables) while this gesture is in
+    // progress — preventDefault() on pointerdown (see handlePointerDown)
+    // suppresses the native mousemove that Renderer would otherwise use to
+    // drive it, freezing it for the drag's duration.
     this._creatingFollowNode.setMousePosition(x, y);
 
     const center = this.getCenter();
-    const distance = Math.hypot(e.clientX - center.x, e.clientY - center.y);
+    const distance = Math.hypot(clientX - center.x, clientY - center.y);
     const desired = Math.min(
       CABLE_MAX_NODES,
       Math.max(CABLE_MIN_NODES, CABLE_MIN_NODES + Math.floor(distance * CABLE_NODES_PER_PX))
@@ -553,15 +579,26 @@ export class Jack extends HTMLElement {
     this._setMagnetTarget(this._findSnapTarget(this._creatingFollowPlug, this.type));
   }
 
-  private handlePointerUp(e: PointerEvent): void {
+  private handlePointerMove(e: PointerEvent): void {
     if (e.pointerId !== this._activePointerId) return;
+    this._updateCreatingCable(e.clientX, e.clientY);
+  }
 
+  /** 'click' mode's equivalent of handlePointerMove — see handlePointerDown. */
+  private handleCarryMove(e: PointerEvent): void {
+    if (!this._creatingWire) return;
+    this._updateCreatingCable(e.clientX, e.clientY);
+  }
+
+  /**
+   * Attaches the free terminal to the best jack under it right now, or —
+   * if none is in range — leaves it dangling (falling under physics).
+   * Shared by 'hold' release and 'click' finish.
+   */
+  private _finishCreatingCable(): void {
     const followPlug = this._creatingFollowPlug;
     const followNode = this._creatingFollowNode;
-    if (!followPlug || !followNode) {
-      this._endCableDrag(e.pointerId);
-      return;
-    }
+    if (!followPlug || !followNode) return;
 
     const bestJack = this._findSnapTarget(followPlug, this.type);
     this._setMagnetTarget(null);
@@ -582,32 +619,75 @@ export class Jack extends HTMLElement {
       // away from every jack today (free to fall/move under physics).
       followNode.fixed = false;
     }
+  }
 
+  /** Shared by 'hold' cancel and 'click' cancel. */
+  private _cancelCreatingCable(): void {
+    this._setMagnetTarget(null);
+    if (this._creatingFollowNode) {
+      this._creatingFollowNode.fixed = false;
+    }
+  }
+
+  private handlePointerUp(e: PointerEvent): void {
+    if (e.pointerId !== this._activePointerId) return;
+    this._finishCreatingCable();
     this._endCableDrag(e.pointerId);
   }
 
   private handlePointerCancel(e: PointerEvent): void {
     if (e.pointerId !== this._activePointerId) return;
-
-    this._setMagnetTarget(null);
-    if (this._creatingFollowNode) {
-      this._creatingFollowNode.fixed = false;
-    }
+    this._cancelCreatingCable();
     this._endCableDrag(e.pointerId);
   }
 
-  private _endCableDrag(pointerId: number): void {
-    this.removeEventListener('pointermove', this.handlePointerMove);
-    this.removeEventListener('pointerup', this.handlePointerUp);
-    this.removeEventListener('pointercancel', this.handlePointerCancel);
-    if (typeof this.releasePointerCapture === 'function') {
-      try {
-        this.releasePointerCapture(pointerId);
-      } catch {
-        // Not supported / not captured — safe to ignore.
+  /**
+   * 'click' mode's equivalent of handlePointerUp: the *next* primary-button
+   * click anywhere finalizes the new cable — see Plug.handleCarryFinish for
+   * why this works without needing to land on any particular element, and
+   * why capture:true + stopPropagation here matter.
+   */
+  private handleCarryFinish(e: PointerEvent): void {
+    if (e.button !== undefined && e.button !== 0) return;
+    if (!this._creatingWire) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this._finishCreatingCable();
+    this._endCableDrag(null);
+  }
+
+  /** 'click' mode's equivalent of handlePointerCancel. */
+  private handleCarryCancel(): void {
+    if (!this._creatingWire) return;
+    this._cancelCreatingCable();
+    this._endCableDrag(null);
+  }
+
+  /**
+   * Ends the current cable-creation drag's listeners/state, whichever mode
+   * started it (this._activeDragKind) — mirrors Plug's own _endDrag.
+   * `pointerId` is only meaningful for 'hold' (to release capture); pass
+   * null from the 'click' paths.
+   */
+  private _endCableDrag(pointerId: number | null): void {
+    if (this._activeDragKind === 'click') {
+      document.removeEventListener('pointermove', this.handleCarryMove);
+      document.removeEventListener('pointerdown', this.handleCarryFinish, true);
+      document.removeEventListener('pointercancel', this.handleCarryCancel);
+    } else {
+      this.removeEventListener('pointermove', this.handlePointerMove);
+      this.removeEventListener('pointerup', this.handlePointerUp);
+      this.removeEventListener('pointercancel', this.handlePointerCancel);
+      if (pointerId !== null && typeof this.releasePointerCapture === 'function') {
+        try {
+          this.releasePointerCapture(pointerId);
+        } catch {
+          // Not supported / not captured — safe to ignore.
+        }
       }
     }
     this._activePointerId = null;
+    this._activeDragKind = null;
     this._creatingWire = null;
     this._creatingFollowPlug = null;
     this._creatingFollowNode = null;

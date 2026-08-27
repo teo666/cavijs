@@ -135,6 +135,14 @@ async function main(): Promise<void> {
   // Renderer defaults this to true; start clean, matching the unchecked
   // "show physics nodes" checkbox below, which then drives it live.
   cavi.setDebugDrawNodes(false);
+  // Click-to-carry: a click detaches/creates and starts following the
+  // cursor with no button held, so native scrolling — including trackpad
+  // gestures — is never blocked while reaching for an off-screen jack.
+  // Mouse/pen only; touch keeps the default press-and-drag (see Jack/Plug's
+  // handlePointerDown for why). No auto-scroll hack needed anymore: with
+  // nothing held down mid-drag, #panelScroll's native overflow-y:auto
+  // already just works.
+  cavi.setDragMode('click');
 
   materializeJacks(panel);
   materializePatches(panel);
