@@ -4,6 +4,7 @@ import type { World } from './world';
 import { Cavi } from './cavi';
 
 export class Renderer implements IRenderer {
+  private container: HTMLElement;
   private canvas: HTMLCanvasElement;
   private context: CanvasRenderingContext2D;
   private world: World;
@@ -16,8 +17,13 @@ export class Renderer implements IRenderer {
   private isDragging: boolean = false;
   private draggedWire: number | null = null;
   private draggedEndpoint: 'start' | 'end' | null = null;
+  private debugDrawNodes: boolean = true;
+  private rafId: number | null = null;
 
-  constructor(canvas: HTMLCanvasElement, world: World) {
+  constructor(container: HTMLElement, world: World) {
+    this.container = container;
+    const canvas = container.querySelector('#wireCanvas') as HTMLCanvasElement;
+    
     this.canvas = canvas;
     const context = canvas.getContext('2d');
     if (!context) {
@@ -30,6 +36,10 @@ export class Renderer implements IRenderer {
     this.wasmWorld = world.getWasmWorld();
   }
 
+  public getContainer(): HTMLElement {
+    return this.container;
+  }
+
   public clear() {
     this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }
@@ -39,6 +49,39 @@ export class Renderer implements IRenderer {
    */
   public getFPS(): number {
     return this.fps;
+  }
+
+  /**
+   * Toggles the debug overlay that draws the circumference of every wire
+   * node (its actual physics position, not just the rendered path).
+   */
+  public setDebugDrawNodes(enabled: boolean): void {
+    this.debugDrawNodes = enabled;
+  }
+
+  public getDebugDrawNodes(): boolean {
+    return this.debugDrawNodes;
+  }
+
+  private drawNodeDebug() {
+    const wires = this.world.getWires();
+
+    this.context.strokeStyle = '#00ffff'; // Cyan
+    this.context.lineWidth = 1;
+
+    for (const wire of wires) {
+      const radius = wire.getRadius();
+      const nodeCount = wire.getNodeCount();
+
+      for (let i = 0; i < nodeCount; i++) {
+        const node = wire.getNode(i);
+        if (!node) continue;
+
+        this.context.beginPath();
+        this.context.arc(node.x, node.y, radius, 0, Math.PI * 2);
+        this.context.stroke();
+      }
+    }
   }
 
   public drawInteractionRadii(mouseX: number, mouseY: number) {
@@ -94,7 +137,7 @@ export class Renderer implements IRenderer {
   }
 
   private addMouseMoveListener() {
-    this.canvas.addEventListener('mousemove', (e) => {
+    this.container.addEventListener('mousemove', (e) => {
       const rect = this.canvas.getBoundingClientRect();
       this.mouseX = e.clientX - rect.left;
       this.mouseY = e.clientY - rect.top;
@@ -202,8 +245,8 @@ export class Renderer implements IRenderer {
     this.world.update();
 
     // Clear canvas
-    this.context.fillStyle = '#0a0a0a';
-    this.context.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    // this.context.fillStyle = '#0a0a0a';
+    this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
     // // Draw all wires using efficient memory access
     this.drawAllWires();
@@ -211,13 +254,30 @@ export class Renderer implements IRenderer {
     // // Draw wire endpoints to show they're draggable
     // drawWireEndpoints();
 
-    // Draw interaction radii at mouse position
-    this.drawInteractionRadii(this.mouseX, this.mouseY);
+    // Debug: draw the circumference of every wire node, and the
+    // mouse/pointer interaction radii — both gated behind the same debug
+    // toggle (see setDebugDrawNodes).
+    if (this.debugDrawNodes) {
+      this.drawNodeDebug();
+      this.drawInteractionRadii(this.mouseX, this.mouseY);
+    }
 
     // Update debug info
     // updateDebugInfo();
 
     // Continue animation
-    requestAnimationFrame(this.render.bind(this));
+    this.rafId = requestAnimationFrame(this.render.bind(this));
+  }
+
+  /**
+   * Cancels the self-rescheduling render loop started by render(). Needed by
+   * <cavi-world> (worldwc.ts) so removing it from the DOM doesn't leave a
+   * dangling rAF loop running against a detached canvas.
+   */
+  public stop(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
   }
 }

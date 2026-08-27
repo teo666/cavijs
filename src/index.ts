@@ -9,5 +9,7 @@ export { World } from './world';
 export { Wire } from './wire';
 export { Node } from './node';
 export { Renderer } from './renderer';
-export { Socket } from './socket';
+export { Jack } from './jack';
+export { Plug } from './plug';
+export { CaviWorldElement } from './worldwc';
 export type { IRenderer, WireMeta } from './types';
