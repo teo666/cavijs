@@ -65,6 +65,7 @@ addNode(x: number, y: number, fixed?: boolean): void
 addNodeAt(index: number, x: number, y: number, fixed?: boolean): void
 removeNode(index: number): void
 getNodeCount(): number
+setNodeCount(count: number): void
 getNode(index: number): Node | null
 setMetaData(key: string, value: any): void
 getMetaData(key: string): any
@@ -85,6 +86,8 @@ wire.setMetaData('pattern', 'dashed');
 ```
 
 A `Wire` constructed without `(world, wireIndex)` args is "detached" — all its methods that talk to WASM become no-ops / return defaults, which is what happens if you `new Wire()` directly instead of via `World.addWire`.
+
+`setNodeCount(count)` resizes the wire at runtime: it rebuilds the entire node vector, preserving the position and `fixed` state of the two terminal nodes and evenly redistributing intermediate nodes between them (any state on previously-existing intermediate nodes is lost). Used by [`Jack`](./05-jack-plug.md) to grow a cable while it's being dragged out of a socket — since the last node's index changes after a resize, anything holding a reference to the terminal node (e.g. a `Plug`) must rebind via `wire.getNode(wire.getNodeCount() - 1)`.
 
 ## `Node` (`src/node.ts`)
 

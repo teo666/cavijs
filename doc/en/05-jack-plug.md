@@ -39,7 +39,19 @@ A custom element (`cavi-jack`) with Shadow DOM.
 | `type` (getter) | The jack's current `type` |
 | `setMagnetActive(active: boolean)` | Toggles the `magnet-class` class on the host, used for the magnet preview during drag |
 
-By default renders a small dark circle (`.inner`); if the element has child content, it renders that instead (via `<slot>`), letting consumers customize appearance while keeping the same drop-target semantics. `pointer-events: none` by default — hit-testing is handled entirely by `Plug` via distance-to-center, not by native events on the jack.
+By default renders a small dark circle (`.inner`); if the element has child content, it renders that instead (via `<slot>`), letting consumers customize appearance while keeping the same drop-target semantics.
+
+The host has an explicit `24×24px` size and receives native pointer events (`pointer-events: auto`) — this is what lets it act as a cable-creation drag source (see below). Note that hit-testing for an *existing* `Plug` snapping onto a jack is still entirely distance-based (`Plug._findSnapTarget()` via `Jack.registry`), not driven by native events on the jack; the jack's own pointer events are only used to start a *new* cable.
+
+## Creating a cable from a Jack (`src/jack.ts`)
+
+Besides being a drop target, a `Jack` is also a drag **source**: right-click, or left-click + <kbd>Shift</kbd>, on a jack with spare capacity (`canAcceptMore()`) immediately creates a brand new `<cavi-wire>` — one `<cavi-plug>` attached to that jack right away, the other following the cursor.
+
+- **Trigger**: `pointerdown` with `button === 2` (right button) or `button === 0 && shiftKey`. The jack's native context menu is suppressed unconditionally (`contextmenu` → `preventDefault()`), since the jack is always a potential right-click drag source. A jack already at `max-plugs` ignores the gesture.
+- **Cable construction**: builds a `<cavi-wire type="{jack.type}" length="4">` with two `<cavi-plug>` children (`node="0"` / `node="3"`), inserted as a sibling of the jack (so it shares the same `offsetParent`/coordinate space Plug already relies on). Node `0` is immediately positioned at the jack's center, fixed, and attached (`plugged`); node `3` is placed at the initial cursor position. Visual/physics defaults (tension, radius, color, render type — bezier by default, unless `renderType="segments"`) are the same fixed defaults `<cavi-wire>` itself falls back to when an attribute is omitted — not inherited from the jack.
+- **Growing while dragging**: on every `pointermove`, the free node's position tracks the cursor, and the node count grows with the distance from the origin jack — `4 + floor(distance / 30)`, capped at `60`. **The cable only ever grows during a drag, never shrinks back** as the cursor approaches again — like pulling a cable out of the screen, once it's out it stays out until release. A growth step calls the new `Wire.setNodeCount()` (see [`Wire` in the API reference](./03-api.md#wire)) and rebinds the free `Plug` to the new last node, since resizing shifts the terminal index.
+- **Magnet preview**: identical mechanics to `Plug`'s own drag — same `20`px snap distance, same continuous highlight toggling (`setMagnetActive`) on both the candidate jack and the free plug while in range, computed via the same `Jack.registry` scan (excluding the origin jack itself, so a cable can't snap back onto its own source).
+- **On release**: if a compatible jack is in range, the free plug snaps to it exactly like a normal `Plug` drop (`fixed = true`, `attach()`, `plugged`). Otherwise the cable stays attached at the origin with the free end left dangling — `node.fixed = false`, identical to a plain `Plug` dropped away from every jack today (free to move under physics, and already fully re-draggable on its own since it's a real `<cavi-plug>`). A `pointercancel` is treated the same as an empty release.
 
 ## `Plug` (`src/plug.ts`)
 

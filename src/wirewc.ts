@@ -39,7 +39,9 @@ export class CaviWireElement extends HTMLElement {
     const nodeCount = parseInt(this.getAttribute('length') ?? '10');
     const tension = parseFloat(this.getAttribute('tension') ?? '20');
     const radius = parseFloat(this.getAttribute('size') ?? '5');
-    const renderType = this.getAttribute('renderType') === 'bezier' ? 1 : 0;
+    // Bezier by default; explicit renderType="segments" opts back into
+    // straight-segment rendering.
+    const renderType = this.getAttribute('renderType') === 'segments' ? 0 : 1;
     const color = this.getAttribute('color') ?? '#ffffff';
     const type = this.getAttribute('type') ?? '';
 

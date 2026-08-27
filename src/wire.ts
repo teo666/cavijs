@@ -57,6 +57,18 @@ export class Wire {
     }
 
     /**
+     * Resize the wire to a new node count, redistributing intermediate nodes
+     * evenly between the two terminal nodes (whose position/fixed state is
+     * preserved). Any custom state on previously-existing intermediate nodes
+     * is discarded — this rebuilds the node vector from scratch.
+     */
+    public setNodeCount(count: number): void {
+        if (this.world && this.wireIndex >= 0) {
+            this.world.set_wire_node_count(this.wireIndex, count);
+        }
+    }
+
+    /**
      * Get a node at a specific index
      */
     public getNode(index: number): Node | null {

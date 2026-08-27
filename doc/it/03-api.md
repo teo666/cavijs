@@ -65,6 +65,7 @@ addNode(x: number, y: number, fixed?: boolean): void
 addNodeAt(index: number, x: number, y: number, fixed?: boolean): void
 removeNode(index: number): void
 getNodeCount(): number
+setNodeCount(count: number): void
 getNode(index: number): Node | null
 setMetaData(key: string, value: any): void
 getMetaData(key: string): any
@@ -85,6 +86,8 @@ wire.setMetaData('pattern', 'dashed');
 ```
 
 Un `Wire` costruito senza argomenti `(world, wireIndex)` è "scollegato" — tutti i suoi metodi che comunicano con WASM diventano no-op / ritornano valori di default, ciò che accade se si fa `new Wire()` direttamente invece che tramite `World.addWire`.
+
+`setNodeCount(count)` ridimensiona il cavo a runtime: ricostruisce l'intero vettore di nodi, preservando posizione e stato `fixed` dei due nodi terminali e ridistribuendo linearmente i nodi intermedi tra di essi (lo stato di eventuali nodi intermedi preesistenti viene perso). Usato da [`Jack`](./05-jack-plug.md) per far crescere il cavo mentre lo si trascina fuori da una presa — dato che l'indice dell'ultimo nodo cambia dopo il resize, chi tiene un riferimento al nodo terminale (es. un `Plug`) deve ri-agganciarsi con `wire.getNode(wire.getNodeCount() - 1)`.
 
 ## `Node` (`src/node.ts`)
 

@@ -1,6 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Jack } from './jack';
+import { Cavi } from './cavi';
 import type { Plug } from './plug';
+import type { CaviWireElement } from './wirewc';
+import { Node } from './node';
 
 function makeJack(attrs: Record<string, string> = {}): Jack {
   const el = document.createElement('cavi-jack') as Jack;
@@ -12,7 +15,122 @@ function makeJack(attrs: Record<string, string> = {}): Jack {
 
 afterEach(() => {
   document.body.innerHTML = '';
+  Cavi.shared = null;
 });
+
+function rect(x: number, y: number): DOMRect {
+  return {
+    left: x,
+    top: y,
+    right: x,
+    bottom: y,
+    width: 0,
+    height: 0,
+    x,
+    y,
+    toJSON() {
+      return this;
+    },
+  } as unknown as DOMRect;
+}
+
+/** A positioned Jack, appended to the document, ready for pointer-driven drag tests. */
+function makePositionedJack(id: string, x: number, y: number, attrs: Record<string, string> = {}): Jack {
+  const jack = makeJack(attrs);
+  jack.id = id;
+  document.body.appendChild(jack);
+  vi.spyOn(jack, 'getBoundingClientRect').mockReturnValue(rect(x, y));
+  return jack;
+}
+
+/**
+ * Minimal stand-in for the WASM-backed `Wire`, reproducing just enough of
+ * `set_node_count`'s real semantics (preserve terminal position/fixed state,
+ * interpolate discarded intermediates) to drive Jack's cable-creation drag
+ * without needing a real WASM module in jsdom.
+ */
+class FakeWire {
+  private nodes: Node[];
+
+  constructor(x1: number, y1: number, x2: number, y2: number, count: number) {
+    this.nodes = [];
+    for (let i = 0; i < count; i++) {
+      const t = count === 1 ? 0 : i / (count - 1);
+      const fixed = i === 0 || i === count - 1;
+      this.nodes.push(new Node(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, fixed));
+    }
+  }
+
+  getNode(index: number): Node | null {
+    return this.nodes[index] ?? null;
+  }
+
+  getNodeCount(): number {
+    return this.nodes.length;
+  }
+
+  setNodeCount(count: number): void {
+    const first = this.nodes[0];
+    const last = this.nodes[this.nodes.length - 1];
+    const next: Node[] = [];
+    for (let i = 0; i < count; i++) {
+      const t = count === 1 ? 0 : i / (count - 1);
+      if (i === 0) {
+        next.push(new Node(first.x, first.y, first.fixed));
+      } else if (i === count - 1) {
+        next.push(new Node(last.x, last.y, last.fixed));
+      } else {
+        next.push(new Node(first.x + (last.x - first.x) * t, first.y + (last.y - first.y) * t, false));
+      }
+    }
+    this.nodes = next;
+  }
+
+  setColor(): void {}
+}
+
+class FakeCavi {
+  public lastWire: FakeWire | null = null;
+
+  addWire(x1: number, y1: number, x2: number, y2: number, nodes: number): FakeWire {
+    this.lastWire = new FakeWire(x1, y1, x2, y2, nodes);
+    return this.lastWire;
+  }
+}
+
+function installFakeCavi(): FakeCavi {
+  const fake = new FakeCavi();
+  Cavi.shared = fake as unknown as Cavi;
+  return fake;
+}
+
+function pointerDown(
+  target: HTMLElement,
+  opts: { clientX: number; clientY: number; button?: number; shiftKey?: boolean; pointerId?: number }
+): void {
+  target.dispatchEvent(
+    new PointerEvent('pointerdown', {
+      bubbles: true,
+      button: opts.button ?? 0,
+      shiftKey: opts.shiftKey ?? false,
+      clientX: opts.clientX,
+      clientY: opts.clientY,
+      pointerId: opts.pointerId ?? 1,
+    })
+  );
+}
+
+function pointerMove(target: HTMLElement, clientX: number, clientY: number, pointerId = 1): void {
+  target.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX, clientY, pointerId }));
+}
+
+function pointerUp(target: HTMLElement, clientX: number, clientY: number, pointerId = 1): void {
+  target.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX, clientY, pointerId }));
+}
+
+function pointerCancel(target: HTMLElement, pointerId = 1): void {
+  target.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId }));
+}
 
 describe('Jack.canAccept', () => {
   it('matches when types are equal', () => {
@@ -93,5 +211,180 @@ describe('Jack capacity (max-plugs)', () => {
     const jack = makeJack({ 'max-plugs': 'not-a-number' });
     jack.attach({} as unknown as Plug);
     expect(jack.canAcceptMore()).toBe(true);
+  });
+});
+
+describe('Jack cable-creation drag — trigger gating', () => {
+  it('does nothing on a plain left click (no modifier)', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 0, 0, { type: 'audio' });
+    pointerDown(jack, { clientX: 0, clientY: 0, button: 0 });
+    expect(document.querySelector('cavi-wire')).toBeNull();
+  });
+
+  it('starts on right-click', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 0, 0, { type: 'audio' });
+    pointerDown(jack, { clientX: 0, clientY: 0, button: 2 });
+    expect(document.querySelector('cavi-wire')).not.toBeNull();
+  });
+
+  it('starts on shift+left-click', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 0, 0, { type: 'audio' });
+    pointerDown(jack, { clientX: 0, clientY: 0, button: 0, shiftKey: true });
+    expect(document.querySelector('cavi-wire')).not.toBeNull();
+  });
+
+  it('does not start when the jack is already at max-plugs', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 0, 0, { type: 'audio', 'max-plugs': '1' });
+    jack.attach({} as unknown as Plug);
+    pointerDown(jack, { clientX: 0, clientY: 0, button: 2 });
+    expect(document.querySelector('cavi-wire')).toBeNull();
+  });
+
+  it('does nothing if Cavi is not ready yet', () => {
+    const jack = makePositionedJack('a', 0, 0, { type: 'audio' });
+    pointerDown(jack, { clientX: 0, clientY: 0, button: 2 });
+    expect(document.querySelector('cavi-wire')).toBeNull();
+  });
+});
+
+describe('Jack cable-creation drag — creates the cable', () => {
+  it('attaches the origin plug to this Jack and places the free plug at the cursor', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('origin', 50, 60, { type: 'audio' });
+    pointerDown(jack, { clientX: 200, clientY: 220, button: 2 });
+
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    expect(wireEl).not.toBeNull();
+    const wire = wireEl.getWire() as unknown as FakeWire;
+    expect(wire.getNodeCount()).toBe(4);
+
+    expect(jack.plugCount).toBe(1);
+    const plugs = wireEl.querySelectorAll('cavi-plug');
+    expect(plugs.length).toBe(2);
+    expect(plugs[0].hasAttribute('plugged')).toBe(true);
+    expect(plugs[1].hasAttribute('plugged')).toBe(false);
+
+    expect(wire.getNode(0)!.x).toBe(50);
+    expect(wire.getNode(0)!.y).toBe(60);
+    expect(wire.getNode(0)!.fixed).toBe(true);
+    expect(wire.getNode(3)!.x).toBe(200);
+    expect(wire.getNode(3)!.y).toBe(220);
+    expect(wire.getNode(3)!.fixed).toBe(true);
+  });
+});
+
+describe('Jack cable-creation drag — node count follows distance', () => {
+  it('grows as the cursor moves away, and never shrinks back as it comes closer again', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    pointerDown(jack, { clientX: 10, clientY: 0, button: 2 });
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    const wire = wireEl.getWire() as unknown as FakeWire;
+    expect(wire.getNodeCount()).toBe(4);
+
+    pointerMove(jack, 100, 0); // distance 100 -> 4 + floor(100/30) = 7
+    expect(wire.getNodeCount()).toBe(7);
+
+    pointerMove(jack, 400, 0); // distance 400 -> 4 + floor(400/30) = 17
+    expect(wire.getNodeCount()).toBe(17);
+
+    pointerMove(jack, 5, 0); // back close -> the cable stays pulled out, no shortening
+    expect(wire.getNodeCount()).toBe(17);
+
+    pointerMove(jack, 250, 0); // distance 250 -> 4 + floor(250/30) = 12, still below the 17 already reached
+    expect(wire.getNodeCount()).toBe(17);
+  });
+
+  it('caps node count at the configured maximum', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    pointerDown(jack, { clientX: 10, clientY: 0, button: 2 });
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    const wire = wireEl.getWire() as unknown as FakeWire;
+
+    pointerMove(jack, 5000, 0);
+    expect(wire.getNodeCount()).toBe(60);
+  });
+});
+
+describe('Jack cable-creation drag — magnet preview and snap on release', () => {
+  it('highlights a compatible jack within range while dragging, and snaps to it on release', () => {
+    installFakeCavi();
+    const origin = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    const target = makePositionedJack('target', 100, 0, { type: 'audio' });
+
+    pointerDown(origin, { clientX: 10, clientY: 0, button: 2 });
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    const followPlugEl = wireEl.querySelectorAll('cavi-plug')[1] as HTMLElement;
+    const followRect = vi.spyOn(followPlugEl, 'getBoundingClientRect').mockReturnValue(rect(90, 0));
+
+    pointerMove(origin, 90, 0);
+    expect(target.classList.contains('cavi-magnet-target')).toBe(true);
+    expect(followPlugEl.classList.contains('cavi-magnet-active')).toBe(true);
+
+    followRect.mockReturnValue(rect(100, 0));
+    pointerUp(origin, 100, 0);
+
+    expect(target.plugCount).toBe(1);
+    expect(origin.plugCount).toBe(1);
+    expect(followPlugEl.hasAttribute('plugged')).toBe(true);
+    expect(target.classList.contains('cavi-magnet-target')).toBe(false);
+
+    const wire = wireEl.getWire() as unknown as FakeWire;
+    const followNode = wire.getNode(wire.getNodeCount() - 1)!;
+    expect(followNode.fixed).toBe(true);
+    expect(followNode.x).toBe(100);
+    expect(followNode.y).toBe(0);
+  });
+
+  it('does not offer this same Jack as its own snap target', () => {
+    installFakeCavi();
+    const origin = makePositionedJack('origin', 0, 0, { type: 'audio', 'max-plugs': '2' });
+    pointerDown(origin, { clientX: 5, clientY: 0, button: 2 });
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    const followPlugEl = wireEl.querySelectorAll('cavi-plug')[1] as HTMLElement;
+    vi.spyOn(followPlugEl, 'getBoundingClientRect').mockReturnValue(rect(1, 0));
+
+    pointerUp(origin, 1, 0);
+
+    expect(origin.plugCount).toBe(1); // only the origin terminal, not both
+    expect(followPlugEl.hasAttribute('plugged')).toBe(false);
+  });
+});
+
+describe('Jack cable-creation drag — release away from any jack', () => {
+  it('leaves the origin attached and the free end unattached and unfixed', () => {
+    installFakeCavi();
+    const origin = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    pointerDown(origin, { clientX: 300, clientY: 300, button: 2 });
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    const followPlugEl = wireEl.querySelectorAll('cavi-plug')[1] as HTMLElement;
+    vi.spyOn(followPlugEl, 'getBoundingClientRect').mockReturnValue(rect(9999, 9999));
+
+    pointerUp(origin, 300, 300);
+
+    expect(origin.plugCount).toBe(1);
+    expect(followPlugEl.hasAttribute('plugged')).toBe(false);
+    const wire = wireEl.getWire() as unknown as FakeWire;
+    const followNode = wire.getNode(wire.getNodeCount() - 1)!;
+    expect(followNode.fixed).toBe(false);
+  });
+
+  it('pointercancel behaves the same as releasing away from a jack', () => {
+    installFakeCavi();
+    const origin = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    pointerDown(origin, { clientX: 300, clientY: 300, button: 2 });
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+
+    pointerCancel(origin);
+
+    expect(origin.plugCount).toBe(1);
+    const wire = wireEl.getWire() as unknown as FakeWire;
+    const followNode = wire.getNode(wire.getNodeCount() - 1)!;
+    expect(followNode.fixed).toBe(false);
   });
 });
