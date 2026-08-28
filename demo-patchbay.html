@@ -271,45 +271,61 @@
       }
 
       /* ---------- Moog-style hex jack nut ---------- */
-      /* A real 1/4" jack socket is a hex nut (like a bolt head) with a
-         round black hole through the middle — not a plain chrome disc.
-         clip-path draws the hex facets; a conic-gradient fakes the way
-         each facet catches the light at a different angle. box-shadow
-         would be clipped away along with the corners, so the ambient
-         drop shadow and the interactive glows below use filter:
-         drop-shadow() instead, which follows the clipped silhouette. */
-      /* !important throughout this section: Jack/Plug's own shadow-DOM
-         :host rule (background-color/border/width/height) has the same
-         (0,1,0) specificity as a plain "cavi-jack {}" type selector would
-         need to beat — as an author style with no !important of its own,
-         it otherwise wins ties by being the later-evaluated stylesheet. */
+      /* A real 1/4" jack socket is a round metal flange (the panel-mount
+         base) with a hexagonal nut sitting on top of it, and a round black
+         hole through the middle — not a single faceted disc. Jack's shadow
+         DOM (src/jack.ts) already renders this as two stacked layers for
+         exactly this purpose: `.base` (a plain circle, full size) behind
+         `.hex` (a smaller layer, clipped to a hexagon, inset 8% so a ring
+         of `.base` stays visible all around it) — exposed to this
+         page-level CSS via `::part(base)`/`::part(hex)` despite Shadow DOM
+         encapsulation, so the shape itself lives in the component and only
+         the *material* (gradients/shadows below) is themed here.
+         Both layers are lit from directly above (light-to-dark top-to-
+         bottom linear-gradient) — a single consistent light direction
+         reads as "one real object" far better than faking six separately-
+         lit facets ever did. Each layer's own inset box-shadow (never
+         clipped away, unlike an outer box-shadow, since it only ever
+         paints inside the layer's own box) adds a bright top inner edge
+         and a dark bottom inner edge, so the underside of both the round
+         base and the raised hex nut reads as being in its own shadow. */
+      /* !important throughout this section: Jack's own shadow-DOM
+         `.base`/`.hex` rules (background-color/border) have the same
+         (0,1,0) specificity as a plain "cavi-jack::part(...)" selector
+         would need to beat — as an author style with no !important of its
+         own, it otherwise wins ties by being the later-evaluated
+         stylesheet. */
       cavi-jack {
-        --hex-metal: conic-gradient(
-          from 200deg at 50% 50%,
-          #f4f4f4 0deg,
-          #8f8f8f 35deg,
-          #242424 70deg,
-          #b8b8b8 105deg,
-          #f6f6f6 145deg,
-          #6d6d6d 185deg,
-          #181818 225deg,
-          #d0d0d0 265deg,
-          #f4f4f4 305deg,
-          #7a7a7a 340deg,
-          #f4f4f4 360deg
-        );
         width: 40px !important;
         height: 40px !important;
         box-sizing: border-box !important;
         position: absolute !important;
-        border: none !important;
         /* Jacks are absolutely-positioned children of #panel, coinciding
            on-screen with their .module's opaque background (z-index: 20)
            — without this they'd paint fully hidden behind it. */
         z-index: 25 !important;
-        /* clip-path: polygon(25% 2%, 75% 2%, 100% 50%, 75% 98%, 25% 98%, 0% 50%) !important; */
-        background: var(--hex-metal) !important;
-        filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.75)) !important;
+        /* One shadow for the combined base+hex silhouette, cast once at
+           the host level rather than separately per layer (which would
+           double up/look layered) — filter (not box-shadow) so it isn't
+           clipped away by .hex's own clip-path. */
+        filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.8)) !important;
+      }
+      cavi-jack::part(base) {
+        /* Deliberately darker/flatter (matte gunmetal) than .hex's bright
+           chrome below — a visible tonal step between the two is what
+           actually sells "two different pieces of metal, hex nut on round
+           flange" rather than the eye reading one continuous blob. */
+        border: 1px solid rgba(0, 0, 0, 0.65) !important;
+        background: linear-gradient(180deg, #9a9a9a 0%, #6e6e6e 40%, #3c3c3c 75%, #161616 100%) !important;
+        box-shadow:
+          inset 0 1px 1px rgba(255, 255, 255, 0.3),
+          inset 0 -2px 3px rgba(0, 0, 0, 0.6) !important;
+      }
+      cavi-jack::part(hex) {
+        background: linear-gradient(180deg, #fbfbfb 0%, #d6d6d6 30%, #808080 62%, #2b2b2b 100%) !important;
+        box-shadow:
+          inset 0 2px 2px rgba(255, 255, 255, 0.55),
+          inset 0 -3px 3px rgba(0, 0, 0, 0.6) !important;
       }
       cavi-jack.size-sm {
         width: 30px !important;
@@ -337,7 +353,7 @@
 
       cavi-jack.cavi-magnet-target {
         filter:
-          drop-shadow(0 2px 2px rgba(0, 0, 0, 0.75))
+          drop-shadow(0 3px 3px rgba(0, 0, 0, 0.8))
           drop-shadow(0 0 5px rgba(255, 191, 64, 0.95))
           drop-shadow(0 0 12px rgba(255, 191, 64, 0.6)) !important;
       }
@@ -348,15 +364,15 @@
       }
       cavi-jack.cavi-jack-full {
         filter:
-          drop-shadow(0 2px 2px rgba(0, 0, 0, 0.75))
+          drop-shadow(0 3px 3px rgba(0, 0, 0, 0.8))
           drop-shadow(0 0 5px rgba(255, 60, 60, 0.95))
           drop-shadow(0 0 12px rgba(255, 60, 60, 0.6)) !important;
       }
       /* Persistent, unconditional "at capacity" tell — a small red LED
          baked into the hex face, visible even without hovering/dragging. */
-      cavi-jack.cavi-jack-at-capacity {
+      cavi-jack.cavi-jack-at-capacity::part(hex) {
         background: radial-gradient(circle at 78% 78%, #ff5a4a 0%, #b3170a 40%, transparent 42%),
-          var(--hex-metal) !important;
+          linear-gradient(180deg, #fbfbfb 0%, #d6d6d6 30%, #808080 62%, #2b2b2b 100%) !important;
       }
 
       /* ---------- Cables ---------- */

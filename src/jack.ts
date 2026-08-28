@@ -398,15 +398,26 @@ export class Jack extends HTMLElement {
 
   private render() {
     const color = this.getAttribute('color') || '#333';
-    // Basic default style
+    // Basic default style. The default appearance is a plain circle (the
+    // `.base` layer, exactly as :host used to render on its own) — `:host`
+    // itself carries no visuals now, just sizing/position/cursor, so a
+    // consumer restyling `.base`/`.hex` (via `::part`, see below) never has
+    // to fight a background/border already set at the host level.
+    //
+    // `.hex` is a second, smaller layer with a hexagonal clip-path baked
+    // in, stacked on top of `.base` but with no background of its own by
+    // default — invisible, adding nothing to the default look, until a
+    // consumer styles it (e.g. `cavi-jack::part(hex) { background: ...; }`)
+    // to get a hex nut sitting on a round base/flange (the visible ring
+    // between the two), like a real 1/4" jack socket. `part="..."` on each
+    // exposes them to page-level CSS despite Shadow DOM encapsulation,
+    // without hardcoding any particular metal look into the library itself
+    // — see demo-patchbay.html for a themed example.
     const style = `
             :host {
                 display: block;
                 width: 24px;
                 height: 24px;
-                border-radius: 50%;
-                background-color: ${color};
-                border: 2px solid #555;
                 position: absolute;
                 box-sizing: border-box;
                 z-index: 10; /* Jack under Plug */
@@ -414,9 +425,29 @@ export class Jack extends HTMLElement {
                 cursor: crosshair; /* Hints that dragging from here creates a cable */
                 touch-action: none; /* Prevent the browser from scrolling while dragging on touch */
             }
+            .base {
+                position: absolute;
+                inset: 0;
+                box-sizing: border-box;
+                border-radius: 50%;
+                background-color: ${color};
+                border: 2px solid #555;
+            }
+            .hex {
+                position: absolute;
+                inset: 7%;
+                box-sizing: border-box;
+                /* A true regular hexagon (flat top/bottom, pointed left/
+                   right), not just a rough approximation: fills the box
+                   left-to-right, so its height (width * sin(60deg)) leaves
+                   6.7% padding top and bottom — a shape stretched to fill
+                   the box vertically as well would read as round instead
+                   of hexagonal. */
+                clip-path: polygon(25% 6.7%, 75% 6.7%, 100% 50%, 75% 93.3%, 25% 93.3%, 0% 50%);
+            }
             .inner {
-                width: 8px;
-                height: 8px;
+                width: 16px;
+                height: 16px;
                 background-color: #000;
                 border-radius: 50%;
                 position: absolute;
@@ -433,7 +464,9 @@ export class Jack extends HTMLElement {
       // Default appearance
       this.shadowRoot!.innerHTML = `
                 <style>${style}</style>
-                <div class="inner"></div>
+                <div class="base" part="base"></div>
+                <div class="hex" part="hex"></div>
+                <div class="inner" part="inner"></div>
              `;
     }
   }
