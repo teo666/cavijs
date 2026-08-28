@@ -5,14 +5,22 @@ import type { IInteractionController } from './types';
 
 /**
  * The standard pointer/mouse/touch interaction: everything Jack/Plug used
- * to handle internally (drag an existing Plug, create a cable from a Jack
- * via right-click/Shift+click, click-to-carry, the Shift/hover-distance
- * "full jack" preview, occlusion routing between an attached Plug and the
- * Jack it sits on) — driven entirely through Jack/Plug's public domain API
- * (createCable/updateCableSession/finishCableSession/cancelCableSession,
- * beginDrag/updateDragPosition/endDrag/cancelDrag, findSnapTarget,
- * setShiftHeld/setPointerHoverPosition/setDragActive), never their
- * internals.
+ * to handle internally (drag an existing Plug, create a cable from a Jack,
+ * click-to-carry, the hover-spread affordance that fans a Jack's Plugs out
+ * so each can be individually picked, occlusion routing between an
+ * attached Plug and the Jack it sits on) — driven entirely through
+ * Jack/Plug's public domain API (createCable/updateCableSession/
+ * finishCableSession/cancelCableSession, beginDrag/updateDragPosition/
+ * endDrag/cancelDrag, findSnapTarget, setPointerHoverPosition/
+ * setDragActive), never their internals.
+ *
+ * Every gesture is plain left-click (or a touch tap) — there is no right-
+ * click or modifier-key branch. Whether a click on a Plug relocates that
+ * Plug or starts a new cable from its Jack depends entirely on whether that
+ * Jack is currently "spread" (see Jack's hover-spread mechanic): a docked
+ * Plug (not yet spread out) sits exactly on its Jack and forwards the click
+ * to the Jack, same as clicking the Jack itself; a spread-out Plug is
+ * clicked directly since it now occupies its own screen position.
  *
  * A single instance is meant to be attached to the whole document (see
  * <cavi-interaction> in interactionwc.ts) — Jack/Plug don't install any
@@ -26,10 +34,6 @@ export class StandardInteractionController implements IInteractionController {
     if (this._attached) return;
     this._attached = true;
     document.addEventListener('pointerdown', this._handlePointerDown);
-    document.addEventListener('contextmenu', this._handleContextMenu);
-    document.addEventListener('keydown', this._handleKeyDown);
-    document.addEventListener('keyup', this._handleKeyUp);
-    window.addEventListener('blur', this._handleBlur);
     document.addEventListener('pointermove', this._handleHoverMove);
   }
 
@@ -37,14 +41,9 @@ export class StandardInteractionController implements IInteractionController {
     if (!this._attached) return;
     this._attached = false;
     document.removeEventListener('pointerdown', this._handlePointerDown);
-    document.removeEventListener('contextmenu', this._handleContextMenu);
-    document.removeEventListener('keydown', this._handleKeyDown);
-    document.removeEventListener('keyup', this._handleKeyUp);
-    window.removeEventListener('blur', this._handleBlur);
     document.removeEventListener('pointermove', this._handleHoverMove);
-    // Leaving Shift/hover state stuck would strand every Jack's full-jack
-    // preview in whatever state it was in at the moment of detach.
-    Jack.setShiftHeld(false);
+    // Leaving hover state stuck would strand every Jack's hover-spread/
+    // full-jack preview in whatever state it was in at the moment of detach.
     Jack.setPointerHoverPosition(null, null);
   }
 
@@ -56,70 +55,38 @@ export class StandardInteractionController implements IInteractionController {
     return null;
   }
 
-  private _handleKeyDown = (e: KeyboardEvent): void => {
-    if (e.key === 'Shift') Jack.setShiftHeld(true);
-  };
-
-  private _handleKeyUp = (e: KeyboardEvent): void => {
-    if (e.key === 'Shift') Jack.setShiftHeld(false);
-  };
-
-  private _handleBlur = (): void => {
-    // A keyup can be missed if focus leaves the page while Shift is held
-    // (e.g. alt-tab) — clear the stuck state once focus returns elsewhere.
-    Jack.setShiftHeld(false);
-  };
-
   private _handleHoverMove = (e: PointerEvent): void => {
     Jack.setPointerHoverPosition(e.clientX, e.clientY);
   };
 
-  /**
-   * A Jack (permanent cable-creation drag source) or a Plug currently
-   * attached to one would otherwise have its native context menu interrupt
-   * a right-click drag.
-   */
-  private _handleContextMenu = (e: MouseEvent): void => {
-    const el = this._closestCaviElement(e);
-    if (el instanceof Jack) e.preventDefault();
-    else if (el instanceof Plug && el.jack) e.preventDefault();
-  };
-
   private _handlePointerDown = (e: PointerEvent): void => {
+    if (e.button !== 0) return;
     const el = this._closestCaviElement(e);
     if (!el) return;
 
-    const isRightClick = e.button === 2;
-    const isModifiedLeftClick = e.button === 0 && e.shiftKey;
-
     if (el instanceof Plug) {
-      // A Plug attached to a Jack sits fixed exactly on that Jack's center
-      // with a higher z-index, occluding it — a right-click/Shift+click
-      // meant to start a new cable from that Jack physically lands here
-      // instead. Forward it verbatim rather than silently swallowing it.
-      if ((isRightClick || isModifiedLeftClick) && el.jack) {
+      // A Plug not currently spread out sits fixed exactly on its Jack's
+      // center with a higher z-index, occluding it — a click meant to
+      // start a new cable from that Jack physically lands here instead.
+      // Forward it verbatim rather than silently swallowing it.
+      if (!el.isSpread() && el.jack) {
         this._startCableCreation(el.jack, e);
         return;
       }
-      // Shift is reserved for starting a new cable from a Jack — don't
-      // also start dragging this plug's own node while it's held.
-      if (e.button === 0 && !e.shiftKey) {
-        this._startPlugDrag(el, e);
-      }
+      this._startPlugDrag(el, e);
       return;
     }
 
     if (el instanceof Jack) {
-      if (isRightClick || isModifiedLeftClick) {
-        this._startCableCreation(el, e);
-      }
+      this._startCableCreation(el, e);
     }
   };
 
   /**
    * Drives a Plug drag from pointerdown to release, entirely through
-   * Plug's public API. Handles both 'hold' (setPointerCapture) and 'click'
-   * (click-to-carry) modes — see Cavi.setDragMode.
+   * Plug's public API. Always click-to-carry for mouse/pen; touch keeps
+   * press-and-drag (setPointerCapture) since it has no scroll conflict to
+   * work around and is the natural touch gesture.
    */
   private _startPlugDrag(plug: Plug, e: PointerEvent): void {
     e.preventDefault();
@@ -127,11 +94,7 @@ export class StandardInteractionController implements IInteractionController {
     Jack.setDragActive(true);
     plug.beginDrag();
 
-    // Touch always uses 'hold': there's no scroll conflict to work around
-    // (touch-action: none already keeps a touch drag from scrolling the
-    // page), and press-and-drag-with-your-finger is already the natural
-    // touch gesture.
-    const clickToCarry = Cavi.shared?.getDragMode?.() === 'click' && e.pointerType !== 'touch';
+    const clickToCarry = e.pointerType !== 'touch';
 
     const onHoldMove = (ev: PointerEvent): void => {
       if (ev.pointerId !== pointerId) return;
@@ -207,8 +170,8 @@ export class StandardInteractionController implements IInteractionController {
 
   /**
    * Drives a cable-creation session from pointerdown to release, entirely
-   * through Jack's public session API. Same 'hold'/'click' handling as
-   * _startPlugDrag above.
+   * through Jack's public session API. Same click-to-carry/hold handling
+   * as _startPlugDrag above.
    */
   private _startCableCreation(jack: Jack, e: PointerEvent): void {
     const session = jack.createCable(e.clientX, e.clientY);
@@ -216,12 +179,9 @@ export class StandardInteractionController implements IInteractionController {
 
     e.preventDefault();
     const pointerId = e.pointerId;
-    // Shift/right-click is only needed to *start* this drag, not to keep
-    // it going — this keeps the full-jack forbidden-hover preview correct
-    // for the whole drag even if Shift is released partway through.
     Jack.setDragActive(true);
 
-    const clickToCarry = Cavi.shared?.getDragMode?.() === 'click' && e.pointerType !== 'touch';
+    const clickToCarry = e.pointerType !== 'touch';
 
     const onHoldMove = (ev: PointerEvent): void => {
       if (ev.pointerId !== pointerId) return;

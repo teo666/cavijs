@@ -8,23 +8,28 @@ import type { CaviWireElement } from './wirewc';
 
 /**
  * StandardInteractionController is the only thing in this codebase that
- * still listens for real pointer/keyboard events — these tests dispatch
- * real PointerEvent/KeyboardEvent/MouseEvent objects against a document
- * with a controller attached, and assert on the resulting Jack/Plug domain
- * state. Jack/Plug's own domain behavior (given a call to their public API)
- * is covered without any event simulation in jack.test.ts/plug.test.ts.
+ * still listens for real pointer events — these tests dispatch real
+ * PointerEvent objects against a document with a controller attached, and
+ * assert on the resulting Jack/Plug domain state. Jack/Plug's own domain
+ * behavior (given a call to their public API, including the hover-spread
+ * mechanic itself) is covered without any event simulation in
+ * jack.test.ts/plug.test.ts — here we only care about which gesture
+ * (a click on a Jack, a docked Plug, or a spread-out Plug) triggers which
+ * domain call. Every gesture is plain left-click (button 0) or a touch tap
+ * — there is no right-click or modifier-key branch, and mouse/pen always
+ * use click-to-carry (touch keeps press-and-drag).
  */
 
-function rect(x: number, y: number): DOMRect {
+function rect(x: number, y: number, size = 0): DOMRect {
   return {
-    left: x,
-    top: y,
-    right: x,
-    bottom: y,
-    width: 0,
-    height: 0,
-    x,
-    y,
+    left: x - size / 2,
+    top: y - size / 2,
+    right: x + size / 2,
+    bottom: y + size / 2,
+    width: size,
+    height: size,
+    x: x - size / 2,
+    y: y - size / 2,
     toJSON() {
       return this;
     },
@@ -76,10 +81,10 @@ class FakeWire {
 }
 
 class FakeCavi {
-  public dragMode: 'hold' | 'click' = 'hold';
-  getDragMode(): 'hold' | 'click' {
-    return this.dragMode;
-  }
+  public getCableDropBehavior = (): 'cancel' | 'dangle' | 'detach' => 'detach';
+  public getPlugSpreadMode = (): 'towardOther' | 'radial' => 'towardOther';
+  public getPlugSpreadRadiusMultiplier = (): number => 1.8;
+  public getPlugSpreadRecompactDelayMs = (): number => 500;
   addWire(x1: number, y1: number, x2: number, y2: number, nodes: number): FakeWire {
     return new FakeWire(x1, y1, x2, y2, nodes);
   }
@@ -97,14 +102,13 @@ function installFakeCavi(): FakeCavi {
 
 function pointerDown(
   target: HTMLElement,
-  opts: { clientX: number; clientY: number; button?: number; shiftKey?: boolean; pointerId?: number; pointerType?: string }
+  opts: { clientX: number; clientY: number; button?: number; pointerId?: number; pointerType?: string }
 ): void {
   target.dispatchEvent(
     new PointerEvent('pointerdown', {
       bubbles: true,
       composed: true,
       button: opts.button ?? 0,
-      shiftKey: opts.shiftKey ?? false,
       clientX: opts.clientX,
       clientY: opts.clientY,
       pointerId: opts.pointerId ?? 1,
@@ -128,13 +132,19 @@ function pointerUp(target: HTMLElement, clientX: number, clientY: number, pointe
 let controller: StandardInteractionController;
 
 afterEach(() => {
+  // A couple of trigger-gating tests intentionally start a click-to-carry
+  // gesture (plug drag or cable creation) without ever finishing it — left
+  // alone, that would both leak Jack's static drag-active counter and, more
+  // subtly, leave that gesture's document-level pointerdown/pointermove/
+  // pointercancel listeners attached forever, silently hijacking the very
+  // next test's first pointerdown (the capture-phase "finish" listener has
+  // no pointerId filter and calls stopPropagation()). A broadcast
+  // pointercancel cleanly unwinds any such straggler via its own
+  // onCarryCancel handler; harmless no-op if nothing is in progress.
+  document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true }));
   controller?.detach();
   document.body.innerHTML = '';
   Cavi.shared = null;
-  // A couple of trigger-gating tests intentionally start a cable-creation
-  // drag without ever finishing it (pointerup/pointercancel), since they
-  // only care whether it started — left alone, that would permanently leak
-  // Jack's static drag-active counter into every later test in this file.
   (Jack as unknown as { _activeDragCount: number })._activeDragCount = 0;
 });
 
@@ -144,77 +154,9 @@ function attachController(): StandardInteractionController {
   return controller;
 }
 
-describe('StandardInteractionController — Plug drag trigger gating', () => {
-  it('starts a drag on a plain left click and snaps on release', () => {
-    attachController();
-    const jack = makeJack('j1', 100, 100, { type: 'audio' });
-    const { plug, node } = makePlug(101, 100, 'audio');
-
-    pointerDown(plug, { clientX: 101, clientY: 100 });
-    pointerUp(plug, 101, 100);
-
-    expect(node.fixed).toBe(true);
-    expect(jack.plugCount).toBe(1);
-  });
-
-  it('does not start a drag when Shift is held (reserved for cable creation from a Jack)', () => {
-    attachController();
-    const jack = makeJack('j1', 100, 100, { type: 'audio' });
-    const { plug, node } = makePlug(101, 100, 'audio');
-
-    pointerDown(plug, { clientX: 101, clientY: 100, shiftKey: true });
-    pointerMove(plug, 101, 100);
-    pointerUp(plug, 101, 100);
-
-    expect(node.fixed).toBe(false);
-    expect(jack.plugCount).toBe(0);
-    expect(plug.hasAttribute('plugged')).toBe(false);
-  });
-
-  it('does nothing on a right-click over a plug not attached to any jack', () => {
-    attachController();
-    const { plug, node } = makePlug(500, 500, 'audio');
-
-    pointerDown(plug, { clientX: 500, clientY: 500, button: 2 });
-
-    expect(node.fixed).toBe(false);
-  });
-});
-
-describe('StandardInteractionController — Plug drag, hold mode', () => {
-  it('regression: re-dragging an already-plugged plug unplugs it immediately, before drop', () => {
-    attachController();
-    const jack = makeJack('j1', 100, 100, { type: 'audio' });
-    const { plug } = makePlug(101, 100, 'audio');
-    pointerDown(plug, { clientX: 101, clientY: 100 });
-    pointerUp(plug, 101, 100);
-    expect(jack.plugCount).toBe(1);
-
-    pointerDown(plug, { clientX: 101, clientY: 100, pointerId: 2 }); // no matching pointerup yet
-
-    expect(jack.plugCount).toBe(0);
-    expect(plug.hasAttribute('plugged')).toBe(false);
-
-    pointerUp(plug, 101, 100, 2);
-  });
-
-  it('freeze-on-drop keeps the node fixed in place on a cancelled drag', () => {
-    attachController();
-    const { plug, node } = makePlug(500, 500, 'audio');
-    plug.setAttribute('freeze-on-drop', '');
-
-    pointerDown(plug, { clientX: 500, clientY: 500 });
-    plug.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 1 }));
-
-    expect(node.fixed).toBe(true);
-    expect(plug.hasAttribute('plugged')).toBe(false);
-  });
-});
-
-describe('StandardInteractionController — Plug drag, click-to-carry mode', () => {
+describe('StandardInteractionController — Plug drag (unattached plug, always click-to-carry)', () => {
   it('picks up on a click (no release needed), follows document pointermove, and snaps on the next click', () => {
-    const fake = installFakeCavi();
-    fake.dragMode = 'click';
+    installFakeCavi();
     attachController();
     const jack = makeJack('j1', 100, 100, { type: 'audio' });
     const { plug, node } = makePlug(500, 500, 'audio');
@@ -236,8 +178,7 @@ describe('StandardInteractionController — Plug drag, click-to-carry mode', () 
   });
 
   it('ignores a non-primary-button click while carrying — only a primary click finishes it', () => {
-    const fake = installFakeCavi();
-    fake.dragMode = 'click';
+    installFakeCavi();
     attachController();
     const jack = makeJack('j1', 100, 100, { type: 'audio' });
     const { plug } = makePlug(500, 500, 'audio');
@@ -252,9 +193,8 @@ describe('StandardInteractionController — Plug drag, click-to-carry mode', () 
     expect(jack.plugCount).toBe(1);
   });
 
-  it('keeps using hold-mode (press-drag-release) for touch even when click-to-carry is enabled', () => {
-    const fake = installFakeCavi();
-    fake.dragMode = 'click';
+  it('keeps using hold-mode (press-drag-release) for touch even though mouse/pen always click-to-carry', () => {
+    installFakeCavi();
     attachController();
     const jack = makeJack('j1', 100, 100, { type: 'audio' });
     const { plug } = makePlug(101, 100, 'audio');
@@ -270,109 +210,97 @@ describe('StandardInteractionController — Plug drag, click-to-carry mode', () 
     pointerUp(plug, 101, 100);
     expect(jack.plugCount).toBe(1);
   });
-});
 
-describe('StandardInteractionController — occlusion: Jack cable creation via an attached Plug', () => {
-  it('forwards a right-click on an attached plug to start a new cable from its jack', () => {
+  it('regression: re-dragging an already-plugged, unspread plug forwards to its jack instead of moving it', () => {
     installFakeCavi();
     attachController();
     const jack = makeJack('j1', 100, 100, { type: 'audio', 'max-plugs': '2' });
     const { plug } = makePlug(101, 100, 'audio');
     pointerDown(plug, { clientX: 101, clientY: 100 });
-    pointerUp(plug, 101, 100);
+    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 0 }));
     expect(jack.plugCount).toBe(1);
 
-    pointerDown(plug, { clientX: 101, clientY: 100, button: 2, pointerId: 2 });
+    // The plug never spread (no hover happened) — clicking it again lands
+    // on a docked Plug sitting on its Jack, so it forwards to a new cable
+    // instead of picking the existing one up.
+    pointerDown(plug, { clientX: 101, clientY: 100, pointerId: 3 });
+
+    expect(document.querySelector('cavi-wire')).not.toBeNull();
+    expect(jack.plugCount).toBe(2);
+  });
+
+  it('freeze-on-drop keeps the node fixed in place on a cancelled drag', () => {
+    installFakeCavi();
+    attachController();
+    const { plug, node } = makePlug(500, 500, 'audio');
+    plug.setAttribute('freeze-on-drop', '');
+
+    pointerDown(plug, { clientX: 500, clientY: 500 });
+    plug.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 1 }));
+
+    expect(node.fixed).toBe(true);
+    expect(plug.hasAttribute('plugged')).toBe(false);
+  });
+});
+
+describe('StandardInteractionController — docked Plug forwards to its Jack', () => {
+  it('forwards a click on an attached, never-spread plug to start a new cable from its jack', () => {
+    installFakeCavi();
+    attachController();
+    const jack = makeJack('j1', 100, 100, { type: 'audio', 'max-plugs': '2' });
+    const { plug } = makePlug(101, 100, 'audio');
+    pointerDown(plug, { clientX: 101, clientY: 100 });
+    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 0 }));
+    expect(jack.plugCount).toBe(1);
+
+    pointerDown(plug, { clientX: 101, clientY: 100, pointerId: 3 });
 
     expect(document.querySelector('cavi-wire')).not.toBeNull();
     expect(jack.plugCount).toBe(2); // the pre-existing plug, plus the new cable's origin terminal
-
-    // The forwarded gesture's listeners are on the jack (the cable-creation
-    // drag source), not the occluded plug that physically received the
-    // pointerdown — same as a real browser, where pointer capture keeps
-    // delivering events to the jack regardless of what's visually on top.
-    pointerUp(jack, 101, 100, 2);
   });
 
-  it('forwards a Shift+left-click on an attached plug too', () => {
-    installFakeCavi();
-    attachController();
-    const jack = makeJack('j1', 100, 100, { type: 'audio', 'max-plugs': '2' });
-    const { plug } = makePlug(101, 100, 'audio');
-    pointerDown(plug, { clientX: 101, clientY: 100 });
-    pointerUp(plug, 101, 100);
-
-    pointerDown(plug, { clientX: 101, clientY: 100, shiftKey: true, pointerId: 2 });
-
-    expect(document.querySelector('cavi-wire')).not.toBeNull();
-    pointerUp(jack, 101, 100, 2);
-  });
-
-  it('does not forward a plain left-click on an attached plug — it still drags the plug itself', () => {
-    installFakeCavi();
-    attachController();
-    const jack = makeJack('j1', 100, 100, { type: 'audio' });
-    const { plug } = makePlug(101, 100, 'audio');
-    pointerDown(plug, { clientX: 101, clientY: 100 });
-    pointerUp(plug, 101, 100);
-    expect(jack.plugCount).toBe(1);
-
-    pointerDown(plug, { clientX: 101, clientY: 100, pointerId: 2 });
-
-    expect(document.querySelector('cavi-wire')).toBeNull();
-    expect(jack.plugCount).toBe(0); // unplugged immediately by its own re-drag
-
-    pointerUp(plug, 101, 100, 2);
-  });
-
-  it('does not forward a right-click or Shift+click on a plug that is not attached to any jack', () => {
+  it('does not forward a click on a plug that is not attached to any jack — it drags the plug itself', () => {
     installFakeCavi();
     attachController();
     makeJack('j1', 100, 100, { type: 'audio' });
-    const { plug } = makePlug(500, 500, 'audio'); // never dragged/snapped
+    const { plug, node } = makePlug(500, 500, 'audio'); // never dragged/snapped
 
-    pointerDown(plug, { clientX: 500, clientY: 500, button: 2 });
-    pointerDown(plug, { clientX: 500, clientY: 500, shiftKey: true, pointerId: 2 });
+    pointerDown(plug, { clientX: 500, clientY: 500 });
 
     expect(document.querySelector('cavi-wire')).toBeNull();
+    expect(node.fixed).toBe(true); // picked up for its own drag instead
   });
 });
 
 describe('StandardInteractionController — Jack cable-creation trigger gating', () => {
-  it('does nothing on a plain left click (no modifier)', () => {
+  it('starts a new cable on a plain left click on an empty jack', () => {
     installFakeCavi();
     attachController();
     const jack = makeJack('a', 0, 0, { type: 'audio' });
     pointerDown(jack, { clientX: 0, clientY: 0 });
-    expect(document.querySelector('cavi-wire')).toBeNull();
-  });
-
-  it('starts on right-click', () => {
-    installFakeCavi();
-    attachController();
-    const jack = makeJack('a', 0, 0, { type: 'audio' });
-    pointerDown(jack, { clientX: 0, clientY: 0, button: 2 });
     expect(document.querySelector('cavi-wire')).not.toBeNull();
-  });
-
-  it('starts on shift+left-click', () => {
-    installFakeCavi();
-    attachController();
-    const jack = makeJack('a', 0, 0, { type: 'audio' });
-    pointerDown(jack, { clientX: 0, clientY: 0, shiftKey: true });
-    expect(document.querySelector('cavi-wire')).not.toBeNull();
+    expect(jack.plugCount).toBe(1);
   });
 
   it('does not start when the jack is already at max-plugs', () => {
     installFakeCavi();
     attachController();
     const jack = makeJack('a', 0, 0, { type: 'audio', 'max-plugs': '1' });
-    jack.attach({} as unknown as Plug);
-    pointerDown(jack, { clientX: 0, clientY: 0, button: 2 });
+    const { plug } = makePlug(0, 0, 'audio');
+    plug.attach(jack);
+    pointerDown(jack, { clientX: 0, clientY: 0 });
     expect(document.querySelector('cavi-wire')).toBeNull();
   });
 
   it('does nothing if Cavi is not ready yet', () => {
+    attachController();
+    const jack = makeJack('a', 0, 0, { type: 'audio' });
+    pointerDown(jack, { clientX: 0, clientY: 0 });
+    expect(document.querySelector('cavi-wire')).toBeNull();
+  });
+
+  it('ignores a right-click on a jack — right-click is not part of the interaction anymore', () => {
+    installFakeCavi();
     attachController();
     const jack = makeJack('a', 0, 0, { type: 'audio' });
     pointerDown(jack, { clientX: 0, clientY: 0, button: 2 });
@@ -380,15 +308,14 @@ describe('StandardInteractionController — Jack cable-creation trigger gating',
   });
 });
 
-describe('StandardInteractionController — Jack cable creation, click-to-carry mode', () => {
+describe('StandardInteractionController — Jack cable creation (always click-to-carry for mouse)', () => {
   it('starts on a click (no release needed), grows via document pointermove, and snaps on the next click', () => {
-    const fake = installFakeCavi();
-    fake.dragMode = 'click';
+    installFakeCavi();
     attachController();
     const origin = makeJack('origin', 0, 0, { type: 'audio' });
     const target = makeJack('target', 100, 0, { type: 'audio' });
 
-    pointerDown(origin, { clientX: 10, clientY: 0, button: 2 });
+    pointerDown(origin, { clientX: 10, clientY: 0 });
     const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
     expect(wireEl).not.toBeNull();
 
@@ -405,14 +332,13 @@ describe('StandardInteractionController — Jack cable creation, click-to-carry 
     expect(followPlugEl.hasAttribute('plugged')).toBe(true);
   });
 
-  it('keeps using hold-mode (press-drag-release) for touch even when click-to-carry is enabled', () => {
-    const fake = installFakeCavi();
-    fake.dragMode = 'click';
+  it('keeps using hold-mode (press-drag-release) for touch', () => {
+    installFakeCavi();
     attachController();
     const origin = makeJack('origin', 0, 0, { type: 'audio' });
     const target = makeJack('target', 100, 0, { type: 'audio' });
 
-    pointerDown(origin, { clientX: 10, clientY: 0, button: 2, pointerType: 'touch' });
+    pointerDown(origin, { clientX: 10, clientY: 0, pointerType: 'touch' });
     const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
     const followPlugEl = wireEl.querySelectorAll('cavi-plug')[1] as HTMLElement;
     vi.spyOn(followPlugEl, 'getBoundingClientRect').mockReturnValue(rect(100, 0));
@@ -425,75 +351,41 @@ describe('StandardInteractionController — Jack cable creation, click-to-carry 
   });
 });
 
-describe('StandardInteractionController — contextmenu suppression', () => {
-  it('prevents the native context menu on a Jack', () => {
-    attachController();
-    const jack = makeJack('j1', 0, 0, { type: 'audio' });
-
-    const evt = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
-    jack.dispatchEvent(evt);
-
-    expect(evt.defaultPrevented).toBe(true);
-  });
-
-  it('prevents the native context menu on a Plug attached to a jack', () => {
+describe('StandardInteractionController — spread Plug is picked directly instead of forwarding', () => {
+  it('clicking a plug once it has spread away from its jack center relocates it, not a new cable', () => {
     installFakeCavi();
     attachController();
-    makeJack('j1', 100, 100, { type: 'audio' });
-    const { plug } = makePlug(101, 100, 'audio');
-    pointerDown(plug, { clientX: 101, clientY: 100 });
-    pointerUp(plug, 101, 100);
+    // A sizeable jack (non-zero rect) so hover-spread has room to compute a
+    // real spread radius from _hoverRadius().
+    const jack = document.createElement('cavi-jack') as Jack;
+    jack.id = 'j1';
+    jack.setAttribute('type', 'audio');
+    jack.setAttribute('max-plugs', '2');
+    document.body.appendChild(jack);
+    vi.spyOn(jack, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 24));
 
-    const evt = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
-    plug.dispatchEvent(evt);
+    const { plug } = makePlug(0, 0, 'audio');
+    plug.attach(jack);
+    vi.spyOn(plug, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 24));
 
-    expect(evt.defaultPrevented).toBe(true);
-  });
+    // Hovering right at the jack's center is within its hover radius (half
+    // the mocked 24px size) — this triggers the spread, moving the plug's
+    // node (and so its rendered position) away from center.
+    pointerMove(jack, 0, 0);
+    expect(plug.isSpread()).toBe(true);
 
-  it('does not prevent the context menu on a plug that is not attached to any jack', () => {
-    attachController();
-    const { plug } = makePlug(500, 500, 'audio');
+    // Click the plug element directly — since it's spread, this must
+    // relocate it rather than forward to the jack, regardless of where the
+    // browser would compute its (mocked, now-stale) bounding rect.
+    pointerDown(plug, { clientX: 0, clientY: 0, pointerId: 2 });
 
-    const evt = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
-    plug.dispatchEvent(evt);
-
-    expect(evt.defaultPrevented).toBe(false);
-  });
-});
-
-describe('StandardInteractionController — Shift/hover "full jack" preview', () => {
-  it('shows the forbidden cursor and full-class only once both hovered AND Shift is held', () => {
-    attachController();
-    const jack = makeJack('full', 0, 0, { type: 'audio', 'max-plugs': '1' });
-    jack.attach({} as unknown as Plug);
-
-    document.dispatchEvent(new PointerEvent('pointermove', { clientX: 0, clientY: 0 }));
-    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
-
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
-    expect(jack.classList.contains('cavi-jack-full')).toBe(true);
-    expect(jack.style.cursor).toBe('not-allowed');
-
-    document.dispatchEvent(new KeyboardEvent('keyup', { key: 'Shift', bubbles: true }));
-    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
-  });
-
-  it('clears the Shift-held state on window blur', () => {
-    attachController();
-    const jack = makeJack('full', 0, 0, { type: 'audio', 'max-plugs': '1' });
-    jack.attach({} as unknown as Plug);
-
-    document.dispatchEvent(new PointerEvent('pointermove', { clientX: 0, clientY: 0 }));
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
-    expect(jack.classList.contains('cavi-jack-full')).toBe(true);
-
-    window.dispatchEvent(new Event('blur'));
-    expect(jack.classList.contains('cavi-jack-full')).toBe(false);
+    expect(document.querySelector('cavi-wire')).toBeNull();
   });
 });
 
 describe('StandardInteractionController — detach', () => {
   it('stops reacting to pointer events once detached', () => {
+    installFakeCavi();
     attachController();
     const jack = makeJack('j1', 100, 100, { type: 'audio' });
     const { plug, node } = makePlug(101, 100, 'audio');
@@ -507,16 +399,19 @@ describe('StandardInteractionController — detach', () => {
     expect(jack.plugCount).toBe(0);
   });
 
-  it('clears any stuck Shift/hover state on detach', () => {
+  it('clears the tracked hover position on detach, so a full-jack preview held by an active drag disappears', () => {
+    installFakeCavi();
     attachController();
     const jack = makeJack('full', 0, 0, { type: 'audio', 'max-plugs': '1' });
-    jack.attach({} as unknown as Plug);
+    const { plug } = makePlug(0, 0, 'audio');
+    plug.attach(jack);
     document.dispatchEvent(new PointerEvent('pointermove', { clientX: 0, clientY: 0 }));
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Shift', bubbles: true }));
+    Jack.setDragActive(true); // simulate an in-progress drag showing the forbidden preview
     expect(jack.classList.contains('cavi-jack-full')).toBe(true);
 
     controller.detach();
 
     expect(jack.classList.contains('cavi-jack-full')).toBe(false);
+    Jack.setDragActive(false);
   });
 });

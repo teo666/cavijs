@@ -142,12 +142,12 @@ function wireUpControls(cavi: Cavi, panel: HTMLElement): void {
 }
 
 function main(): void {
-  // <cavi-world id="panel" gravity-y="5" drag-mode="click"> (index3.html)
-  // now owns WASM init, canvas creation, and the render loop — see
-  // src/worldwc.ts. gravity/debug-draw-nodes/drag-mode all match what this
-  // main() used to set imperatively (gravity-y="5" is worldwc's own default;
-  // debug-nodes starts unset/false, matching the unchecked "show physics
-  // nodes" checkbox below, which then drives it live).
+  // <cavi-world id="panel" gravity-y="5"> (index3.html) now owns WASM init,
+  // canvas creation, and the render loop — see src/worldwc.ts. gravity/
+  // debug-draw-nodes match what this main() used to set imperatively
+  // (gravity-y="5" is worldwc's own default; debug-nodes starts
+  // unset/false, matching the unchecked "show physics nodes" checkbox
+  // below, which then drives it live).
   const panel = document.getElementById('panel') as CaviWorldElement;
 
   materializeJacks(panel);

@@ -6,9 +6,9 @@ import { Node } from './node';
 /**
  * Plug is a pure domain/data element — these tests drive it entirely
  * through its public API (beginDrag/updateDragPosition/endDrag/
- * cancelDrag), with no PointerEvent simulation at all. Which gesture
- * triggers which of these calls (including click-to-carry, the Jack
- * occlusion-forwarding case, and context-menu suppression) is
+ * cancelDrag/setSpreadPosition), with no PointerEvent simulation at all.
+ * Which gesture triggers which of these calls (including click-to-carry
+ * and the Jack occlusion-forwarding case) is
  * StandardInteractionController's responsibility, tested separately in
  * interaction.test.ts.
  */
@@ -240,5 +240,69 @@ describe('Plug.jack accessor', () => {
 
     plug.beginDrag();
     expect(plug.jack).toBeNull();
+  });
+});
+
+describe('Plug.isSpread', () => {
+  it('is false while unplugged', () => {
+    const { plug } = makePlug(0, 0);
+    expect(plug.isSpread()).toBe(false);
+  });
+
+  it('delegates to its attached Jack.isSpread() once plugged in', () => {
+    const jack = makeJack('j1', 0, 0, { type: 'audio' });
+    const { plug } = makePlug(0, 0, 'audio');
+    drag(plug, 0, 0);
+
+    expect(plug.jack).toBe(jack);
+    expect(plug.isSpread()).toBe(false); // jack never hovered — driving the spread itself is jack.test.ts's job
+  });
+});
+
+describe('Plug.getOtherEndCenter', () => {
+  it('returns null when this Plug has no sibling Plug (e.g. not inside a wire)', () => {
+    const { plug } = makePlug(0, 0);
+    expect(plug.getOtherEndCenter()).toBeNull();
+  });
+
+  it("returns the sibling <cavi-plug>'s on-screen center from the same parent element", () => {
+    const wireEl = document.createElement('div');
+    document.body.appendChild(wireEl);
+    const a = document.createElement('cavi-plug') as Plug;
+    const b = document.createElement('cavi-plug') as Plug;
+    wireEl.appendChild(a);
+    wireEl.appendChild(b);
+    vi.spyOn(b, 'getBoundingClientRect').mockReturnValue(rect(50, 60));
+
+    expect(a.getOtherEndCenter()).toEqual({ x: 50, y: 60 });
+  });
+});
+
+describe('Plug.setSpreadPosition', () => {
+  it('moves the node and rendered position without touching plugged/jack state', () => {
+    const jack = makeJack('j1', 100, 100, { type: 'audio' });
+    const { plug, node } = makePlug(101, 100, 'audio');
+    drag(plug, 101, 100);
+    expect(plug.jack).toBe(jack);
+
+    plug.setSpreadPosition(40, 30);
+
+    expect(node.x).toBe(40);
+    expect(node.y).toBe(30);
+    expect(plug.style.left).toBe('40px');
+    expect(plug.style.top).toBe('30px');
+    expect(plug.jack).toBe(jack); // still attached — spreading doesn't unplug
+  });
+
+  it('is a no-op mid-drag, so it never fights an in-progress user drag', () => {
+    const { plug, node } = makePlug(0, 0, 'audio');
+    plug.beginDrag();
+    plug.updateDragPosition(10, 10);
+
+    plug.setSpreadPosition(999, 999);
+
+    expect(node.x).toBe(10);
+    expect(node.y).toBe(10);
+    plug.cancelDrag();
   });
 });

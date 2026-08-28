@@ -17,17 +17,44 @@ export class Cavi {
     private world: World;
     private wasm: InitOutput | null = null;
     /**
-     * How Plug/Jack interpret a pointer-driven drag: 'hold' (default) is
-     * today's press-drag-release, gated by setPointerCapture; 'click' is
-     * click-to-carry — a click detaches/creates and starts following the
-     * cursor with no button held (so native scrolling, including trackpad
-     * gestures, is never blocked), and a second click attaches to a jack
-     * underneath or drops in place. Pure JS-side interaction state, not a
-     * physics concept — never touches World/WASM. World-level rather than
-     * per-element so it's one app-wide interaction choice, not something
-     * that could vary jack-by-jack.
+     * What happens to a brand-new cable (created by clicking an
+     * empty/exposed Jack — see Jack.createCable/finishCableSession) when
+     * it's released over empty space, with no compatible Jack underneath:
+     * - 'dangle': the free end is left unfixed (falls/swings under physics)
+     *   but the cable stays attached at its origin Jack.
+     * - 'detach' (default): both ends are unfixed — the whole cable falls
+     *   away disconnected, but is not removed from the DOM.
+     * - 'cancel': the in-progress <cavi-wire> is removed outright, as if it
+     *   never existed.
+     * Only applies to a brand-new cable-creation session — relocating an
+     * existing two-ended cable's Plug and dropping it on empty space always
+     * keeps the 'dangle' behavior (see Plug.endDrag/_settleDrag).
      */
-    private dragMode: 'hold' | 'click' = 'hold';
+    private cableDropBehavior: 'cancel' | 'dangle' | 'detach' = 'detach';
+    /**
+     * How a Jack's already-attached Plugs are spread out on hover (see
+     * Jack's hover-spread mechanic) so each can be individually clicked to
+     * relocate it, while the jack's own center becomes clickable again to
+     * start a new cable:
+     * - 'towardOther' (default): each Plug spreads toward its cable's far
+     *   end, with pairwise angular collision avoidance so near-parallel
+     *   cables never overlap.
+     * - 'radial': Plugs are always evenly distributed around the Jack,
+     *   ignoring cable direction.
+     */
+    private plugSpreadMode: 'towardOther' | 'radial' = 'towardOther';
+    /**
+     * How far Plugs spread from their Jack's center on hover, as a
+     * multiplier of the Jack's own rendered half-size (so bigger jacks
+     * spread their plugs further out).
+     */
+    private plugSpreadRadiusMultiplier: number = 1.8;
+    /**
+     * How long (ms) a Jack waits, after the pointer leaves its spread-out
+     * hover area, before recompacting its Plugs back to its center. Resets
+     * whenever the pointer re-enters the area before it fires.
+     */
+    private plugSpreadRecompactDelayMs: number = 500;
 
     constructor() {
         this.world = new World();
@@ -163,20 +190,63 @@ export class Cavi {
     }
 
     /**
-     * Sets the pointer-drag interaction mode for every Plug/Jack — see the
-     * `dragMode` field above. Applies to mouse/pen only: touch always uses
-     * 'hold' (the natural press-and-drag-with-your-finger gesture already
-     * works well there and has no scroll conflict to work around).
+     * Sets what happens when a brand-new cable is dropped over empty space
+     * — see the `cableDropBehavior` field above.
      */
-    public setDragMode(mode: 'hold' | 'click'): void {
-        this.dragMode = mode;
+    public setCableDropBehavior(behavior: 'cancel' | 'dangle' | 'detach'): void {
+        this.cableDropBehavior = behavior;
     }
 
     /**
-     * The current pointer-drag interaction mode. Defaults to 'hold'.
+     * The current new-cable-drop behavior. Defaults to 'detach'.
      */
-    public getDragMode(): 'hold' | 'click' {
-        return this.dragMode;
+    public getCableDropBehavior(): 'cancel' | 'dangle' | 'detach' {
+        return this.cableDropBehavior;
+    }
+
+    /**
+     * Sets how a Jack's Plugs spread out on hover — see the
+     * `plugSpreadMode` field above.
+     */
+    public setPlugSpreadMode(mode: 'towardOther' | 'radial'): void {
+        this.plugSpreadMode = mode;
+    }
+
+    /**
+     * The current plug-spread direction mode. Defaults to 'towardOther'.
+     */
+    public getPlugSpreadMode(): 'towardOther' | 'radial' {
+        return this.plugSpreadMode;
+    }
+
+    /**
+     * Sets the plug-spread radius multiplier — see the
+     * `plugSpreadRadiusMultiplier` field above.
+     */
+    public setPlugSpreadRadiusMultiplier(multiplier: number): void {
+        this.plugSpreadRadiusMultiplier = multiplier;
+    }
+
+    /**
+     * The current plug-spread radius multiplier. Defaults to 1.8.
+     */
+    public getPlugSpreadRadiusMultiplier(): number {
+        return this.plugSpreadRadiusMultiplier;
+    }
+
+    /**
+     * Sets the plug-spread recompact delay (ms) — see the
+     * `plugSpreadRecompactDelayMs` field above.
+     */
+    public setPlugSpreadRecompactDelayMs(delayMs: number): void {
+        this.plugSpreadRecompactDelayMs = delayMs;
+    }
+
+    /**
+     * The current plug-spread recompact delay (ms). Defaults to 500.
+     */
+    public getPlugSpreadRecompactDelayMs(): number {
+        return this.plugSpreadRecompactDelayMs;
     }
 
     /**

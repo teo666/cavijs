@@ -77,6 +77,51 @@ export class Plug extends HTMLElement {
     return this._jack;
   }
 
+  /**
+   * Whether this Plug is currently spread out (fanned away from its
+   * attached Jack's center by that Jack's hover-spread mechanic — see
+   * Jack._refreshSpread), as opposed to sitting docked exactly on the
+   * Jack's center. StandardInteractionController uses this to decide
+   * whether a click on this Plug should relocate it or forward to its
+   * Jack (a docked Plug occludes the Jack it sits on).
+   */
+  public isSpread(): boolean {
+    return this._jack !== null && this._jack.isSpread();
+  }
+
+  /**
+   * The on-screen center of this Plug's cable's *other* terminal (the
+   * sibling <cavi-plug> inside the same <cavi-wire>), or null if it can't
+   * be found (e.g. this Plug isn't currently inside a wire). Used by
+   * Jack's hover-spread geometry to fan a Plug out toward its own cable's
+   * direction.
+   */
+  public getOtherEndCenter(): { x: number; y: number } | null {
+    const wireEl = this.parentElement;
+    if (!wireEl) return null;
+    for (const child of wireEl.children) {
+      if (child !== this && child instanceof Plug) {
+        const rect = child.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Moves this Plug (and its underlying node) to a new panel-local
+   * position without starting/affecting a drag — used by Jack's
+   * hover-spread mechanic to fan a docked Plug out from its Jack's center
+   * (and back again on recompact). Unlike updateDragPosition, this doesn't
+   * touch the magnet-highlight preview or the WASM mouse-interaction
+   * position, since it isn't a user-driven drag.
+   */
+  public setSpreadPosition(localX: number, localY: number): void {
+    if (!this._node || this._dragging) return;
+    this._node.setPosition(localX, localY);
+    this.updatePosition();
+  }
+
   public setNode(node: Node) {
     this._node = node;
     this.updatePosition();

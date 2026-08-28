@@ -16,7 +16,10 @@ vi.mock('./cavi', () => {
     }
     setAcceleration = vi.fn();
     setDebugDrawNodes = vi.fn();
-    setDragMode = vi.fn();
+    setCableDropBehavior = vi.fn();
+    setPlugSpreadMode = vi.fn();
+    setPlugSpreadRadiusMultiplier = vi.fn();
+    setPlugSpreadRecompactDelayMs = vi.fn();
   }
   return { Cavi: FakeCavi };
 });
@@ -87,19 +90,33 @@ describe('CaviWorldElement', () => {
     expect(readyHandler).toHaveBeenCalledTimes(1);
   });
 
-  it('reads gravity-x/gravity-y/debug-nodes/drag-mode attributes into Cavi at setup', async () => {
+  it('reads gravity-x/gravity-y/debug-nodes attributes into Cavi at setup', async () => {
     const world = document.createElement('cavi-world') as CaviWorldElement;
     world.setAttribute('gravity-x', '3');
     world.setAttribute('gravity-y', '12');
     world.setAttribute('debug-nodes', '');
-    world.setAttribute('drag-mode', 'click');
     document.body.appendChild(world);
     await flushMicrotasks();
 
     const cavi = world.getCavi()!;
     expect(cavi.setAcceleration).toHaveBeenCalledWith(3, 12);
     expect(cavi.setDebugDrawNodes).toHaveBeenCalledWith(true);
-    expect(cavi.setDragMode).toHaveBeenCalledWith('click');
+  });
+
+  it('reads cable-drop-behavior/plug-spread-* attributes into Cavi at setup', async () => {
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    world.setAttribute('cable-drop-behavior', 'cancel');
+    world.setAttribute('plug-spread-mode', 'radial');
+    world.setAttribute('plug-spread-radius', '2.5');
+    world.setAttribute('plug-spread-timeout', '750');
+    document.body.appendChild(world);
+    await flushMicrotasks();
+
+    const cavi = world.getCavi()!;
+    expect(cavi.setCableDropBehavior).toHaveBeenCalledWith('cancel');
+    expect(cavi.setPlugSpreadMode).toHaveBeenCalledWith('radial');
+    expect(cavi.setPlugSpreadRadiusMultiplier).toHaveBeenCalledWith(2.5);
+    expect(cavi.setPlugSpreadRecompactDelayMs).toHaveBeenCalledWith(750);
   });
 
   it('stops the renderer loop on disconnect', async () => {

@@ -40,8 +40,8 @@ export interface CableSession {
  *
  * Jack is a pure domain/data element: it exposes public methods to
  * manipulate it and to drive a cable-creation gesture, and static setters
- * that accept external interaction state (setShiftHeld/
- * setPointerHoverPosition/setDragActive, used to decide its own visual
+ * that accept external interaction state (setPointerHoverPosition/
+ * setDragActive, used to decide its own visual
  * feedback — see _refreshFullState), but it never listens for pointer or
  * keyboard events itself and does not decide *how* a user interacts with
  * it. That is the job of whatever IInteractionController is attached to
@@ -67,13 +67,16 @@ export class Jack extends HTMLElement {
   private _maxPlugs: number = Infinity;
 
   /**
-   * Whether Shift is currently held, tracked globally across all jacks —
-   * fed externally via Jack.setShiftHeld. This is a raw modifier preview,
-   * independent of any drag actually being in progress — it already
-   * applies on a plain hover before any drag starts, so it's kept separate
-   * from _activeDragCount below.
+   * Whether this Jack's attached Plugs are currently spread out (see
+   * _refreshSpread) — fanned away from the Jack's center so each can be
+   * individually clicked to relocate it, while the Jack's own center
+   * becomes clickable again to start a new cable. Read by Plug.isSpread()
+   * to decide whether a click on it should relocate that Plug or forward
+   * to this Jack (see StandardInteractionController).
    */
-  private static _shiftHeld: boolean = false;
+  private _spread: boolean = false;
+  private _recompactTimer: ReturnType<typeof setTimeout> | null = null;
+
   /**
    * How many drags that could try to connect a plug to a jack are
    * currently in progress, fed externally via Jack.setDragActive — a count
@@ -113,6 +116,7 @@ export class Jack extends HTMLElement {
 
   disconnectedCallback() {
     Jack._registry.delete(this);
+    this._cancelRecompactTimer();
   }
 
   attributeChangedCallback(name: string, oldValue: string, newValue: string) {
@@ -144,18 +148,16 @@ export class Jack extends HTMLElement {
   private static _refreshAll(): void {
     for (const jack of Jack._registry) {
       jack._refreshFullState();
+      jack._refreshSpread();
     }
   }
 
   /**
-   * Public entry point for "Shift is held" — whoever drives interaction
-   * (by default StandardInteractionController) calls this in response to
-   * keydown/keyup/blur.
+   * Whether this Jack's attached Plugs are currently spread out — see
+   * `_spread` above.
    */
-  public static setShiftHeld(held: boolean): void {
-    if (held === Jack._shiftHeld) return;
-    Jack._shiftHeld = held;
-    Jack._refreshAll();
+  public isSpread(): boolean {
+    return this._spread;
   }
 
   /**
@@ -174,8 +176,9 @@ export class Jack extends HTMLElement {
    * Called whenever a drag that could try to connect a plug to a jack
    * starts/stops — by whoever drives interaction, for both Plug relocating
    * an existing connection and a Jack cable-creation drag — so a full jack
-   * previews itself as forbidden on hover for the whole duration of either
-   * gesture, not just while Shift happens to be held.
+   * previews itself as forbidden on hover for the whole duration of the
+   * gesture, and so the hover-spread mechanic (_refreshSpread) stays out
+   * of the way while a drag is in progress.
    */
   public static setDragActive(active: boolean): void {
     const before = Jack._dragActive;
@@ -185,15 +188,14 @@ export class Jack extends HTMLElement {
 
   /**
    * Refreshes two independent, capacity-driven visual states on every
-   * pointer move, Shift change, drag start/end, and whenever this Jack's
-   * own capacity changes (attach/detach/max-plugs), so all stay correct
-   * without needing the pointer to move again:
+   * pointer move, drag start/end, and whenever this Jack's own capacity
+   * changes (attach/detach/max-plugs), so all stay correct without needing
+   * the pointer to move again:
    * - `at-capacity-class`: unconditional — on for as long as this Jack has
-   *   reached `max-plugs`, regardless of hover, Shift, or dragging.
+   *   reached `max-plugs`, regardless of hover or dragging.
    * - `full-class` + "not-allowed" cursor: a hover-only preview, shown
-   *   while the cursor is over an at-capacity Jack during either Shift
-   *   being held (previewing before a cable-creation drag even starts) or
-   *   an active drag that could try to connect here.
+   *   while the cursor is over an at-capacity Jack during an active drag
+   *   that could try to connect here.
    */
   private _refreshFullState(): void {
     const atCapacity = !this.canAcceptMore();
@@ -204,9 +206,182 @@ export class Jack extends HTMLElement {
       Jack._pointerX !== null &&
       Jack._pointerY !== null &&
       Math.hypot(Jack._pointerX - c.x, Jack._pointerY - c.y) <= CABLE_SNAP_DISTANCE;
-    const blocked = hovering && (Jack._shiftHeld || Jack._dragActive) && atCapacity;
+    const blocked = hovering && Jack._dragActive && atCapacity;
     this.classList.toggle(this._fullClass, blocked);
     this.style.cursor = blocked ? 'not-allowed' : '';
+  }
+
+  /** Distance (viewport px) from the pointer to a point, or Infinity if there's no known pointer position. */
+  private static _pointerDistanceTo(x: number, y: number): number {
+    if (Jack._pointerX === null || Jack._pointerY === null) return Infinity;
+    return Math.hypot(Jack._pointerX - x, Jack._pointerY - y);
+  }
+
+  /**
+   * The radius (viewport px) around this Jack's own center that counts as
+   * "hovering" for spread purposes — its own rendered half-size, so bigger
+   * jacks are easier to hover.
+   */
+  private _hoverRadius(): number {
+    const rect = this.getBoundingClientRect();
+    return Math.max(rect.width, rect.height) / 2;
+  }
+
+  /**
+   * Whether the pointer currently counts as hovering this Jack's expanded
+   * area: within its own hover radius, or within any of its (possibly
+   * already spread-out) Plugs' own hover radius — so moving from the
+   * center out to a spread Plug, or between two spread Plugs, counts as
+   * staying inside the area instead of triggering a recompact.
+   */
+  private _hoveringExpandedArea(): boolean {
+    const c = this.getCenter();
+    if (Jack._pointerDistanceTo(c.x, c.y) <= this._hoverRadius()) return true;
+    for (const plug of this._plugs) {
+      const pc = plug.getBoundingClientRect();
+      const px = pc.left + pc.width / 2;
+      const py = pc.top + pc.height / 2;
+      const pr = Math.max(pc.width, pc.height) / 2;
+      if (Jack._pointerDistanceTo(px, py) <= pr) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Hover-spread state machine, run alongside _refreshFullState on every
+   * pointer move (see _refreshAll): fans this Jack's attached Plugs out on
+   * hover so each can be clicked individually, and recompacts them back to
+   * center after a timeout once the pointer leaves the expanded area — the
+   * timeout resets, rather than continuing to count down, if the pointer
+   * re-enters before it fires. No-op for a Jack with no Plugs, or while
+   * some other drag is in progress (so the spread animation doesn't fight
+   * an unrelated active gesture).
+   */
+  private _refreshSpread(): void {
+    if (this._plugs.size === 0) {
+      this._cancelRecompactTimer();
+      this._spread = false;
+      return;
+    }
+    if (Jack._dragActive) return;
+
+    const hovering = this._hoveringExpandedArea();
+
+    if (hovering) {
+      this._cancelRecompactTimer();
+      if (!this._spread) {
+        this._spread = true;
+        this._applySpreadPositions();
+      }
+      return;
+    }
+
+    if (this._spread && this._recompactTimer === null) {
+      const cavi = Cavi.shared;
+      const delay = cavi?.getPlugSpreadRecompactDelayMs?.() ?? 500;
+      this._recompactTimer = setTimeout(() => {
+        this._recompactTimer = null;
+        if (this._hoveringExpandedArea()) return;
+        this._spread = false;
+        for (const plug of this._plugs) plug.snapToJack();
+      }, delay);
+    }
+  }
+
+  private _cancelRecompactTimer(): void {
+    if (this._recompactTimer !== null) {
+      clearTimeout(this._recompactTimer);
+      this._recompactTimer = null;
+    }
+  }
+
+  /**
+   * Computes and applies a spread-out position for every attached Plug,
+   * per Cavi's configured plugSpreadMode:
+   * - 'towardOther' (default): each Plug spreads toward its own cable's
+   *   far end, with a pairwise angular-separation pass so near-parallel
+   *   cables never visually overlap once spread.
+   * - 'radial': Plugs are evenly distributed around the Jack, ignoring
+   *   cable direction.
+   * Moves each Plug's underlying physics node (kept `fixed`), so the cable
+   * visibly bends toward the spread position rather than just moving a
+   * disconnected hit-target.
+   */
+  private _applySpreadPositions(): void {
+    const cavi = Cavi.shared;
+    const plugs = Array.from(this._plugs);
+    const center = this.getCenter();
+    const radius = this._hoverRadius() * (cavi?.getPlugSpreadRadiusMultiplier?.() ?? 1.8);
+    const plugRadius = plugs[0]?.getBoundingClientRect().width / 2 || radius / 4;
+    const mode = cavi?.getPlugSpreadMode?.() ?? 'towardOther';
+
+    let angles: number[];
+    if (mode === 'radial' || plugs.length === 1) {
+      angles = plugs.map((_, i) => (i * 2 * Math.PI) / plugs.length);
+    } else {
+      angles = plugs.map((plug) => this._towardOtherEndAngle(plug, center));
+      angles = Jack._resolveAngularCollisions(angles, radius, plugRadius);
+    }
+
+    const offsetParent = this.offsetParent || document.body;
+    const parentRect = offsetParent.getBoundingClientRect();
+
+    plugs.forEach((plug, i) => {
+      const angle = angles[i];
+      const x = center.x + radius * Math.cos(angle);
+      const y = center.y + radius * Math.sin(angle);
+      plug.setSpreadPosition(x - parentRect.left, y - parentRect.top);
+    });
+  }
+
+  /** The angle (radians) from `center` toward `plug`'s cable's other terminal, or a stable fallback if it can't be found. */
+  private _towardOtherEndAngle(plug: Plug, center: { x: number; y: number }): number {
+    const other = plug.getOtherEndCenter();
+    if (other) return Math.atan2(other.y - center.y, other.x - center.x);
+    // No other end found (shouldn't normally happen for an attached Plug)
+    // — spread it straight down rather than stacking it on the center.
+    return Math.PI / 2;
+  }
+
+  /**
+   * Pairwise angular-separation pass: sorts the given angles and pushes any
+   * pair closer than `minGap` apart symmetrically around their midpoint,
+   * repeating around the sorted ring until every neighboring gap (including
+   * the wrap-around one) clears the minimum. `minGap` is derived from the
+   * plug/spread-radius ratio so spread Plugs never visually overlap.
+   */
+  private static _resolveAngularCollisions(angles: number[], radius: number, plugRadius: number): number[] {
+    if (angles.length < 2 || radius <= 0) return angles;
+    const ratio = Math.min(1, plugRadius / radius);
+    const minGap = 2 * Math.asin(ratio);
+    if (minGap <= 0) return angles;
+
+    const order = angles.map((_, i) => i).sort((a, b) => angles[a] - angles[b]);
+    const sorted = order.map((i) => angles[i]);
+
+    // A handful of relaxation passes is enough to settle any reasonable
+    // number of cables on one jack without needing a full solver.
+    for (let pass = 0; pass < 8; pass++) {
+      let moved = false;
+      for (let i = 0; i < sorted.length; i++) {
+        const j = (i + 1) % sorted.length;
+        let gap = sorted[j] - sorted[i];
+        if (j === 0) gap += 2 * Math.PI;
+        if (gap < minGap) {
+          const push = (minGap - gap) / 2;
+          sorted[i] -= push;
+          sorted[j] += push;
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
+
+    const result = new Array<number>(angles.length);
+    order.forEach((originalIndex, sortedIndex) => {
+      result[originalIndex] = sorted[sortedIndex];
+    });
+    return result;
   }
 
   private updatePosition() {
@@ -534,8 +709,11 @@ export class Jack extends HTMLElement {
 
   /**
    * Attaches the session's free terminal to the best jack under it right
-   * now, or — if none is in range — leaves it dangling (falling under
-   * physics).
+   * now, or — if none is in range — falls back to Cavi's configured
+   * `cableDropBehavior` ('detach' by default): 'dangle' leaves just this
+   * end unfixed (cable stays attached at the origin); 'detach' also unfixes
+   * the origin end, so the whole cable falls away disconnected; 'cancel'
+   * removes the in-progress <cavi-wire> outright.
    */
   public static finishCableSession(session: CableSession): void {
     const bestJack = Jack.findSnapTarget(session.followPlug, session.jack.type, session.jack);
@@ -551,11 +729,28 @@ export class Jack extends HTMLElement {
       session.followPlug.update();
       session.followPlug.attach(bestJack);
       session.followPlug.setAttribute('plugged', 'true');
-    } else {
-      // Not dropped on any compatible Jack: the cable stays attached at
-      // the origin with this end left dangling — same as a Plug dropped
-      // away from every jack (free to fall/move under physics).
-      session.followNode.fixed = false;
+      return;
+    }
+
+    const behavior = Cavi.shared?.getCableDropBehavior?.() ?? 'detach';
+    if (behavior === 'cancel') {
+      session.originPlug.detach();
+      session.followPlug.detach();
+      session.wireEl.remove();
+      return;
+    }
+
+    // Not dropped on any compatible Jack: this end is left dangling (free
+    // to fall/move under physics) — same as a Plug dropped away from every
+    // jack.
+    session.followNode.fixed = false;
+    if (behavior === 'detach') {
+      // Also unfix the origin end so the whole cable falls away
+      // disconnected, rather than staying tethered to its origin Jack.
+      const originNode = session.wire.getNode(0);
+      if (originNode) originNode.fixed = false;
+      session.originPlug.detach();
+      session.originPlug.removeAttribute('plugged');
     }
   }
 

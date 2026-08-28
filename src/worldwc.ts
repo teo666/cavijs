@@ -72,8 +72,23 @@ export class CaviWorldElement extends HTMLElement {
       parseFloat(this.getAttribute('gravity-y') ?? '5'),
     );
     cavi.setDebugDrawNodes(this.hasAttribute('debug-nodes'));
-    const dragMode = this.getAttribute('drag-mode');
-    if (dragMode === 'hold' || dragMode === 'click') cavi.setDragMode(dragMode);
+
+    const cableDropBehavior = this.getAttribute('cable-drop-behavior');
+    if (cableDropBehavior === 'cancel' || cableDropBehavior === 'dangle' || cableDropBehavior === 'detach') {
+      cavi.setCableDropBehavior(cableDropBehavior);
+    }
+    const plugSpreadMode = this.getAttribute('plug-spread-mode');
+    if (plugSpreadMode === 'towardOther' || plugSpreadMode === 'radial') {
+      cavi.setPlugSpreadMode(plugSpreadMode);
+    }
+    const plugSpreadRadius = this.getAttribute('plug-spread-radius');
+    if (plugSpreadRadius !== null && Number.isFinite(parseFloat(plugSpreadRadius))) {
+      cavi.setPlugSpreadRadiusMultiplier(parseFloat(plugSpreadRadius));
+    }
+    const plugSpreadTimeout = this.getAttribute('plug-spread-timeout');
+    if (plugSpreadTimeout !== null && Number.isFinite(parseFloat(plugSpreadTimeout))) {
+      cavi.setPlugSpreadRecompactDelayMs(parseFloat(plugSpreadTimeout));
+    }
 
     this._cavi = cavi;
     Cavi.shared = cavi;

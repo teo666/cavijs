@@ -19,6 +19,15 @@ export class Renderer implements IRenderer {
   private draggedEndpoint: 'start' | 'end' | null = null;
   private debugDrawNodes: boolean = true;
   private rafId: number | null = null;
+  /**
+   * Memoized wire-color -> highlight-color lookups (see lightenColor) — this
+   * runs every frame for every wire, so a color string is only ever
+   * normalized/mixed once, not re-parsed on every draw call.
+   */
+  private highlightColorCache = new Map<string, string>();
+  /** Offscreen 1x1 canvas reused to normalize arbitrary CSS color strings (hex/named/rgb/...) into RGB, for lightenColor. */
+  private colorProbeCanvas: HTMLCanvasElement | null = null;
+  private colorProbeContext: CanvasRenderingContext2D | null = null;
 
   constructor(container: HTMLElement, world: World) {
     this.container = container;
@@ -155,6 +164,46 @@ export class Renderer implements IRenderer {
     });
   }
 
+  /**
+   * Normalizes any CSS color string (hex, named, rgb(), ...) by painting it
+   * into a reused 1x1 offscreen canvas and reading the resulting pixel back,
+   * then mixes it toward white by `amount` (0-1) and returns an `rgba(...)`
+   * string with `alpha` baked in — used to derive a cable's highlight color
+   * from its own base color (see drawAllWires). Memoized in
+   * highlightColorCache, keyed by the exact (color, amount, alpha) request,
+   * since this would otherwise re-parse/re-paint on every frame for every
+   * wire.
+   */
+  private lightenColor(color: string, amount: number, alpha: number): string {
+    const cacheKey = `${color}|${amount}|${alpha}`;
+    const cached = this.highlightColorCache.get(cacheKey);
+    if (cached) return cached;
+
+    if (!this.colorProbeCanvas) {
+      this.colorProbeCanvas = document.createElement('canvas');
+      this.colorProbeCanvas.width = 1;
+      this.colorProbeCanvas.height = 1;
+      this.colorProbeContext = this.colorProbeCanvas.getContext('2d');
+    }
+    const probe = this.colorProbeContext;
+    let result: string;
+    if (!probe) {
+      // Extremely unlikely (2D context unavailable) — fall back to a
+      // neutral light gray rather than crashing the render loop.
+      result = `rgba(255, 255, 255, ${alpha})`;
+    } else {
+      probe.clearRect(0, 0, 1, 1);
+      probe.fillStyle = color;
+      probe.fillRect(0, 0, 1, 1);
+      const [r, g, b] = probe.getImageData(0, 0, 1, 1).data;
+      const mix = (channel: number) => Math.round(channel + (255 - channel) * amount);
+      result = `rgba(${mix(r)}, ${mix(g)}, ${mix(b)}, ${alpha})`;
+    }
+
+    this.highlightColorCache.set(cacheKey, result);
+    return result;
+  }
+
   private drawAllWires() {
     // Access wire data directly from WASM memory (ZERO COPY!)
     const ptr = this.wasmWorld.wire_data_ptr();
@@ -188,7 +237,6 @@ export class Renderer implements IRenderer {
 
       // Draw wire path
       if (pathLength >= 2) {
-        this.context.strokeStyle = wireColor;
         this.context.lineWidth = radius * 2;
         this.context.lineCap = 'round';
         this.context.lineJoin = 'round';
@@ -223,6 +271,25 @@ export class Renderer implements IRenderer {
           }
         }
 
+        // Base color pass, with a soft cast shadow (the canvas shadow
+        // renderer casts the shadow of this stroked shape for free, in the
+        // same call — no extra path/pass needed for the shadow itself).
+        this.context.shadowColor = 'rgba(0, 0, 0, 0.4)';
+        this.context.shadowBlur = radius * 1.2;
+        this.context.shadowOffsetX = 0;
+        this.context.shadowOffsetY = radius * 0.6;
+        this.context.strokeStyle = wireColor;
+        this.context.stroke();
+
+        // Highlight pass, on the same path already built above: a thin,
+        // lighter centerline streak to fake a rounded/glossy tube — cheap
+        // approximation vs. a true perpendicular-offset highlight, which
+        // the 2D canvas API doesn't give you for free. No shadow of its own.
+        this.context.shadowColor = 'transparent';
+        this.context.shadowBlur = 0;
+        this.context.shadowOffsetY = 0;
+        this.context.lineWidth = radius * 0.7;
+        this.context.strokeStyle = this.lightenColor(wireColor, 0.45, 0.5);
         this.context.stroke();
       } else {
         offset += pathLength;
