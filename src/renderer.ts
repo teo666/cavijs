@@ -274,8 +274,8 @@ export class Renderer implements IRenderer {
         // Base color pass, with a soft cast shadow (the canvas shadow
         // renderer casts the shadow of this stroked shape for free, in the
         // same call — no extra path/pass needed for the shadow itself).
-        this.context.shadowColor = 'rgba(0, 0, 0, 0.4)';
-        this.context.shadowBlur = radius * 1.2;
+        this.context.shadowColor = 'rgb(0, 0, 0)';
+        this.context.shadowBlur = radius * 2;
         this.context.shadowOffsetX = 0;
         this.context.shadowOffsetY = radius * 0.6;
         this.context.strokeStyle = wireColor;
@@ -285,12 +285,18 @@ export class Renderer implements IRenderer {
         // lighter centerline streak to fake a rounded/glossy tube — cheap
         // approximation vs. a true perpendicular-offset highlight, which
         // the 2D canvas API doesn't give you for free. No shadow of its own.
+        // A small ctx.filter blur softens its edge into the base color
+        // beneath instead of reading as a hard-edged second stroke — much
+        // cheaper than a true cross-section gradient, which would need the
+        // path re-built as an offset polygon per curve segment.
         this.context.shadowColor = 'transparent';
         this.context.shadowBlur = 0;
         this.context.shadowOffsetY = 0;
+        this.context.filter = `blur(${radius * 0.35}px)`;
         this.context.lineWidth = radius * 0.7;
         this.context.strokeStyle = this.lightenColor(wireColor, 0.45, 0.5);
         this.context.stroke();
+        this.context.filter = 'none';
       } else {
         offset += pathLength;
       }
