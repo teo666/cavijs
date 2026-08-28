@@ -1,6 +1,7 @@
 import { Cavi } from './cavi';
 import { Renderer } from './renderer';
 import './jack'; // registers cavi-jack, and transitively cavi-wire (wirewc) + cavi-plug
+import './interactionwc'; // registers cavi-interaction
 
 /**
  * WASM init is process-wide and not safe to run twice (Cavi.initWasm calls
@@ -67,6 +68,15 @@ export class CaviWorldElement extends HTMLElement {
     this._cavi = cavi;
     Cavi.shared = cavi;
     document.dispatchEvent(new CustomEvent('caviready', { detail: { cavi } }));
+
+    // Jack/Plug install no listeners of their own — without some
+    // <cavi-interaction>, nothing here would be interactive. An author can
+    // drop one in manually (e.g. with a custom `.controller`); otherwise
+    // this provides the standard mouse/touch drag-and-drop for free, same
+    // as the auto-created canvas above.
+    if (!this.querySelector('cavi-interaction')) {
+      this.appendChild(document.createElement('cavi-interaction'));
+    }
 
     // Parity with the manual controlsElement.setCavi(cavi) call in main.ts.
     const controls = this.querySelector('cavi-controls') as

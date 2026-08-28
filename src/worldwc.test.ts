@@ -30,10 +30,11 @@ vi.mock('./renderer', () => {
   return { Renderer: FakeRenderer };
 });
 
-// Avoid pulling in the real Jack/CaviWireElement/Plug custom elements —
-// irrelevant to worldwc's own behavior and this file only needs './cavi'
-// and './renderer' to be the fakes above.
+// Avoid pulling in the real Jack/CaviWireElement/Plug/interaction custom
+// elements — irrelevant to worldwc's own behavior and this file only needs
+// './cavi' and './renderer' to be the fakes above.
 vi.mock('./jack', () => ({}));
+vi.mock('./interactionwc', () => ({}));
 
 import { Cavi } from './cavi';
 import type { Renderer } from './renderer';
