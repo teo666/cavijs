@@ -97,6 +97,25 @@ export class Plug extends HTMLElement {
     }
   }
 
+  /**
+   * Re-syncs this Plug's fixed node to its attached Jack's current
+   * on-screen center — called by Jack.updatePosition() whenever the Jack
+   * itself moves (e.g. a responsive layout reflow changes its x/y), so a
+   * plugged-in cable stays glued to the jack instead of the wire endpoint
+   * being left stranded at the jack's old position. No-op mid-drag (the
+   * drag itself owns the node's position) or if unplugged.
+   */
+  public snapToJack(): void {
+    if (this._dragging || !this._node || !this._jack) return;
+
+    const offsetParent = this.offsetParent || document.body;
+    const parentRect = offsetParent.getBoundingClientRect();
+    const c = this._jack.getCenter();
+
+    this._node.setPosition(c.x - parentRect.left, c.y - parentRect.top);
+    this.updatePosition();
+  }
+
   private _setMagnetTarget(jack: Jack | null): void {
     if (jack === this._magnetJack) return;
     this._magnetJack?.setMagnetActive(false);

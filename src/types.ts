@@ -25,6 +25,20 @@ export interface IInteractionController {
     detach: () => void;
 }
 
+/**
+ * Contract for anything that keeps a <cavi-world>'s canvas backing store
+ * sized to its container and announces layout changes — pluggable the same
+ * way IInteractionController is: `attach` starts watching `container` (and
+ * sizes `canvas` to match it), `detach` tears that down. See
+ * StandardResizeController (src/resize.ts) for the default ResizeObserver
+ * implementation, and CaviWorldElement (src/worldwc.ts) for how it's wired
+ * up by default.
+ */
+export interface IResizeController {
+    attach: (container: HTMLElement, canvas: HTMLCanvasElement) => void;
+    detach: () => void;
+}
+
 export interface WireMeta {
     [key: string]: any;
     color?: string;

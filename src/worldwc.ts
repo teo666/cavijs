@@ -1,5 +1,7 @@
 import { Cavi } from './cavi';
 import { Renderer } from './renderer';
+import type { IResizeController } from './types';
+import { StandardResizeController } from './resize';
 import './jack'; // registers cavi-jack, and transitively cavi-wire (wirewc) + cavi-plug
 import './interactionwc'; // registers cavi-interaction
 
@@ -26,6 +28,15 @@ let wasmInit: Promise<void> | null = null;
 export class CaviWorldElement extends HTMLElement {
   private _cavi: Cavi | null = null;
 
+  /**
+   * Keeps the canvas backing store sized to this element and announces
+   * layout changes via `cavi-resize` — pluggable the same way
+   * <cavi-interaction>'s `.controller` is: overridable before this element
+   * connects for a custom resize strategy, defaults to watching this
+   * element with a ResizeObserver (see StandardResizeController).
+   */
+  public resizeController: IResizeController = new StandardResizeController();
+
   connectedCallback(): void {
     if (this._cavi) return; // already initialized (e.g. reconnect after a DOM move)
 
@@ -44,8 +55,7 @@ export class CaviWorldElement extends HTMLElement {
       canvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
       this.insertBefore(canvas, this.firstChild);
     }
-    canvas.width = this.clientWidth;
-    canvas.height = this.clientHeight;
+    this.resizeController.attach(this, canvas);
 
     if (!wasmInit) wasmInit = Cavi.initWasm();
     wasmInit.then(() => this._setup(canvas!));
@@ -88,6 +98,7 @@ export class CaviWorldElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
+    this.resizeController.detach();
     this._cavi?.getRenderer()?.stop();
   }
 

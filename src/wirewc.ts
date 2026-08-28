@@ -11,6 +11,13 @@ function rectsOverlap(a: DOMRect, b: DOMRect): boolean {
 
 export class CaviWireElement extends HTMLElement {
   /**
+   * ~0.5s at 60fps — long enough that no single-frame layout reflow glitch
+   * (see _framesOutside) can be mistaken for a cable that has genuinely
+   * drifted away under gravity/tension.
+   */
+  private static readonly OUTSIDE_FRAMES_BEFORE_CLEANUP = 30;
+
+  /**
    * Every connected <cavi-wire>, used only to rebind survivors after one of
    * them deletes itself (see _destroy) — deleting a wire shifts the WASM
    * index of every wire created after it, which would otherwise leave
@@ -24,6 +31,16 @@ export class CaviWireElement extends HTMLElement {
   private _cavi: Cavi | null = null;
   private _container: HTMLElement | null = null;
   private _autoCleanup: boolean = false;
+  /**
+   * Consecutive frames this wire's plugs have been found entirely outside
+   * the container — a layout reflow (e.g. a responsive container resizing,
+   * see worldwc.ts's ResizeObserver) can leave a jack's DOM position stale
+   * for a frame or two before it's re-measured, which would otherwise read
+   * as a false "drifted away" positive on a single frame. Cleanup only
+   * fires once this holds for OUTSIDE_FRAMES_BEFORE_CLEANUP consecutive
+   * frames, so a transient reflow glitch can never delete a cable.
+   */
+  private _framesOutside: number = 0;
 
   static get observedAttributes() {
     return ['length', 'tension', 'size', 'renderType', 'color', 'type'];
@@ -65,7 +82,7 @@ export class CaviWireElement extends HTMLElement {
 
     this._cavi = cavi;
     this._container = cavi.getContainer();
-    this._autoCleanup =  true; //this.hasAttribute('auto-cleanup');
+    this._autoCleanup = this.hasAttribute('auto-cleanup');
 
     const plugEls = Array.from(this.children).filter(
       (el) => el.tagName.toLowerCase() === 'cavi-plug'
@@ -192,7 +209,13 @@ export class CaviWireElement extends HTMLElement {
     const allOutside = this._plugs.every(
       (plug) => !rectsOverlap(plug.getBoundingClientRect(), containerRect)
     );
-    if (allOutside) {
+
+    if (!allOutside) {
+      this._framesOutside = 0;
+      return;
+    }
+    this._framesOutside++;
+    if (this._framesOutside >= CaviWireElement.OUTSIDE_FRAMES_BEFORE_CLEANUP) {
       this._destroy();
     }
   }

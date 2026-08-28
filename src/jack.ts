@@ -214,6 +214,11 @@ export class Jack extends HTMLElement {
     const y = this.getAttribute('y') || '0';
     this.style.left = `${x}px`;
     this.style.top = `${y}px`;
+
+    // Keep any already-plugged cables glued to this jack when it moves
+    // (e.g. a responsive layout reflow recomputing x/y on resize) instead
+    // of leaving their fixed endpoint stranded at the old position.
+    for (const plug of this._plugs) plug.snapToJack();
   }
 
   private render() {

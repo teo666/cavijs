@@ -64,6 +64,33 @@ function materializeJacks(panel: HTMLElement): void {
   }
 }
 
+/**
+ * Re-measures every .jack-slot placeholder's on-screen center and updates
+ * the matching already-materialized <cavi-jack>'s x/y attributes — called
+ * on every 'cavi-resize' (see worldwc.ts) so jacks (and, via Jack's own
+ * plug-snapping, any cables already plugged into them) track the panel's
+ * responsive CSS layout instead of staying frozen at their load-time
+ * position.
+ */
+function repositionJacksFromSlots(panel: HTMLElement): void {
+  const panelRect = panel.getBoundingClientRect();
+
+  for (const slot of Array.from(panel.querySelectorAll<HTMLElement>('.jack-slot'))) {
+    const id = slot.dataset.id;
+    if (!id) continue;
+
+    const jack = document.getElementById(id);
+    if (!jack) continue;
+
+    const rect = slot.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2 - panelRect.left;
+    const cy = rect.top + rect.height / 2 - panelRect.top;
+
+    jack.setAttribute('x', String(cx));
+    jack.setAttribute('y', String(cy));
+  }
+}
+
 /** Builds the initial "already patched" cables from PATCHES. */
 function materializePatches(panel: HTMLElement): void {
   for (const patch of PATCHES) {
@@ -125,6 +152,7 @@ function main(): void {
 
   materializeJacks(panel);
   materializePatches(panel);
+  panel.addEventListener('cavi-resize', () => repositionJacksFromSlots(panel));
 
   // wireUpControls needs the real Cavi instance, which only exists once
   // <cavi-world>'s async WASM init finishes — cavi-jack/cavi-wire/cavi-plug
