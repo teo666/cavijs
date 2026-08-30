@@ -138,7 +138,7 @@ Renderer class is responsible to render wires inside a `<canvas>`. In each rende
 ```typescript
 constructor(container: HTMLElement, world: World)
 ```
-Looks up an existing `#wireCanvas` element inside `container` (it does not create one itself — see e.g. `CaviWorldElement`/`<cavi-world>` in `src/worldwc.ts`, which creates and sizes the canvas before constructing the renderer).
+Looks up an existing `#wireCanvas` element inside `container` (it does not create one itself — see e.g. `CaviWorldElement`/`<cavi-world>` in `src/component/worldwc.ts`, which creates and sizes the canvas before constructing the renderer).
 
 **Features:**
 - Direct WASM memory access for efficient rendering (zero-copy)
@@ -176,7 +176,7 @@ constructor(container: HTMLElement, world: World)
 - Per-wire `<path>` pooling: DOM nodes are created/removed only when the wire count changes, never recreated every frame
 - Segment and Bezier curve rendering via `M`/`L`/`C` path commands
 - Debug overlay (physics nodes, mouse/pointer interaction radii) as SVG `<circle>`/`<text>` elements, toggled the same way as `Renderer`
-- Dispatches a `cavi-resize` CustomEvent on `container` on every resize — same contract as `StandardResizeController` (`src/resize.ts`), so code that listens for `cavi-resize` (e.g. to reposition jacks, see `src/patchbay-shared.ts`) works unchanged regardless of which renderer is active
+- Dispatches a `cavi-resize` CustomEvent on `container` on every resize — same contract as `StandardResizeController` (`src/renderer/resize.ts`), so code that listens for `cavi-resize` (e.g. to reposition jacks, see `examples/patchbay-shared.ts`) works unchanged regardless of which renderer is active
 
 **Methods:**
 ```typescript
@@ -295,17 +295,28 @@ The default `Renderer` (canvas) and `SvgRenderer` (SVG) classes both provide com
 
 Wire metadata allows attaching arbitrary rendering information without modifying core WASM code. Colors and other properties set via wire metadata are automatically used during rendering.
 
+## Project Layout
+
+- `src/` — the library itself, nothing else. Organized by concern:
+  - `src/core/` — `Cavi`, `World`, `Wire`, `Node`, and the shared `types.ts` (`IRenderer`, `IInteractionController`, `WireMeta`, ...)
+  - `src/renderer/` — `Renderer` (canvas), `SvgRenderer` (SVG), `StandardResizeController`
+  - `src/interaction/` — `StandardInteractionController`
+  - `src/component/` — the custom elements: `<cavi-jack>`, `<cavi-plug>`, `<cavi-wire>`, `<cavi-world>`, `<cavi-controls>`, `<cavi-interaction>`
+  - `src/index.ts` — the public entry point, re-exporting the above
+  - `src/tests/` — all `*.test.ts` files
+- `examples/` — every demo page and its driving script, kept out of `src/` since none of it is library code. Vite's `root` points here (see `vite.config.ts`), so `npm run dev` serves `examples/index.html` at `/`.
+
 ## Demos
 
-The `demo-*.html` pages (built via `vite.config.ts`'s `build.rollupOptions.input`) show the library in different setups:
+The `examples/demo-*.html` pages (built via `vite.config.ts`'s `build.rollupOptions.input`) show the library in different setups:
 
 | Demo | Script | Renderer | Description |
 | --- | --- | --- | --- |
-| `demo-basic.html` | `src/main.ts` | `Renderer` (canvas) | Minimal setup, a few static wires |
-| `demo-svg.html` | `src/main-svg.ts` | `SvgRenderer` | Same minimal setup, using the SVG renderer |
-| `demo-jack-plug.html` | `src/example2.ts` | `Renderer` (canvas, via `<cavi-world>`) | Hand-authored `<cavi-jack>`/`<cavi-wire>` markup |
-| `demo-patchbay.html` | `src/example3.ts` | `Renderer` (canvas, via `<cavi-world>`) | Full modular-synth patchbay: many jacks materialized from CSS layout, pre-patched cables, interactive drag-to-connect |
-| `demo-patchbay-svg.html` | `src/example3-svg.ts` | `SvgRenderer` | Same patchbay demo, wired manually to `SvgRenderer` instead of `<cavi-world>`'s canvas `Renderer`; shares its jack-materialization/control-wiring logic with `demo-patchbay.html` via `src/patchbay-shared.ts` |
-| `demo-noop-interaction.html` | `src/exampleNoopInteraction.ts` | `Renderer` (canvas, via `<cavi-world>`) | Custom no-op `IInteractionController` example |
+| `examples/demo-basic.html` | `examples/main.ts` | `Renderer` (canvas) | Minimal setup, a few static wires |
+| `examples/demo-svg.html` | `examples/main-svg.ts` | `SvgRenderer` | Same minimal setup, using the SVG renderer |
+| `examples/demo-jack-plug.html` | `examples/example2.ts` | `Renderer` (canvas, via `<cavi-world>`) | Hand-authored `<cavi-jack>`/`<cavi-wire>` markup |
+| `examples/demo-patchbay.html` | `examples/example3.ts` | `Renderer` (canvas, via `<cavi-world>`) | Full modular-synth patchbay: many jacks materialized from CSS layout, pre-patched cables, interactive drag-to-connect |
+| `examples/demo-patchbay-svg.html` | `examples/example3-svg.ts` | `SvgRenderer` | Same patchbay demo, wired manually to `SvgRenderer` instead of `<cavi-world>`'s canvas `Renderer`; shares its jack-materialization/control-wiring logic with `demo-patchbay.html` via `examples/patchbay-shared.ts` |
+| `examples/demo-noop-interaction.html` | `examples/exampleNoopInteraction.ts` | `Renderer` (canvas, via `<cavi-world>`) | Custom no-op `IInteractionController` example |
 
 Run `npm run dev` and open any of these pages to try them.

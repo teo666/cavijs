@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>cavijs - Jack & Plug</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: sans-serif;
+        background: #222;
+      }
+      h1 {
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      #container2 {
+        overflow: hidden;
+        position: relative;
+        width: 1000px;
+        height: 600px;
+        background: #333;
+        margin: 0 auto;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      #wireCanvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .instructions {
+        text-align: center;
+        margin-bottom: 10px;
+        color: #555;
+      }
+      .jackAudio {
+        width: 40px;
+        height: 40px;
+      } /* Example color for jack1 */
+      .jackAudio::part(base) {
+        background-color: #4caf50;
+      }
+      .jack2 {
+        width: 30px;
+        height: 30px;
+      } /* Example color for jack2 */
+      .jack2::part(base) {
+        background-color: #2196f3;
+      }
+      .jack3 {
+        width: 20px;
+        height: 20px;
+      } /* Example color for jack3 */
+      .jack3::part(base) {
+        background-color: #ff00d9;
+      }
+
+       .jackMidi {
+        width: 30px;
+        height: 30px;
+      } /* Example color for jack3 */
+      .jackMidi::part(base) {
+        background-color: #7b7b7b;
+      }
+      canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none; /* Allow clicks to pass through to jacks and plugs */
+        background: transparent; /* Ensure canvas is transparent */
+        z-index: 30; /* Ensure canvas is below jacks and plugs */
+      }
+      cavi-jack {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        border: 2px solid #555;
+        position: absolute;
+        box-sizing: border-box;
+      }
+      cavi-plug[plugged] {
+        border-color: #0c7413; /* Change border color when plugged in */
+        background-color: rgb(33, 191, 12); /* Change background color when plugged in */
+      }
+      cavi-jack.cavi-magnet-target {
+        filter: blur(0.5px);
+        box-shadow: 0 0 0 6px rgba(255, 235, 59, 0.6);
+      }
+      cavi-plug.cavi-magnet-active {
+        filter: blur(0.5px);
+        box-shadow: 0 0 0 6px rgba(255, 235, 59, 0.6);
+      }
+      cavi-jack.cavi-jack-full {
+         box-shadow: 0 0 0 30px rgba(255, 1, 1, 0.6);
+      }
+      cavi-jack.cavi-jack-at-capacity {
+        box-shadow: 0 0 0 3px rgba(255, 60, 60, 0.8);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Jack & Plug connection demo</h1>
+    <div class="instructions">
+      Drag plugs (grey) to jacks (colored). Drop to connect. Drag away to disconnect. Works with
+      touch too.
+    </div>
+    <cavi-world id="container2" gravity-y="5">
+      <cavi-jack
+        id="jack1"
+        class="jackAudio"
+        x="300"
+        y="200"
+        type="audio"
+        max-plugs="1"
+      ></cavi-jack>
+      <cavi-jack id="jack2" class="jackAudio" x="500" y="400" type="audio"></cavi-jack>
+      <cavi-jack id="jack3" class="jackMidi" x="300" y="300" type="midi"></cavi-jack>
+      
+      <cavi-jack id="jack4" class="jackAudio" x="400" y="300" type="audio"></cavi-jack>
+      <cavi-jack id="jack5" class="jack3" x="700" y="500" type="scsi"></cavi-jack>
+      <cavi-jack id="jack6" class="jack3" x="200" y="300" type="scsi"></cavi-jack>
+      <cavi-jack id="jack7" class="jack3" x="100" y="100" type="scsi" max-plugs="1"></cavi-jack>
+      <cavi-jack id="jack8" class="jackMidi" x="700" y="300" type="midi" cable-color="#7b7b7b" cable-tension="1" cable-size="10"></cavi-jack>
+
+
+      <cavi-wire
+        id="wire1"
+        length="15"
+        tension="20"
+        size="10"
+        renderType="bezier"
+        color="#ccc"
+        type="audio"
+      >
+        <cavi-plug node="0" jack="jack1"></cavi-plug>
+        <cavi-plug node="14" jack="jack2"></cavi-plug>
+      </cavi-wire>
+      <cavi-wire
+        id="wire2"
+        length="25"
+        tension="20"
+        size="10"
+        renderType="bezier"
+        color="#ff4400"
+        type="scsi"
+      >
+        <cavi-plug node="0" jack="jack5"></cavi-plug>
+        <cavi-plug node="24" jack="jack6"></cavi-plug>
+      </cavi-wire>
+    </cavi-world>
+    <script type="module" src="./example2.ts"></script>
+  </body>
+</html>
