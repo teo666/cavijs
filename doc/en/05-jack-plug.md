@@ -16,7 +16,7 @@
 
 ## Architecture: pure domain + external interaction controller
 
-`Jack` and `Plug` are **pure domain/data elements**: they expose public APIs to read/change their state and position and to drive gestures (cable creation, dragging an existing plug), but they **install no pointer/keyboard listeners of their own** and don't decide *how* a user interacts with them. That responsibility lives in an external, replaceable `IInteractionController` — see [the dedicated section below](#interaction-standardinteractioncontroller-and-cavi-interaction).
+`Jack` and `Plug` are **pure domain/data elements**: they expose public APIs to read/change their state and position and to drive gestures (cable creation, dragging an existing plug), but they **install no pointer/keyboard listeners of their own** and don't decide _how_ a user interacts with them. That responsibility lives in an external, replaceable `IInteractionController` — see [the dedicated section below](#interaction-standardinteractioncontroller-and-cavi-interaction).
 
 This means a `<cavi-jack>`/`<cavi-plug>` placed on a page with no interaction controller attached **don't react at all** to mouse/touch — they remain fully manipulable via code (the APIs described in this document), but only "bite" once something attaches a controller. `<cavi-world>` does this automatically (see below), so this detail is invisible in common usage.
 
@@ -25,48 +25,51 @@ This means a `<cavi-jack>`/`<cavi-plug>` placed on a page with no interaction co
 A custom element (`cavi-jack`) with Shadow DOM.
 
 **Observed attributes**
-| Attribute | Effect |
-|---|---|
-| `color` | Fill color of the jack's visual dot |
-| `x`, `y` | Absolute position (`style.left`/`style.top`, translated -50%/-50% to center on the coordinate) |
-| `type` | Type string (e.g. `"audio"`) — a plug can only snap in if its own `type` is identical |
-| `max-plugs` | Maximum number of simultaneously attached plugs (default unlimited) |
-| `magnet-class` | Name of the CSS class applied to the host when a compatible plug is in range during a drag (default `cavi-magnet-target`) |
-| `full-class` | Name of the CSS class applied to the host when the jack is at `max-plugs` **and** the cursor is nearby **and** a drag that could try to connect to it is in progress (default `cavi-jack-full`) — see below |
-| `at-capacity-class` | Name of the CSS class applied to the host unconditionally for as long as the jack is at `max-plugs` (default `cavi-jack-at-capacity`) — unlike `full-class`, independent of hover or drag state; see below |
-| `cable-tension`, `cable-size`, `cable-color` | Optional tension/radius/color values applied to a cable created via `createCable()` from this jack (see below); when omitted, the cable uses `<cavi-wire>`'s own fixed defaults |
-| `cable-node-spawn` | `"interpolate"` (default) or `"stack"` — where newly-inserted nodes appear as the cable grows longer during `updateCableSession()` (see below) |
+
+| Attribute                                    | Effect                                                                                                                                                                                                      |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `color`                                      | Fill color of the jack's visual dot                                                                                                                                                                         |
+| `x`, `y`                                     | Absolute position (`style.left`/`style.top`, translated -50%/-50% to center on the coordinate)                                                                                                              |
+| `type`                                       | Type string (e.g. `"audio"`) — a plug can only snap in if its own `type` is identical                                                                                                                       |
+| `max-plugs`                                  | Maximum number of simultaneously attached plugs (default unlimited)                                                                                                                                         |
+| `magnet-class`                               | Name of the CSS class applied to the host when a compatible plug is in range during a drag (default `cavi-magnet-target`)                                                                                   |
+| `full-class`                                 | Name of the CSS class applied to the host when the jack is at `max-plugs` **and** the cursor is nearby **and** a drag that could try to connect to it is in progress (default `cavi-jack-full`) — see below |
+| `at-capacity-class`                          | Name of the CSS class applied to the host unconditionally for as long as the jack is at `max-plugs` (default `cavi-jack-at-capacity`) — unlike `full-class`, independent of hover or drag state; see below  |
+| `cable-tension`, `cable-size`, `cable-color` | Optional tension/radius/color values applied to a cable created via `createCable()` from this jack (see below); when omitted, the cable uses `<cavi-wire>`'s own fixed defaults                             |
+| `cable-node-spawn`                           | `"interpolate"` (default) or `"stack"` — where newly-inserted nodes appear as the cable grows longer during `updateCableSession()` (see below)                                                              |
 
 **Manipulation API**
-| Method | Description |
-|---|---|
-| `canAccept(type: string) -> boolean` | Returns true if `type` equals the jack's own `type` (and the jack has one configured) |
-| `canAcceptMore() -> boolean` | Returns true if the jack hasn't reached `max-plugs` |
-| `attach(plug: Plug)` / `detach(plug: Plug)` | Registers/removes an attached plug (updates `plugCount`) |
-| `plugCount` | Number of currently attached plugs |
-| `getCenter() -> { x, y }` | Center point in viewport coordinates (`getBoundingClientRect`) |
-| `type` (getter) | The jack's current `type` |
-| `setMagnetActive(active: boolean)` | Toggles the `magnet-class` class on the host, used for the magnet preview during drag |
-| `Jack.registry` (static) | Read-only set of every `<cavi-jack>` currently connected to the document |
-| `Jack.findSnapTarget(plug, type, exclude?) -> Jack \| null` (static) | Finds the nearest compatible jack within snap range, optionally excluding one |
+
+| Method                                                               | Description                                                                           |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `canAccept(type: string) -> boolean`                                 | Returns true if `type` equals the jack's own `type` (and the jack has one configured) |
+| `canAcceptMore() -> boolean`                                         | Returns true if the jack hasn't reached `max-plugs`                                   |
+| `attach(plug: Plug)` / `detach(plug: Plug)`                          | Registers/removes an attached plug (updates `plugCount`)                              |
+| `plugCount`                                                          | Number of currently attached plugs                                                    |
+| `getCenter() -> { x, y }`                                            | Center point in viewport coordinates (`getBoundingClientRect`)                        |
+| `type` (getter)                                                      | The jack's current `type`                                                             |
+| `setMagnetActive(active: boolean)`                                   | Toggles the `magnet-class` class on the host, used for the magnet preview during drag |
+| `Jack.registry` (static)                                             | Read-only set of every `<cavi-jack>` currently connected to the document              |
+| `Jack.findSnapTarget(plug, type, exclude?) -> Jack \| null` (static) | Finds the nearest compatible jack within snap range, optionally excluding one         |
 
 **API for driving cable creation** (used by `StandardInteractionController`, but callable from any custom controller)
-| Method | Description |
-|---|---|
-| `createCable(clientX, clientY) -> CableSession \| null` | Creates a `<cavi-wire>` with two `<cavi-plug>`s (one attached to this jack, the other free at the given position) and returns a `CableSession` describing the gesture in progress. Returns `null` if `Cavi` isn't ready yet or this jack has no spare capacity (`canAcceptMore()`) — the domain enforces this invariant itself |
-| `growCable(wire, desired) -> Node` | Grows `wire` up to `desired` nodes, inserting only the missing ones (see below) |
-| `Jack.updateCableSession(session, clientX, clientY)` (static) | Advances an in-progress session: moves the free terminal, grows it if needed, refreshes the magnet preview |
-| `Jack.finishCableSession(session)` (static) | Ends the session, snapping the free terminal to the nearest compatible jack in range if any, otherwise leaving it dangling |
-| `Jack.cancelCableSession(session)` (static) | Abandons the session: the free terminal is left dangling (never snapped) |
-| `Jack.setPointerHoverPosition(x, y)` (static) | Feeds the last known pointer position, driving both the "full jack" preview and the hover-spread mechanic (see below) — normally called by the interaction controller on every `pointermove`, not by application code |
-| `Jack.setDragActive(active)` (static) | Signals that a drag that could try to connect to a jack has started/ended (see below); also keeps the hover-spread mechanic out of the way while a drag is in progress |
-| `isSpread() -> boolean` | Whether this jack's attached plugs are currently spread out by the hover-spread mechanic (see below) |
+
+| Method                                                        | Description                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `createCable(clientX, clientY) -> CableSession \| null`       | Creates a `<cavi-wire>` with two `<cavi-plug>`s (one attached to this jack, the other free at the given position) and returns a `CableSession` describing the gesture in progress. Returns `null` if `Cavi` isn't ready yet or this jack has no spare capacity (`canAcceptMore()`) — the domain enforces this invariant itself |
+| `growCable(wire, desired) -> Node`                            | Grows `wire` up to `desired` nodes, inserting only the missing ones (see below)                                                                                                                                                                                                                                                |
+| `Jack.updateCableSession(session, clientX, clientY)` (static) | Advances an in-progress session: moves the free terminal, grows it if needed, refreshes the magnet preview                                                                                                                                                                                                                     |
+| `Jack.finishCableSession(session)` (static)                   | Ends the session, snapping the free terminal to the nearest compatible jack in range if any, otherwise leaving it dangling                                                                                                                                                                                                     |
+| `Jack.cancelCableSession(session)` (static)                   | Abandons the session: the free terminal is left dangling (never snapped)                                                                                                                                                                                                                                                       |
+| `Jack.setPointerHoverPosition(x, y)` (static)                 | Feeds the last known pointer position, driving both the "full jack" preview and the hover-spread mechanic (see below) — normally called by the interaction controller on every `pointermove`, not by application code                                                                                                          |
+| `Jack.setDragActive(active)` (static)                         | Signals that a drag that could try to connect to a jack has started/ended (see below); also keeps the hover-spread mechanic out of the way while a drag is in progress                                                                                                                                                         |
+| `isSpread() -> boolean`                                       | Whether this jack's attached plugs are currently spread out by the hover-spread mechanic (see below)                                                                                                                                                                                                                           |
 
 A `CableSession` (`{ wireEl, wire, jack, originPlug, followPlug, followNode, magnetJack }`) is a plain data object, not owned by any `Jack` instance — so the gesture's state can live entirely in whoever drives it (typically the interaction controller) rather than inside the domain.
 
 By default renders a small dark circle (`.inner`); if the element has child content, it renders that instead (via `<slot>`), letting consumers customize appearance while keeping the same drop-target semantics.
 
-The host has an explicit `24×24px` size. Hit-testing for an *existing* `Plug` snapping onto a jack is entirely distance-based (`Jack.findSnapTarget()` via `Jack.registry`), not driven by native events on the jack.
+The host has an explicit `24×24px` size. Hit-testing for an _existing_ `Plug` snapping onto a jack is entirely distance-based (`Jack.findSnapTarget()` via `Jack.registry`), not driven by native events on the jack.
 
 ## Creating a cable from a Jack — `createCable`/`updateCableSession`/`finishCableSession`
 
@@ -79,11 +82,12 @@ Besides being a drop target, `Jack` exposes an API to start, advance, and end cr
 - **A full jack shows a "forbidden" cursor**: if the position known via `Jack.setPointerHoverPosition()` is within `20`px of the center of a jack that's at `max-plugs` (`!canAcceptMore()`) **while a drag flagged with `Jack.setDragActive(true)` is in progress**, the host gets `cursor: not-allowed` (inline style, always wins over the `:host { cursor: crosshair }` rule) plus the `full-class` class. Hover detection is distance-based off the last known position (static state shared by every jack, fed from the outside), **not** native `pointerenter`/`pointerleave` on the jack: a jack with at least one plug attached has that `<cavi-plug>` sitting exactly at its center with a higher `z-index`, which would occlude it and keep native hover events from ever reaching the jack underneath.
 
   The state also re-evaluates without a new position whenever this jack's own capacity changes (`attach`/`detach`) or the drag starts/ends, while it's already being watched.
+
 - **A full jack always carries `at-capacity-class`**: unlike `full-class`, this one is unconditional — it simply mirrors `!canAcceptMore()`, independent of hover or drag state, so it stays usable for a persistent "full" style (e.g. a border or icon) visible even without interacting with the jack.
 
 ## Hover-spread: picking a jack's own center vs. one of its existing plugs
 
-A jack with one or more plugs already attached has them sitting exactly at its center, occluding it — clicking there is ambiguous: relocate an existing cable, or start a new one from the jack underneath? `Jack` resolves this itself, via the same distance-based synthetic hover used for the "full jack" preview above (fed by `Jack.setPointerHoverPosition()`), so it works regardless of *how* a controller decides to trigger a click:
+A jack with one or more plugs already attached has them sitting exactly at its center, occluding it — clicking there is ambiguous: relocate an existing cable, or start a new one from the jack underneath? `Jack` resolves this itself, via the same distance-based synthetic hover used for the "full jack" preview above (fed by `Jack.setPointerHoverPosition()`), so it works regardless of _how_ a controller decides to trigger a click:
 
 - **On hover** (pointer within the jack's own rendered half-size of its center, or within any of its plugs' own hover radius — so moving between the jack and an already-spread plug counts as staying inside), each attached `<cavi-plug>` fans out from the jack's center by `Cavi.getPlugSpreadRadiusMultiplier()` (default `1.8`) × the jack's own rendered half-size — moving its underlying physics node (not just a CSS offset), so the cable visibly bends toward the spread position. Direction is controlled by `Cavi.getPlugSpreadMode()`:
   - `'towardOther'` (default): each plug spreads toward its own cable's far terminal (`Plug.getOtherEndCenter()`), with a pairwise angular-separation pass so near-parallel cables never end up visually overlapping once spread.
@@ -97,37 +101,41 @@ A jack with one or more plugs already attached has them sitting exactly at its c
 A custom element (`cavi-plug`) with Shadow DOM.
 
 **Observed attributes**
-| Attribute | Effect |
-|---|---|
-| `plugged` | Toggles the "connected" visual style (set/removed on snap/unsnap) |
-| `magnet-class` | Name of the CSS class applied to the host when the plug is near a compatible jack during a drag (default `cavi-magnet-active`) |
+
+| Attribute        | Effect                                                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plugged`        | Toggles the "connected" visual style (set/removed on snap/unsnap)                                                                                                                                                                                                                                                                                                                           |
+| `magnet-class`   | Name of the CSS class applied to the host when the plug is near a compatible jack during a drag (default `cavi-magnet-active`)                                                                                                                                                                                                                                                              |
 | `freeze-on-drop` | Presence-based boolean attribute (like `plugged`). When present, `endDrag()`/`cancelDrag()` away from every compatible jack leave the underlying node **fixed** (`node.fixed = true`) instead of free — the plug stays put at the drop point instead of swinging under gravity/tension, so it stays re-grabbable with a plain click/tap. Defaults to absent (unchanged behavior: free node) |
 
 `type` is **not** an attribute on the plug: it is only received via `setType(type)`, called by the owning `<cavi-wire>` from its own `type` attribute.
 
 **API**
-| Method | Description |
-|---|---|
-| `setNode(node: Node)` | Binds the plug visually to a physical wire node |
-| `setType(type: string)` | Sets the plug's connection type (propagated by the Cable, not settable via markup) |
-| `attach(jack: Jack)` / `detach()` | Attaches/detaches the plug from a jack, going through the same jack-side `attach`/`detach` bookkeeping used by both dragging and `<cavi-wire>`'s declarative binding |
-| `setMagnetActive(active: boolean)` | Toggles the `magnet-class` class on the host |
-| `jack` (getter) | The `Jack` this plug is currently attached to, or `null` |
-| `beginDrag()` | Starts a drag: detaches from any current jack, fixes the node (`node.fixed = true`), raises `z-index` |
-| `updateDragPosition(clientX, clientY)` | Moves the plug (and its node) to the given position and refreshes the magnet preview against the nearest compatible in-range jack |
-| `endDrag()` | Ends the drag, snapping to the nearest compatible in-range jack if any, otherwise applying `freeze-on-drop` semantics |
-| `cancelDrag()` | Ends an interrupted drag: never snaps, even if a compatible jack is in range — same `freeze-on-drop` handling as `endDrag()` otherwise |
-| `isSpread() -> boolean` | Whether this plug is currently fanned away from its jack's center by the jack's hover-spread mechanic — delegates to `this.jack?.isSpread()` (see [Hover-spread](#hover-spread-picking-a-jacks-own-center-vs-one-of-its-existing-plugs) above) |
-| `getOtherEndCenter() -> { x, y } \| null` | The on-screen center of this plug's cable's *other* terminal (its sibling `<cavi-plug>` inside the same `<cavi-wire>`), or `null` if it can't be found — used by `Jack`'s hover-spread geometry |
-| `setSpreadPosition(localX, localY)` | Moves this plug's node to a panel-local position without starting/affecting a drag — used by `Jack`'s hover-spread mechanic; a no-op mid-drag |
+
+| Method                                    | Description                                                                                                                                                                                                                                    |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setNode(node: Node)`                     | Binds the plug visually to a physical wire node                                                                                                                                                                                                |
+| `setType(type: string)`                   | Sets the plug's connection type (propagated by the Cable, not settable via markup)                                                                                                                                                             |
+| `attach(jack: Jack)` / `detach()`         | Attaches/detaches the plug from a jack, going through the same jack-side `attach`/`detach` bookkeeping used by both dragging and `<cavi-wire>`'s declarative binding                                                                           |
+| `setMagnetActive(active: boolean)`        | Toggles the `magnet-class` class on the host                                                                                                                                                                                                   |
+| `jack` (getter)                           | The `Jack` this plug is currently attached to, or `null`                                                                                                                                                                                       |
+| `beginDrag()`                             | Starts a drag: detaches from any current jack, fixes the node (`node.fixed = true`), raises `z-index`                                                                                                                                          |
+| `updateDragPosition(clientX, clientY)`    | Moves the plug (and its node) to the given position and refreshes the magnet preview against the nearest compatible in-range jack                                                                                                              |
+| `endDrag()`                               | Ends the drag, snapping to the nearest compatible in-range jack if any, otherwise applying `freeze-on-drop` semantics                                                                                                                          |
+| `cancelDrag()`                            | Ends an interrupted drag: never snaps, even if a compatible jack is in range — same `freeze-on-drop` handling as `endDrag()` otherwise                                                                                                         |
+| `isSpread() -> boolean`                   | Whether this plug is currently fanned away from its jack's center by the jack's hover-spread mechanic — delegates to `this.jack?.isSpread()` (see [Hover-spread](#hover-spread-picking-a-jacks-own-center-vs-one-of-its-existing-plugs) above) |
+| `getOtherEndCenter() -> { x, y } \| null` | The on-screen center of this plug's cable's _other_ terminal (its sibling `<cavi-plug>` inside the same `<cavi-wire>`), or `null` if it can't be found — used by `Jack`'s hover-spread geometry                                                |
+| `setSpreadPosition(localX, localY)`       | Moves this plug's node to a panel-local position without starting/affecting a drag — used by `Jack`'s hover-spread mechanic; a no-op mid-drag                                                                                                  |
 
 **Behavior**
+
 1. `setNode(node: Node)` binds the plug visually to a `Node` instance (from a `Wire`); `update()`/`updatePosition()` keeps it synced to the node's `x`/`y` unless a drag is in progress (`beginDrag()` called with no following `endDrag()`/`cancelDrag()` yet).
 2. `updateDragPosition(clientX, clientY)`, repeated during the drag: computes position relative to `offsetParent`, calls `node.setPosition(x, y)` **and** `node.setMousePosition(x, y)` (the latter forwards to `WasmWorld.set_mouse`, keeping physics mouse-repulsion in sync with the dragged plug), updates its own screen position, and recomputes the candidate magnet jack (`Jack.findSnapTarget()`), toggling the `magnet-class` classes on both jack and plug accordingly.
 3. `endDrag()`: recomputes the nearest compatible jack (matching type, available capacity) within `20`px — doesn't trust the last computation from `updateDragPosition`, since a drop can happen with no intervening move; if found, snaps the node to the jack's center, calls `attach(jack)` and sets `plugged`; otherwise calls `detach()` and sets `node.fixed` based on `freeze-on-drop`, removing `plugged`.
 4. `cancelDrag()`: same as `endDrag()`'s empty outcome, but never attempts any snap.
 
 **Implementation notes**
+
 - Jack lookup goes through `Jack.findSnapTarget()` (which internally scans the static `Jack.registry`), not a DOM query.
 - `z-index`: plug uses `20`, jack uses `10`, matching the "jack under plug" requirement from the spec — relevant to the occlusion described below.
 - `touch-action: none` is set on the plug's shadow-DOM host to prevent the browser from hijacking scroll during a touch drag, when driven by a Pointer-Events-based controller.
@@ -138,8 +146,8 @@ As shown above, Jack/Plug listen for nothing on their own — real interaction (
 
 ```typescript
 interface IInteractionController {
-    attach: (cavi: Cavi) => void;
-    detach: () => void;
+  attach: (cavi: Cavi) => void;
+  detach: () => void;
 }
 ```
 
@@ -180,7 +188,7 @@ When present, every frame of the `requestAnimationFrame` loop `CaviWireElement` 
 
 Deliberately a synchronous per-frame check rather than `IntersectionObserver`: since the RAF loop already exists to sync plug positions, a bounding-box check in the same tick is precise to the exact frame and avoids the coalescing/latency `IntersectionObserver` is prone to (especially with a backgrounded tab).
 
-**Important**: deleting a cable that isn't the last one created shifts the WASM index of every wire created after it (`World.deleteWire`, see the [API reference](./03-api.md#world)). `CaviWireElement` keeps its own static registry of every connected `<cavi-wire>` and, right after each deletion, rebinds (`_rebindAfterIndexShift`) every surviving cable whose index shifted to the correct fresh `Wire` — without this step, other cables would silently keep reading/writing the wrong wire. This does not cover a `Jack` that's actively creating a new cable (an unfinished `CableSession`) at the exact same moment a *different* auto-cleanup cable leaves — a very narrow edge case, not yet handled.
+**Important**: deleting a cable that isn't the last one created shifts the WASM index of every wire created after it (`World.deleteWire`, see the [API reference](./03-api.md#world)). `CaviWireElement` keeps its own static registry of every connected `<cavi-wire>` and, right after each deletion, rebinds (`_rebindAfterIndexShift`) every surviving cable whose index shifted to the correct fresh `Wire` — without this step, other cables would silently keep reading/writing the wrong wire. This does not cover a `Jack` that's actively creating a new cable (an unfinished `CableSession`) at the exact same moment a _different_ auto-cleanup cable leaves — a very narrow edge case, not yet handled.
 
 ## Relationship to the physics engine
 

@@ -102,7 +102,13 @@ function installFakeCavi(): FakeCavi {
 
 function pointerDown(
   target: HTMLElement,
-  opts: { clientX: number; clientY: number; button?: number; pointerId?: number; pointerType?: string }
+  opts: {
+    clientX: number;
+    clientY: number;
+    button?: number;
+    pointerId?: number;
+    pointerType?: string;
+  }
 ): void {
   target.dispatchEvent(
     new PointerEvent('pointerdown', {
@@ -170,7 +176,9 @@ describe('StandardInteractionController — Plug drag (unattached plug, always c
     expect(node.y).toBe(40);
 
     vi.spyOn(plug, 'getBoundingClientRect').mockReturnValue(rect(101, 100));
-    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 0 }));
+    document.dispatchEvent(
+      new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 0 })
+    );
 
     expect(node.fixed).toBe(true);
     expect(plug.hasAttribute('plugged')).toBe(true);
@@ -186,10 +194,14 @@ describe('StandardInteractionController — Plug drag (unattached plug, always c
     pointerDown(plug, { clientX: 500, clientY: 500 });
     vi.spyOn(plug, 'getBoundingClientRect').mockReturnValue(rect(101, 100));
 
-    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 2 }));
+    document.dispatchEvent(
+      new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 2 })
+    );
     expect(jack.plugCount).toBe(0);
 
-    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 3, bubbles: true, button: 0 }));
+    document.dispatchEvent(
+      new PointerEvent('pointerdown', { pointerId: 3, bubbles: true, button: 0 })
+    );
     expect(jack.plugCount).toBe(1);
   });
 
@@ -203,7 +215,9 @@ describe('StandardInteractionController — Plug drag (unattached plug, always c
 
     // A document-level click — which would finish a click-to-carry — must
     // NOT end a touch drag.
-    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 0 }));
+    document.dispatchEvent(
+      new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 0 })
+    );
     expect(jack.plugCount).toBe(0);
 
     // Only releasing on the plug itself, like hold mode, does.
@@ -217,7 +231,9 @@ describe('StandardInteractionController — Plug drag (unattached plug, always c
     const jack = makeJack('j1', 100, 100, { type: 'audio', 'max-plugs': '2' });
     const { plug } = makePlug(101, 100, 'audio');
     pointerDown(plug, { clientX: 101, clientY: 100 });
-    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 0 }));
+    document.dispatchEvent(
+      new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 0 })
+    );
     expect(jack.plugCount).toBe(1);
 
     // The plug never spread (no hover happened) — clicking it again lands
@@ -250,7 +266,9 @@ describe('StandardInteractionController — docked Plug forwards to its Jack', (
     const jack = makeJack('j1', 100, 100, { type: 'audio', 'max-plugs': '2' });
     const { plug } = makePlug(101, 100, 'audio');
     pointerDown(plug, { clientX: 101, clientY: 100 });
-    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 0 }));
+    document.dispatchEvent(
+      new PointerEvent('pointerdown', { pointerId: 2, bubbles: true, button: 0 })
+    );
     expect(jack.plugCount).toBe(1);
 
     pointerDown(plug, { clientX: 101, clientY: 100, pointerId: 3 });
@@ -322,10 +340,14 @@ describe('StandardInteractionController — Jack cable creation (always click-to
     const followPlugEl = wireEl.querySelectorAll('cavi-plug')[1] as HTMLElement;
     vi.spyOn(followPlugEl, 'getBoundingClientRect').mockReturnValue(rect(100, 0));
 
-    document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 100, clientY: 0 }));
+    document.dispatchEvent(
+      new PointerEvent('pointermove', { bubbles: true, clientX: 100, clientY: 0 })
+    );
     expect(target.classList.contains('cavi-magnet-target')).toBe(true);
 
-    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 100, clientY: 0 }));
+    document.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 100, clientY: 0 })
+    );
 
     expect(target.plugCount).toBe(1);
     expect(origin.plugCount).toBe(1);
@@ -343,7 +365,9 @@ describe('StandardInteractionController — Jack cable creation (always click-to
     const followPlugEl = wireEl.querySelectorAll('cavi-plug')[1] as HTMLElement;
     vi.spyOn(followPlugEl, 'getBoundingClientRect').mockReturnValue(rect(100, 0));
 
-    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 100, clientY: 0 }));
+    document.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 100, clientY: 0 })
+    );
     expect(target.plugCount).toBe(0);
 
     pointerUp(origin, 100, 0);

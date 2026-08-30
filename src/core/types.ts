@@ -2,11 +2,11 @@ import type { WasmWorld } from 'cavi';
 import type { Cavi } from './cavi';
 
 export interface IRenderer {
-    render: () => void;
-    setDebugDrawNodes: (enabled: boolean) => void;
-    getDebugDrawNodes: () => boolean;
-    getContainer: () => HTMLElement;
-    stop: () => void;
+  render: () => void;
+  setDebugDrawNodes: (enabled: boolean) => void;
+  getDebugDrawNodes: () => boolean;
+  getContainer: () => HTMLElement;
+  stop: () => void;
 }
 
 /**
@@ -21,8 +21,8 @@ export interface IRenderer {
  * (src/interactionwc.ts) for how it's wired up declaratively.
  */
 export interface IInteractionController {
-    attach: (cavi: Cavi) => void;
-    detach: () => void;
+  attach: (cavi: Cavi) => void;
+  detach: () => void;
 }
 
 /**
@@ -35,13 +35,13 @@ export interface IInteractionController {
  * up by default.
  */
 export interface IResizeController {
-    attach: (container: HTMLElement, canvas: HTMLCanvasElement) => void;
-    detach: () => void;
+  attach: (container: HTMLElement, canvas: HTMLCanvasElement) => void;
+  detach: () => void;
 }
 
 export interface WireMeta {
-    [key: string]: any;
-    color?: string;
+  [key: string]: any;
+  color?: string;
 }
 
 export { Node } from './node';

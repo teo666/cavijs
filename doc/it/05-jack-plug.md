@@ -16,7 +16,7 @@
 
 ## Architettura: dominio puro + controller di interazione esterno
 
-`Jack` e `Plug` sono elementi **di dominio/dato puri**: espongono API pubbliche per leggerne/modificarne stato e posizione e per pilotare i gesti (creazione cavo, trascinamento di un plug esistente), ma **non installano alcun listener di eventi pointer/tastiera proprio** e non decidono da soli *come* un utente ci interagisce. Quella responsabilità è isolata in un `IInteractionController` esterno, sostituibile — vedi [la sezione dedicata più sotto](#interazione-standardinteractioncontroller-e-cavi-interaction).
+`Jack` e `Plug` sono elementi **di dominio/dato puri**: espongono API pubbliche per leggerne/modificarne stato e posizione e per pilotare i gesti (creazione cavo, trascinamento di un plug esistente), ma **non installano alcun listener di eventi pointer/tastiera proprio** e non decidono da soli _come_ un utente ci interagisce. Quella responsabilità è isolata in un `IInteractionController` esterno, sostituibile — vedi [la sezione dedicata più sotto](#interazione-standardinteractioncontroller-e-cavi-interaction).
 
 Questo significa che un `<cavi-jack>`/`<cavi-plug>` inseriti in pagina senza alcun controller di interazione collegato **non reagiscono affatto** al mouse/touch — restano perfettamente manipolabili via codice (le API descritte in questo documento), ma "mordono" solo quando qualcosa collega un controller. `<cavi-world>` lo fa automaticamente (vedi sotto), quindi nell'uso comune questo dettaglio è invisibile.
 
@@ -25,42 +25,45 @@ Questo significa che un `<cavi-jack>`/`<cavi-plug>` inseriti in pagina senza alc
 Un custom element (`cavi-jack`) con Shadow DOM.
 
 **Attributi osservati**
-| Attributo | Effetto |
-|---|---|
-| `color` | Colore di riempimento del punto visivo del jack |
-| `x`, `y` | Posizione assoluta (`style.left`/`style.top`, traslata -50%/-50% per centrare sulla coordinata) |
-| `type` | Stringa di tipo (es. `"audio"`) — un plug può agganciarsi solo se il proprio `type` è identico |
-| `max-plugs` | Numero massimo di plug agganciabili contemporaneamente (default illimitato) |
-| `magnet-class` | Nome della classe CSS applicata all'host quando un plug compatibile è in prossimità durante il trascinamento (default `cavi-magnet-target`) |
-| `full-class` | Nome della classe CSS applicata all'host quando il jack ha raggiunto `max-plugs` **e** il cursore è vicino **e** è in corso un drag che potrebbe tentare di collegarcisi (default `cavi-jack-full`) — vedi sotto |
-| `at-capacity-class` | Nome della classe CSS applicata all'host in modo incondizionato per tutto il tempo in cui il jack ha raggiunto `max-plugs` (default `cavi-jack-at-capacity`) — a differenza di `full-class`, non dipende da hover o stato di drag; vedi sotto |
-| `cable-tension`, `cable-size`, `cable-color` | Valori opzionali di tensione/raggio/colore applicati al cavo creato tramite `createCable()` da questo jack (vedi sotto); se omessi, il cavo usa i default fissi di `<cavi-wire>` |
-| `cable-node-spawn` | `"interpolate"` (default) o `"stack"` — dove compaiono i nodi via via inseriti mentre il cavo si allunga durante `updateCableSession()` (vedi sotto) |
+
+| Attributo                                    | Effetto                                                                                                                                                                                                                                       |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `color`                                      | Colore di riempimento del punto visivo del jack                                                                                                                                                                                               |
+| `x`, `y`                                     | Posizione assoluta (`style.left`/`style.top`, traslata -50%/-50% per centrare sulla coordinata)                                                                                                                                               |
+| `type`                                       | Stringa di tipo (es. `"audio"`) — un plug può agganciarsi solo se il proprio `type` è identico                                                                                                                                                |
+| `max-plugs`                                  | Numero massimo di plug agganciabili contemporaneamente (default illimitato)                                                                                                                                                                   |
+| `magnet-class`                               | Nome della classe CSS applicata all'host quando un plug compatibile è in prossimità durante il trascinamento (default `cavi-magnet-target`)                                                                                                   |
+| `full-class`                                 | Nome della classe CSS applicata all'host quando il jack ha raggiunto `max-plugs` **e** il cursore è vicino **e** è in corso un drag che potrebbe tentare di collegarcisi (default `cavi-jack-full`) — vedi sotto                              |
+| `at-capacity-class`                          | Nome della classe CSS applicata all'host in modo incondizionato per tutto il tempo in cui il jack ha raggiunto `max-plugs` (default `cavi-jack-at-capacity`) — a differenza di `full-class`, non dipende da hover o stato di drag; vedi sotto |
+| `cable-tension`, `cable-size`, `cable-color` | Valori opzionali di tensione/raggio/colore applicati al cavo creato tramite `createCable()` da questo jack (vedi sotto); se omessi, il cavo usa i default fissi di `<cavi-wire>`                                                              |
+| `cable-node-spawn`                           | `"interpolate"` (default) o `"stack"` — dove compaiono i nodi via via inseriti mentre il cavo si allunga durante `updateCableSession()` (vedi sotto)                                                                                          |
 
 **API di manipolazione**
-| Metodo | Descrizione |
-|---|---|
-| `canAccept(type: string) -> boolean` | Ritorna true se `type` è uguale al `type` del jack (e il jack ne ha uno configurato) |
-| `canAcceptMore() -> boolean` | Ritorna true se il jack non ha raggiunto `max-plugs` |
-| `attach(plug: Plug)` / `detach(plug: Plug)` | Registra/rimuove un plug collegato (aggiorna `plugCount`) |
-| `plugCount` | Numero di plug attualmente collegati |
-| `getCenter() -> { x, y }` | Punto centrale in coordinate viewport (`getBoundingClientRect`) |
-| `type` (getter) | Il `type` corrente del jack |
-| `setMagnetActive(active: boolean)` | Attiva/disattiva la classe `magnet-class` sull'host, usata per l'anteprima calamita durante il drag |
-| `Jack.registry` (statico) | Insieme di sola lettura di tutti i `<cavi-jack>` attualmente connessi al documento |
+
+| Metodo                                                                | Descrizione                                                                                               |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `canAccept(type: string) -> boolean`                                  | Ritorna true se `type` è uguale al `type` del jack (e il jack ne ha uno configurato)                      |
+| `canAcceptMore() -> boolean`                                          | Ritorna true se il jack non ha raggiunto `max-plugs`                                                      |
+| `attach(plug: Plug)` / `detach(plug: Plug)`                           | Registra/rimuove un plug collegato (aggiorna `plugCount`)                                                 |
+| `plugCount`                                                           | Numero di plug attualmente collegati                                                                      |
+| `getCenter() -> { x, y }`                                             | Punto centrale in coordinate viewport (`getBoundingClientRect`)                                           |
+| `type` (getter)                                                       | Il `type` corrente del jack                                                                               |
+| `setMagnetActive(active: boolean)`                                    | Attiva/disattiva la classe `magnet-class` sull'host, usata per l'anteprima calamita durante il drag       |
+| `Jack.registry` (statico)                                             | Insieme di sola lettura di tutti i `<cavi-jack>` attualmente connessi al documento                        |
 | `Jack.findSnapTarget(plug, type, exclude?) -> Jack \| null` (statico) | Trova lo jack compatibile più vicino entro la soglia di aggancio (`20px`), opzionalmente escludendone uno |
 
 **API per pilotare la creazione di un nuovo cavo** (usata da `StandardInteractionController`, ma richiamabile da qualunque controller custom)
-| Metodo | Descrizione |
-|---|---|
-| `createCable(clientX, clientY) -> CableSession \| null` | Crea un `<cavi-wire>` con due `<cavi-plug>` (uno agganciato a questo jack, l'altro libero alla posizione data) e ritorna una `CableSession` che descrive il gesto in corso. Ritorna `null` se `Cavi` non è ancora pronto o se questo jack non ha capacità residua (`canAcceptMore()`) — il dominio applica da sé questo vincolo |
-| `growCable(wire, desired) -> Node` | Fa crescere `wire` fino a `desired` nodi, inserendo solo quelli mancanti (vedi sotto) |
-| `Jack.updateCableSession(session, clientX, clientY)` (statico) | Aggiorna una sessione in corso: sposta il terminale libero, lo fa eventualmente crescere, aggiorna l'anteprima calamita |
-| `Jack.finishCableSession(session)` (statico) | Conclude la sessione agganciando il terminale libero al jack compatibile più vicino in prossimità, se presente, altrimenti lasciandolo pendente |
-| `Jack.cancelCableSession(session)` (statico) | Annulla la sessione: il terminale libero resta pendente (mai agganciato) |
-| `Jack.setPointerHoverPosition(x, y)` (statico) | Alimenta l'ultima posizione nota del puntatore, che pilota sia l'anteprima "jack pieno" sia il meccanismo di hover-spread (vedi sotto) — normalmente chiamato dal controller di interazione ad ogni `pointermove`, non da codice applicativo |
-| `Jack.setDragActive(active)` (statico) | Segnala che un drag che potrebbe tentare di collegarsi a un jack è iniziato/terminato (vedi sotto); tiene anche il meccanismo di hover-spread fuori dai piedi mentre un drag è in corso |
-| `isSpread() -> boolean` | Se i plug agganciati a questo jack sono attualmente aperti a ventaglio dal meccanismo di hover-spread (vedi sotto) |
+
+| Metodo                                                         | Descrizione                                                                                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `createCable(clientX, clientY) -> CableSession \| null`        | Crea un `<cavi-wire>` con due `<cavi-plug>` (uno agganciato a questo jack, l'altro libero alla posizione data) e ritorna una `CableSession` che descrive il gesto in corso. Ritorna `null` se `Cavi` non è ancora pronto o se questo jack non ha capacità residua (`canAcceptMore()`) — il dominio applica da sé questo vincolo |
+| `growCable(wire, desired) -> Node`                             | Fa crescere `wire` fino a `desired` nodi, inserendo solo quelli mancanti (vedi sotto)                                                                                                                                                                                                                                           |
+| `Jack.updateCableSession(session, clientX, clientY)` (statico) | Aggiorna una sessione in corso: sposta il terminale libero, lo fa eventualmente crescere, aggiorna l'anteprima calamita                                                                                                                                                                                                         |
+| `Jack.finishCableSession(session)` (statico)                   | Conclude la sessione agganciando il terminale libero al jack compatibile più vicino in prossimità, se presente, altrimenti lasciandolo pendente                                                                                                                                                                                 |
+| `Jack.cancelCableSession(session)` (statico)                   | Annulla la sessione: il terminale libero resta pendente (mai agganciato)                                                                                                                                                                                                                                                        |
+| `Jack.setPointerHoverPosition(x, y)` (statico)                 | Alimenta l'ultima posizione nota del puntatore, che pilota sia l'anteprima "jack pieno" sia il meccanismo di hover-spread (vedi sotto) — normalmente chiamato dal controller di interazione ad ogni `pointermove`, non da codice applicativo                                                                                    |
+| `Jack.setDragActive(active)` (statico)                         | Segnala che un drag che potrebbe tentare di collegarsi a un jack è iniziato/terminato (vedi sotto); tiene anche il meccanismo di hover-spread fuori dai piedi mentre un drag è in corso                                                                                                                                         |
+| `isSpread() -> boolean`                                        | Se i plug agganciati a questo jack sono attualmente aperti a ventaglio dal meccanismo di hover-spread (vedi sotto)                                                                                                                                                                                                              |
 
 Una `CableSession` (`{ wireEl, wire, jack, originPlug, followPlug, followNode, magnetJack }`) è un semplice oggetto dati, non posseduto da alcuna istanza `Jack` — così lo stato del gesto può vivere interamente in chi lo pilota (di norma il controller di interazione) invece che dentro il dominio.
 
@@ -79,11 +82,12 @@ Oltre ad essere un drop target, `Jack` espone un'API per avviare, far avanzare e
 - **Un jack pieno mostra un cursore "vietato"**: se la posizione nota tramite `Jack.setPointerHoverPosition()` si trova entro `20`px dal centro di un jack che ha raggiunto `max-plugs` (`!canAcceptMore()`) **mentre è in corso un drag segnalato con `Jack.setDragActive(true)`**, l'host riceve `cursor: not-allowed` (stile inline, vince sempre sulla regola `:host { cursor: crosshair }`) e la classe `full-class`. Il rilevamento hover è basato sulla distanza dall'ultima posizione nota (uno stato statico condiviso da tutti i jack, alimentato dall'esterno), **non** su `pointerenter`/`pointerleave` nativi sul jack: un jack con almeno un plug agganciato ha quel `<cavi-plug>` posizionato esattamente al suo centro con `z-index` più alto, quindi lo occlude e impedirebbe agli eventi di hover nativi di raggiungerlo mai.
 
   Lo stato si aggiorna anche senza una nuova posizione quando il jack si riempie/libera (`attach`/`detach`) o quando il drag inizia/termina, mentre il jack è già sotto osservazione.
+
 - **Un jack pieno ha sempre `at-capacity-class`**: a differenza di `full-class`, questa classe è incondizionata — riflette semplicemente `!canAcceptMore()`, indipendentemente da hover o stato di drag, quindi resta utilizzabile per uno stile "pieno" persistente (es. un bordo o un'icona) visibile anche senza interagire col jack.
 
 ## Hover-spread: scegliere il centro di un jack o uno dei suoi plug esistenti
 
-Un jack con uno o più plug già agganciati li ha posizionati esattamente al proprio centro, occludendolo — cliccarci sopra è ambiguo: spostare un cavo esistente, o avviarne uno nuovo dal jack sottostante? `Jack` risolve l'ambiguità da sé, tramite lo stesso hover sintetico basato sulla distanza già usato per l'anteprima "jack pieno" sopra (alimentato da `Jack.setPointerHoverPosition()`), quindi funziona indipendentemente da *come* un controller decide di far scattare un click:
+Un jack con uno o più plug già agganciati li ha posizionati esattamente al proprio centro, occludendolo — cliccarci sopra è ambiguo: spostare un cavo esistente, o avviarne uno nuovo dal jack sottostante? `Jack` risolve l'ambiguità da sé, tramite lo stesso hover sintetico basato sulla distanza già usato per l'anteprima "jack pieno" sopra (alimentato da `Jack.setPointerHoverPosition()`), quindi funziona indipendentemente da _come_ un controller decide di far scattare un click:
 
 - **In hover** (puntatore entro la metà della dimensione renderizzata del jack dal suo centro, oppure entro il raggio di hover di uno qualsiasi dei suoi plug già aperti a ventaglio — così muoversi tra il jack e un plug già aperto conta come restare dentro l'area), ogni `<cavi-plug>` agganciato si allontana dal centro del jack di `Cavi.getPlugSpreadRadiusMultiplier()` (default `1.8`) × metà della dimensione renderizzata del jack — spostando il nodo fisico sottostante (non solo un offset CSS), così il cavo si vede visibilmente piegarsi verso la posizione aperta. La direzione è controllata da `Cavi.getPlugSpreadMode()`:
   - `'towardOther'` (default): ogni plug si apre in direzione del terminale opposto del proprio cavo (`Plug.getOtherEndCenter()`), con un passaggio di separazione angolare a coppie così cavi quasi paralleli non finiscono mai per sovrapporsi visivamente una volta aperti.
@@ -97,37 +101,41 @@ Un jack con uno o più plug già agganciati li ha posizionati esattamente al pro
 Un custom element (`cavi-plug`) con Shadow DOM.
 
 **Attributi osservati**
-| Attributo | Effetto |
-|---|---|
-| `plugged` | Attiva/disattiva lo stile visivo "connesso" (impostato/rimosso all'aggancio/sgancio) |
-| `magnet-class` | Nome della classe CSS applicata all'host quando il plug è in prossimità di un jack compatibile durante il trascinamento (default `cavi-magnet-active`) |
+
+| Attributo        | Effetto                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plugged`        | Attiva/disattiva lo stile visivo "connesso" (impostato/rimosso all'aggancio/sgancio)                                                                                                                                                                                                                                                                                                                      |
+| `magnet-class`   | Nome della classe CSS applicata all'host quando il plug è in prossimità di un jack compatibile durante il trascinamento (default `cavi-magnet-active`)                                                                                                                                                                                                                                                    |
 | `freeze-on-drop` | Attributo booleano basato su presenza (come `plugged`). Se presente, `endDrag()`/`cancelDrag()` lontano da ogni jack compatibile lasciano il nodo fisico **fissato** (`node.fixed = true`) invece che libero — il plug resta fermo sul punto di rilascio anziché oscillare sotto gravità/tensione, restando sempre riafferrabile con un click/tap. Default assente (comportamento invariato: nodo libero) |
 
 `type` **non** è un attributo del plug: viene ricevuto esclusivamente tramite `setType(type)`, chiamato dal `<cavi-wire>` genitore in base al proprio attributo `type`.
 
 **API**
-| Metodo | Descrizione |
-|---|---|
-| `setNode(node: Node)` | Collega visivamente il plug a un nodo fisico del cavo |
-| `setType(type: string)` | Imposta il tipo di connessione del plug (propagato dal Cable, non impostabile da markup) |
-| `attach(jack: Jack)` / `detach()` | Collega/scollega il plug da un jack, passando dallo stesso registro `attach`/`detach` del jack (usato sia dal drag sia dal binding dichiarativo di `<cavi-wire>`) |
-| `setMagnetActive(active: boolean)` | Attiva/disattiva la classe `magnet-class` sull'host |
-| `jack` (getter) | Il `Jack` a cui questo plug è attualmente agganciato, o `null` |
-| `beginDrag()` | Avvia un trascinamento: sgancia dall'eventuale jack corrente, fissa il nodo (`node.fixed = true`), alza lo `z-index` |
-| `updateDragPosition(clientX, clientY)` | Sposta il plug (e il suo nodo) alla posizione data e ricalcola l'anteprima calamita rispetto allo jack compatibile più vicino in prossimità |
-| `endDrag()` | Conclude il trascinamento agganciandosi al jack compatibile più vicino in prossimità se presente, altrimenti applicando la semantica di `freeze-on-drop` |
-| `cancelDrag()` | Conclude un trascinamento interrotto: non aggancia mai, anche se un jack compatibile è in prossimità — stessa semantica di `freeze-on-drop` di `endDrag()` per il resto |
-| `isSpread() -> boolean` | Se questo plug è attualmente aperto a ventaglio dal centro del proprio jack tramite il meccanismo di hover-spread — delega a `this.jack?.isSpread()` (vedi [Hover-spread](#hover-spread-scegliere-il-centro-di-un-jack-o-uno-dei-suoi-plug-esistenti) sopra) |
-| `getOtherEndCenter() -> { x, y } \| null` | Il centro a schermo del terminale *opposto* del cavo di questo plug (il `<cavi-plug>` sibling nello stesso `<cavi-wire>`), o `null` se non trovabile — usato dalla geometria di hover-spread di `Jack` |
-| `setSpreadPosition(localX, localY)` | Sposta il nodo di questo plug a una posizione locale al pannello senza avviare/influenzare un trascinamento — usato dal meccanismo di hover-spread di `Jack`; no-op durante un trascinamento |
+
+| Metodo                                    | Descrizione                                                                                                                                                                                                                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `setNode(node: Node)`                     | Collega visivamente il plug a un nodo fisico del cavo                                                                                                                                                                                                        |
+| `setType(type: string)`                   | Imposta il tipo di connessione del plug (propagato dal Cable, non impostabile da markup)                                                                                                                                                                     |
+| `attach(jack: Jack)` / `detach()`         | Collega/scollega il plug da un jack, passando dallo stesso registro `attach`/`detach` del jack (usato sia dal drag sia dal binding dichiarativo di `<cavi-wire>`)                                                                                            |
+| `setMagnetActive(active: boolean)`        | Attiva/disattiva la classe `magnet-class` sull'host                                                                                                                                                                                                          |
+| `jack` (getter)                           | Il `Jack` a cui questo plug è attualmente agganciato, o `null`                                                                                                                                                                                               |
+| `beginDrag()`                             | Avvia un trascinamento: sgancia dall'eventuale jack corrente, fissa il nodo (`node.fixed = true`), alza lo `z-index`                                                                                                                                         |
+| `updateDragPosition(clientX, clientY)`    | Sposta il plug (e il suo nodo) alla posizione data e ricalcola l'anteprima calamita rispetto allo jack compatibile più vicino in prossimità                                                                                                                  |
+| `endDrag()`                               | Conclude il trascinamento agganciandosi al jack compatibile più vicino in prossimità se presente, altrimenti applicando la semantica di `freeze-on-drop`                                                                                                     |
+| `cancelDrag()`                            | Conclude un trascinamento interrotto: non aggancia mai, anche se un jack compatibile è in prossimità — stessa semantica di `freeze-on-drop` di `endDrag()` per il resto                                                                                      |
+| `isSpread() -> boolean`                   | Se questo plug è attualmente aperto a ventaglio dal centro del proprio jack tramite il meccanismo di hover-spread — delega a `this.jack?.isSpread()` (vedi [Hover-spread](#hover-spread-scegliere-il-centro-di-un-jack-o-uno-dei-suoi-plug-esistenti) sopra) |
+| `getOtherEndCenter() -> { x, y } \| null` | Il centro a schermo del terminale _opposto_ del cavo di questo plug (il `<cavi-plug>` sibling nello stesso `<cavi-wire>`), o `null` se non trovabile — usato dalla geometria di hover-spread di `Jack`                                                       |
+| `setSpreadPosition(localX, localY)`       | Sposta il nodo di questo plug a una posizione locale al pannello senza avviare/influenzare un trascinamento — usato dal meccanismo di hover-spread di `Jack`; no-op durante un trascinamento                                                                 |
 
 **Comportamento**
+
 1. `setNode(node: Node)` collega visivamente il plug a un'istanza `Node` (proveniente da un `Wire`); `update()`/`updatePosition()` lo mantiene sincronizzato con `x`/`y` del nodo a meno che non sia in corso un trascinamento (`beginDrag()` chiamato senza un `endDrag()`/`cancelDrag()` successivo).
 2. `updateDragPosition(clientX, clientY)`, ripetuta durante il trascinamento: calcola la posizione relativa a `offsetParent`, chiama `node.setPosition(x, y)` **e** `node.setMousePosition(x, y)` (quest'ultimo inoltra a `WasmWorld.set_mouse`, mantenendo la repulsione fisica sincronizzata col plug trascinato), aggiorna la propria posizione a schermo, e ricalcola il jack calamita candidato (`Jack.findSnapTarget()`), attivando/disattivando le classi `magnet-class` su jack e plug di conseguenza.
 3. `endDrag()`: ricalcola il jack più vicino compatibile (tipo uguale e capacità disponibile) entro `20`px — non si fida dell'ultimo calcolo fatto da `updateDragPosition`, dato che un rilascio può avvenire senza alcun movimento intermedio; se trovato, aggancia il nodo al centro del jack, chiama `attach(jack)` e imposta `plugged`; altrimenti chiama `detach()` e imposta `node.fixed` in base a `freeze-on-drop`, rimuovendo `plugged`.
 4. `cancelDrag()`: stesso comportamento di `endDrag()` per l'esito "a vuoto", senza però mai tentare alcuno snap.
 
 **Note implementative**
+
 - La ricerca dei jack avviene tramite `Jack.findSnapTarget()` (che internamente scorre il registro statico `Jack.registry`), non tramite query DOM.
 - `z-index`: plug usa `20`, jack usa `10`, coerentemente col requisito "jack sotto plug" della spec — rilevante per l'occlusione descritta sotto.
 - `touch-action: none` è impostato nello shadow DOM del plug per evitare che il browser intercetti lo scroll durante il trascinamento touch, quando pilotato da un controller basato su Pointer Events.
@@ -138,8 +146,8 @@ Jack/Plug, come visto sopra, non ascoltano da soli alcun evento — l'interazion
 
 ```typescript
 interface IInteractionController {
-    attach: (cavi: Cavi) => void;
-    detach: () => void;
+  attach: (cavi: Cavi) => void;
+  detach: () => void;
 }
 ```
 
@@ -180,7 +188,7 @@ Quando presente, ad ogni frame del loop `requestAnimationFrame` già usato da `C
 
 Deliberatamente basato su un controllo sincrono per-frame anziché su `IntersectionObserver`: dato che il loop RAF esiste già per sincronizzare la posizione dei plug, un controllo bounding-box nello stesso tick è preciso al frame esatto e non rischia il ritardo/coalescing tipico di `IntersectionObserver` (specialmente con tab in background).
 
-**Nota importante**: cancellare un cavo che non è l'ultimo creato sposta gli indici WASM di tutti i cavi successivi (`World.deleteWire`, vedi [riferimento API](./03-api.md#world)). `CaviWireElement` mantiene un proprio registro statico di tutti i `<cavi-wire>` connessi e, subito dopo ogni cancellazione, ri-aggancia (`_rebindAfterIndexShift`) ogni cavo sopravvissuto il cui indice si è spostato al `Wire` fresco corretto — senza questo passaggio, gli altri cavi continuerebbero silenziosamente a leggere/scrivere il cavo sbagliato. Non copre invece un `Jack` che sta attivamente creando un nuovo cavo (una `CableSession` non ancora conclusa) nello stesso istante in cui un *altro* cavo esce ed è auto-cleanup: un caso limite molto raro, non ancora gestito.
+**Nota importante**: cancellare un cavo che non è l'ultimo creato sposta gli indici WASM di tutti i cavi successivi (`World.deleteWire`, vedi [riferimento API](./03-api.md#world)). `CaviWireElement` mantiene un proprio registro statico di tutti i `<cavi-wire>` connessi e, subito dopo ogni cancellazione, ri-aggancia (`_rebindAfterIndexShift`) ogni cavo sopravvissuto il cui indice si è spostato al `Wire` fresco corretto — senza questo passaggio, gli altri cavi continuerebbero silenziosamente a leggere/scrivere il cavo sbagliato. Non copre invece un `Jack` che sta attivamente creando un nuovo cavo (una `CableSession` non ancora conclusa) nello stesso istante in cui un _altro_ cavo esce ed è auto-cleanup: un caso limite molto raro, non ancora gestito.
 
 ## Relazione col motore fisico
 

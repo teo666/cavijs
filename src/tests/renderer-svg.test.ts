@@ -9,13 +9,10 @@ class FakeResizeObserver {
 let lastResizeObserver: FakeResizeObserver;
 
 beforeEach(() => {
-  vi.stubGlobal(
-    'ResizeObserver',
-    function () {
-      lastResizeObserver = new FakeResizeObserver();
-      return lastResizeObserver;
-    },
-  );
+  vi.stubGlobal('ResizeObserver', function () {
+    lastResizeObserver = new FakeResizeObserver();
+    return lastResizeObserver;
+  });
 });
 
 function makeFakeWorld() {

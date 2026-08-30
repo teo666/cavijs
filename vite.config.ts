@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vite';
 
 export default defineConfig({
   // Demo/example pages live in examples/ (src/ contains only the library).
@@ -6,7 +6,7 @@ export default defineConfig({
   publicDir: '../public',
   base: '/cavijs/',
   optimizeDeps: {
-    exclude: ['cavi']
+    exclude: ['cavi'],
   },
   build: {
     outDir: '../dist',
@@ -27,8 +27,8 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     fs: {
-      allow: ['..']
-    }
+      allow: ['..'],
+    },
   },
-  assetsInclude: ['**/*.wasm']
-})
+  assetsInclude: ['**/*.wasm'],
+});

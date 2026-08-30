@@ -81,6 +81,7 @@ getIndex(): number
 ```
 
 **Metadata example:**
+
 ```typescript
 const wire = world.addWire(100, 100, 500, 100, 20, 10, 5, 1);
 wire.setColor('#ff0000');
@@ -125,6 +126,7 @@ getContainer(): HTMLElement   // the element passed to the constructor
 ```
 
 **Features:**
+
 - Direct WASM memory access for efficient rendering (zero-copy `Float32Array` view over `Cavi.wasm.memory.buffer`)
 - Reads wire colors from `Wire` metadata, falling back to a default palette (`['#00ff88', '#ff00ff', '#ffaa00']`) by wire index
 - Supports both segment (`ctx.lineTo`) and Bezier (`ctx.bezierCurveTo`) rendering, per the `render_type` encoded in the wire data buffer
@@ -138,10 +140,10 @@ getContainer(): HTMLElement   // the element passed to the constructor
 
 ```typescript
 interface IRenderer {
-    render: () => void;
-    setDebugDrawNodes: (enabled: boolean) => void;
-    getDebugDrawNodes: () => boolean;
-    getContainer: () => HTMLElement;
+  render: () => void;
+  setDebugDrawNodes: (enabled: boolean) => void;
+  getDebugDrawNodes: () => boolean;
+  getContainer: () => HTMLElement;
 }
 ```
 
@@ -151,8 +153,8 @@ Implement this to build a custom renderer (e.g. WebGL, SVG) — `Cavi.setRendere
 
 ```typescript
 interface IInteractionController {
-    attach: (cavi: Cavi) => void;
-    detach: () => void;
+  attach: (cavi: Cavi) => void;
+  detach: () => void;
 }
 ```
 

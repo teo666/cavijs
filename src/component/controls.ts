@@ -1,117 +1,117 @@
-import type { World } from "../core/world";
-import type { Cavi } from "../core/cavi";
+import type { World } from '../core/world';
+import type { Cavi } from '../core/cavi';
 
 /**
  * CaviControls is a web component that provides a GUI for controlling
  * the Cavi simulation. It's scrollable and can be easily instantiated in HTML.
  */
 export class CaviControls extends HTMLElement {
-    private cavi: Cavi | null = null;
-    private world: World | null = null;
-    private statsUpdateInterval: number | null = null;
-    public shadowRoot: ShadowRoot;
+  private cavi: Cavi | null = null;
+  private world: World | null = null;
+  private statsUpdateInterval: number | null = null;
+  public shadowRoot: ShadowRoot;
 
-    constructor() {
-        super();
-        this.shadowRoot = this.attachShadow({ mode: 'open' });
+  constructor() {
+    super();
+    this.shadowRoot = this.attachShadow({ mode: 'open' });
+  }
+
+  connectedCallback() {
+    this.render();
+  }
+
+  /**
+   * Set the Cavi instance
+   */
+  public setCavi(cavi: Cavi): void {
+    this.cavi = cavi;
+    this.world = cavi.getWorld();
+    this.setupEventListeners();
+    this.startStatsUpdate();
+  }
+
+  /**
+   * Start updating stats
+   */
+  private startStatsUpdate(): void {
+    // Update stats every 100ms
+    this.statsUpdateInterval = window.setInterval(() => {
+      this.updateStats();
+    }, 100);
+  }
+
+  /**
+   * Update statistics display
+   */
+  private updateStats(): void {
+    if (!this.world || !this.cavi) return;
+
+    const renderer = this.cavi.getRenderer() as any;
+    const wasmWorld = this.world.getWasmWorld();
+
+    // Update FPS
+    const fpsDisplay = this.shadowRoot.getElementById('fpsValue');
+    if (fpsDisplay && renderer && typeof renderer.getFPS === 'function') {
+      fpsDisplay.textContent = renderer.getFPS().toString();
     }
 
-    connectedCallback() {
-        this.render();
+    // Update wire count
+    const wireCountDisplay = this.shadowRoot.getElementById('wireCountValue');
+    if (wireCountDisplay) {
+      wireCountDisplay.textContent = wasmWorld.wire_count().toString();
     }
 
-    /**
-     * Set the Cavi instance
-     */
-    public setCavi(cavi: Cavi): void {
-        this.cavi = cavi;
-        this.world = cavi.getWorld();
-        this.setupEventListeners();
-        this.startStatsUpdate();
+    // Update total points
+    const totalPointsDisplay = this.shadowRoot.getElementById('totalPointsValue');
+    if (totalPointsDisplay) {
+      let totalPoints = 0;
+      const wireCount = wasmWorld.wire_count();
+      for (let i = 0; i < wireCount; i++) {
+        totalPoints += wasmWorld.get_wire_node_count(i);
+      }
+      totalPointsDisplay.textContent = totalPoints.toString();
     }
 
-    /**
-     * Start updating stats
-     */
-    private startStatsUpdate(): void {
-        // Update stats every 100ms
-        this.statsUpdateInterval = window.setInterval(() => {
-            this.updateStats();
-        }, 100);
+    // Update buffer size
+    const bufferSizeDisplay = this.shadowRoot.getElementById('bufferSizeValue');
+    if (bufferSizeDisplay) {
+      const bufferLen = wasmWorld.wire_data_len();
+      const bufferSizeKB = ((bufferLen * 4) / 1024).toFixed(2); // Float32 = 4 bytes
+      bufferSizeDisplay.textContent = `${bufferSizeKB}KB`;
     }
 
-    /**
-     * Update statistics display
-     */
-    private updateStats(): void {
-        if (!this.world || !this.cavi) return;
-
-        const renderer = this.cavi.getRenderer() as any;
-        const wasmWorld = this.world.getWasmWorld();
-        
-        // Update FPS
-        const fpsDisplay = this.shadowRoot.getElementById('fpsValue');
-        if (fpsDisplay && renderer && typeof renderer.getFPS === 'function') {
-            fpsDisplay.textContent = renderer.getFPS().toString();
-        }
-
-        // Update wire count
-        const wireCountDisplay = this.shadowRoot.getElementById('wireCountValue');
-        if (wireCountDisplay) {
-            wireCountDisplay.textContent = wasmWorld.wire_count().toString();
-        }
-
-        // Update total points
-        const totalPointsDisplay = this.shadowRoot.getElementById('totalPointsValue');
-        if (totalPointsDisplay) {
-            let totalPoints = 0;
-            const wireCount = wasmWorld.wire_count();
-            for (let i = 0; i < wireCount; i++) {
-                totalPoints += wasmWorld.get_wire_node_count(i);
-            }
-            totalPointsDisplay.textContent = totalPoints.toString();
-        }
-
-        // Update buffer size
-        const bufferSizeDisplay = this.shadowRoot.getElementById('bufferSizeValue');
-        if (bufferSizeDisplay) {
-            const bufferLen = wasmWorld.wire_data_len();
-            const bufferSizeKB = (bufferLen * 4 / 1024).toFixed(2); // Float32 = 4 bytes
-            bufferSizeDisplay.textContent = `${bufferSizeKB}KB`;
-        }
-
-        // Update mouse position
-        const mouseXDisplay = this.shadowRoot.getElementById('mouseXValue');
-        const mouseYDisplay = this.shadowRoot.getElementById('mouseYValue');
-        if (renderer && mouseXDisplay && mouseYDisplay) {
-            if (renderer.mouseX !== undefined && renderer.mouseY !== undefined) {
-                mouseXDisplay.textContent = Math.round(renderer.mouseX).toString();
-                mouseYDisplay.textContent = Math.round(renderer.mouseY).toString();
-            }
-        }
-
-        // Update acceleration values
-        const accel = wasmWorld.get_acceleration();
-        const accelXDisplay = this.shadowRoot.getElementById('accelXValue');
-        const accelYDisplay = this.shadowRoot.getElementById('accelYValue');
-        if (accelXDisplay) accelXDisplay.textContent = accel.x.toFixed(1);
-        if (accelYDisplay) accelYDisplay.textContent = accel.y.toFixed(1);
+    // Update mouse position
+    const mouseXDisplay = this.shadowRoot.getElementById('mouseXValue');
+    const mouseYDisplay = this.shadowRoot.getElementById('mouseYValue');
+    if (renderer && mouseXDisplay && mouseYDisplay) {
+      if (renderer.mouseX !== undefined && renderer.mouseY !== undefined) {
+        mouseXDisplay.textContent = Math.round(renderer.mouseX).toString();
+        mouseYDisplay.textContent = Math.round(renderer.mouseY).toString();
+      }
     }
 
-    /**
-     * Clean up when element is removed
-     */
-    disconnectedCallback(): void {
-        if (this.statsUpdateInterval !== null) {
-            window.clearInterval(this.statsUpdateInterval);
-        }
-    }
+    // Update acceleration values
+    const accel = wasmWorld.get_acceleration();
+    const accelXDisplay = this.shadowRoot.getElementById('accelXValue');
+    const accelYDisplay = this.shadowRoot.getElementById('accelYValue');
+    if (accelXDisplay) accelXDisplay.textContent = accel.x.toFixed(1);
+    if (accelYDisplay) accelYDisplay.textContent = accel.y.toFixed(1);
+  }
 
-    /**
-     * Render the component
-     */
-    private render(): void {
-        this.shadowRoot.innerHTML = `
+  /**
+   * Clean up when element is removed
+   */
+  disconnectedCallback(): void {
+    if (this.statsUpdateInterval !== null) {
+      window.clearInterval(this.statsUpdateInterval);
+    }
+  }
+
+  /**
+   * Render the component
+   */
+  private render(): void {
+    this.shadowRoot.innerHTML = `
             <style>
                 :host {
                     display: block;
@@ -447,171 +447,199 @@ export class CaviControls extends HTMLElement {
                 </div>
             </div>
         `;
+  }
+
+  /**
+   * Setup event listeners for all controls
+   */
+  private setupEventListeners(): void {
+    if (!this.world || !this.cavi) return;
+
+    const wasmWorld = this.world.getWasmWorld();
+
+    // Mouse Radius
+    this.setupRangeControl('mouseRadius', 'mouseRadiusValue', (value) => {
+      wasmWorld.set_mouse_radius(value);
+    });
+
+    // Pointer Radius
+    this.setupRangeControl('pointerRadius', 'pointerRadiusValue', (value) => {
+      wasmWorld.set_pointer_radius(value);
+    });
+
+    // Response Coefficient
+    this.setupRangeControl(
+      'responseCoef',
+      'responseCoefValue',
+      (value) => {
+        wasmWorld.set_response_coef(value);
+      },
+      2
+    );
+
+    // Friction
+    this.setupRangeControl(
+      'friction',
+      'frictionValue',
+      (value) => {
+        wasmWorld.set_friction(value);
+      },
+      2
+    );
+
+    // Acceleration X
+    this.setupRangeControl('accelerationX', 'accelerationXValue', (value) => {
+      const currentAccel = wasmWorld.get_acceleration();
+      wasmWorld.set_acceleration(value, currentAccel.y);
+    });
+
+    // Acceleration Y
+    this.setupRangeControl('accelerationY', 'accelerationYValue', (value) => {
+      const currentAccel = wasmWorld.get_acceleration();
+      wasmWorld.set_acceleration(currentAccel.x, value);
+    });
+
+    // Node Count Controls
+    for (let i = 0; i < 3; i++) {
+      this.setupRangeControl(
+        `nodeCount${i}`,
+        `nodeCount${i}Value`,
+        (value) => {
+          wasmWorld.set_wire_node_count(i, value);
+        },
+        0
+      );
     }
 
-    /**
-     * Setup event listeners for all controls
-     */
-    private setupEventListeners(): void {
-        if (!this.world || !this.cavi) return;
+    // Calculate Default Button
+    const calculateDefaultBtn = this.shadowRoot.getElementById('calculateDefault');
+    calculateDefaultBtn?.addEventListener('click', () => {
+      const wireCount = wasmWorld.wire_count();
 
-        const wasmWorld = this.world.getWasmWorld();
+      for (let i = 0; i < Math.min(wireCount, 3); i++) {
+        const nodeCount = wasmWorld.get_wire_node_count(i);
+        const startX = wasmWorld.get_wire_node_x(i, 0);
+        const startY = wasmWorld.get_wire_node_y(i, 0);
+        const endX = wasmWorld.get_wire_node_x(i, nodeCount - 1);
+        const endY = wasmWorld.get_wire_node_y(i, nodeCount - 1);
 
-        // Mouse Radius
-        this.setupRangeControl('mouseRadius', 'mouseRadiusValue', (value) => {
-            wasmWorld.set_mouse_radius(value);
-        });
+        const defaultCount = this.calculateOptimalLength(startX, startY, endX, endY, 10.0);
 
-        // Pointer Radius
-        this.setupRangeControl('pointerRadius', 'pointerRadiusValue', (value) => {
-            wasmWorld.set_pointer_radius(value);
-        });
+        // Apply default
+        wasmWorld.set_wire_node_count(i, defaultCount);
 
-        // Response Coefficient
-        this.setupRangeControl('responseCoef', 'responseCoefValue', (value) => {
-            wasmWorld.set_response_coef(value);
-        }, 2);
-
-        // Friction
-        this.setupRangeControl('friction', 'frictionValue', (value) => {
-            wasmWorld.set_friction(value);
-        }, 2);
-
-        // Acceleration X
-        this.setupRangeControl('accelerationX', 'accelerationXValue', (value) => {
-            const currentAccel = wasmWorld.get_acceleration();
-            wasmWorld.set_acceleration(value, currentAccel.y);
-        });
-
-        // Acceleration Y
-        this.setupRangeControl('accelerationY', 'accelerationYValue', (value) => {
-            const currentAccel = wasmWorld.get_acceleration();
-            wasmWorld.set_acceleration(currentAccel.x, value);
-        });
-
-        // Node Count Controls
-        for (let i = 0; i < 3; i++) {
-            this.setupRangeControl(`nodeCount${i}`, `nodeCount${i}Value`, (value) => {
-                wasmWorld.set_wire_node_count(i, value);
-            }, 0);
-        }
-
-        // Calculate Default Button
-        const calculateDefaultBtn = this.shadowRoot.getElementById('calculateDefault');
-        calculateDefaultBtn?.addEventListener('click', () => {
-            const wireCount = wasmWorld.wire_count();
-            
-            for (let i = 0; i < Math.min(wireCount, 3); i++) {
-                const nodeCount = wasmWorld.get_wire_node_count(i);
-                const startX = wasmWorld.get_wire_node_x(i, 0);
-                const startY = wasmWorld.get_wire_node_y(i, 0);
-                const endX = wasmWorld.get_wire_node_x(i, nodeCount - 1);
-                const endY = wasmWorld.get_wire_node_y(i, nodeCount - 1);
-                
-                const defaultCount = this.calculateOptimalLength(startX, startY, endX, endY, 10.0);
-                
-                // Apply default
-                wasmWorld.set_wire_node_count(i, defaultCount);
-                
-                // Update UI
-                const slider = this.shadowRoot.getElementById(`nodeCount${i}`) as HTMLInputElement;
-                const valueDisplay = this.shadowRoot.getElementById(`nodeCount${i}Value`);
-                if (slider && valueDisplay) {
-                    slider.value = defaultCount.toString();
-                    valueDisplay.textContent = defaultCount.toString();
-                }
-            }
-        });
-
-        // Add Wire Button
-        const addWireBtn = this.shadowRoot.getElementById('addWireBtn');
-        addWireBtn?.addEventListener('click', () => {
-            // Get canvas dimensions (assuming 1000x600 default)
-            const canvasWidth = 1000;
-            const canvasHeight = 600;
-            
-            const x1 = Math.random() * (canvasWidth - 200) + 100;
-            const y1 = Math.random() * (canvasHeight - 200) + 100;
-            const x2 = Math.random() * (canvasWidth - 200) + 100;
-            const y2 = Math.random() * (canvasHeight - 200) + 100;
-            const nodeCount = Math.floor(Math.random() * 30) + 10;
-            const radius = Math.random() * 8 + 3;
-            const renderType = Math.random() > 0.5 ? 1 : 0;
-            
-            this.cavi!.addWire(x1, y1, x2, y2, nodeCount, 10, radius, renderType);
-        });
-
-        // Clear Button
-        const clearBtn = this.shadowRoot.getElementById('clearBtn');
-        clearBtn?.addEventListener('click', () => {
-            if (confirm('Are you sure you want to clear all wires?')) {
-                this.cavi!.clearAllWires();
-            }
-        });
-
-        // Add Node Button
-        const addNodeBtn = this.shadowRoot.getElementById('addNodeBtn');
-        const addNodeWireIndexInput = this.shadowRoot.getElementById('addNodeWireIndex') as HTMLInputElement;
-        const addNodePositionInput = this.shadowRoot.getElementById('addNodePosition') as HTMLInputElement;
-
-        addNodeBtn?.addEventListener('click', () => {
-            const wireIndex = parseInt(addNodeWireIndexInput.value);
-            const nodePosition = parseInt(addNodePositionInput.value);
-            
-            // Validate wire index
-            const wire = this.cavi!.getWireByIndex(wireIndex);
-            if (!wire) {
-                alert(`Wire ${wireIndex} does not exist. Please select a valid wire index (0-${wasmWorld.wire_count() - 1}).`);
-                return;
-            }
-            
-            // Get node count for validation
-            const nodeCount = wire.getNodeCount();
-            if (nodePosition < 0 || nodePosition >= nodeCount) {
-                alert(`Invalid node position. Must be between 0 and ${nodeCount - 1}.`);
-                return;
-            }
-            
-            // Get the current position of the node at the specified index
-            const x = wasmWorld.get_wire_node_x(wireIndex, nodePosition);
-            const y = wasmWorld.get_wire_node_y(wireIndex, nodePosition);
-            
-            // Add the new node at this position
-            wire.addNodeAt(nodePosition, x, y, false);
-            
-            console.log(`Added node to wire ${wireIndex} at position ${nodePosition} (${x.toFixed(2)}, ${y.toFixed(2)})`);
-            
-        });
-    }
-
-    /**
-     * Helper method to setup range controls
-     */
-    private setupRangeControl(
-        sliderId: string,
-        valueId: string,
-        onChange: (value: number) => void,
-        decimals: number = 1
-    ): void {
-        const slider = this.shadowRoot.getElementById(sliderId) as HTMLInputElement;
-        const valueDisplay = this.shadowRoot.getElementById(valueId);
-
+        // Update UI
+        const slider = this.shadowRoot.getElementById(`nodeCount${i}`) as HTMLInputElement;
+        const valueDisplay = this.shadowRoot.getElementById(`nodeCount${i}Value`);
         if (slider && valueDisplay) {
-            slider.addEventListener('input', (e) => {
-                const value = parseFloat((e.target as HTMLInputElement).value);
-                onChange(value);
-                valueDisplay.textContent = value.toFixed(decimals);
-            });
+          slider.value = defaultCount.toString();
+          valueDisplay.textContent = defaultCount.toString();
         }
-    }
+      }
+    });
 
-    /**
-     * Calculate optimal wire length
-     */
-    private calculateOptimalLength(x1: number, y1: number, x2: number, y2: number, tension: number): number {
-        const distance = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
-        return Math.max(2, Math.floor(distance / tension));
+    // Add Wire Button
+    const addWireBtn = this.shadowRoot.getElementById('addWireBtn');
+    addWireBtn?.addEventListener('click', () => {
+      // Get canvas dimensions (assuming 1000x600 default)
+      const canvasWidth = 1000;
+      const canvasHeight = 600;
+
+      const x1 = Math.random() * (canvasWidth - 200) + 100;
+      const y1 = Math.random() * (canvasHeight - 200) + 100;
+      const x2 = Math.random() * (canvasWidth - 200) + 100;
+      const y2 = Math.random() * (canvasHeight - 200) + 100;
+      const nodeCount = Math.floor(Math.random() * 30) + 10;
+      const radius = Math.random() * 8 + 3;
+      const renderType = Math.random() > 0.5 ? 1 : 0;
+
+      this.cavi!.addWire(x1, y1, x2, y2, nodeCount, 10, radius, renderType);
+    });
+
+    // Clear Button
+    const clearBtn = this.shadowRoot.getElementById('clearBtn');
+    clearBtn?.addEventListener('click', () => {
+      if (confirm('Are you sure you want to clear all wires?')) {
+        this.cavi!.clearAllWires();
+      }
+    });
+
+    // Add Node Button
+    const addNodeBtn = this.shadowRoot.getElementById('addNodeBtn');
+    const addNodeWireIndexInput = this.shadowRoot.getElementById(
+      'addNodeWireIndex'
+    ) as HTMLInputElement;
+    const addNodePositionInput = this.shadowRoot.getElementById(
+      'addNodePosition'
+    ) as HTMLInputElement;
+
+    addNodeBtn?.addEventListener('click', () => {
+      const wireIndex = parseInt(addNodeWireIndexInput.value);
+      const nodePosition = parseInt(addNodePositionInput.value);
+
+      // Validate wire index
+      const wire = this.cavi!.getWireByIndex(wireIndex);
+      if (!wire) {
+        alert(
+          `Wire ${wireIndex} does not exist. Please select a valid wire index (0-${wasmWorld.wire_count() - 1}).`
+        );
+        return;
+      }
+
+      // Get node count for validation
+      const nodeCount = wire.getNodeCount();
+      if (nodePosition < 0 || nodePosition >= nodeCount) {
+        alert(`Invalid node position. Must be between 0 and ${nodeCount - 1}.`);
+        return;
+      }
+
+      // Get the current position of the node at the specified index
+      const x = wasmWorld.get_wire_node_x(wireIndex, nodePosition);
+      const y = wasmWorld.get_wire_node_y(wireIndex, nodePosition);
+
+      // Add the new node at this position
+      wire.addNodeAt(nodePosition, x, y, false);
+
+      console.log(
+        `Added node to wire ${wireIndex} at position ${nodePosition} (${x.toFixed(2)}, ${y.toFixed(2)})`
+      );
+    });
+  }
+
+  /**
+   * Helper method to setup range controls
+   */
+  private setupRangeControl(
+    sliderId: string,
+    valueId: string,
+    onChange: (value: number) => void,
+    decimals: number = 1
+  ): void {
+    const slider = this.shadowRoot.getElementById(sliderId) as HTMLInputElement;
+    const valueDisplay = this.shadowRoot.getElementById(valueId);
+
+    if (slider && valueDisplay) {
+      slider.addEventListener('input', (e) => {
+        const value = parseFloat((e.target as HTMLInputElement).value);
+        onChange(value);
+        valueDisplay.textContent = value.toFixed(decimals);
+      });
     }
+  }
+
+  /**
+   * Calculate optimal wire length
+   */
+  private calculateOptimalLength(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    tension: number
+  ): number {
+    const distance = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+    return Math.max(2, Math.floor(distance / tension));
+  }
 }
 
 // Register the custom element

@@ -62,7 +62,12 @@ function rect(x: number, y: number): DOMRect {
 }
 
 /** A positioned Jack, appended to the document, ready to drive via the public API. */
-function makePositionedJack(id: string, x: number, y: number, attrs: Record<string, string> = {}): Jack {
+function makePositionedJack(
+  id: string,
+  x: number,
+  y: number,
+  attrs: Record<string, string> = {}
+): Jack {
   const jack = makeJack(attrs);
   jack.id = id;
   document.body.appendChild(jack);
@@ -107,7 +112,9 @@ class FakeWire {
       } else if (i === count - 1) {
         next.push(new Node(last.x, last.y, last.fixed));
       } else {
-        next.push(new Node(first.x + (last.x - first.x) * t, first.y + (last.y - first.y) * t, false));
+        next.push(
+          new Node(first.x + (last.x - first.x) * t, first.y + (last.y - first.y) * t, false)
+        );
       }
     }
     this.nodes = next;

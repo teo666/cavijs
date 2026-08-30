@@ -81,6 +81,7 @@ getIndex(): number
 ```
 
 **Esempio di metadati:**
+
 ```typescript
 const wire = world.addWire(100, 100, 500, 100, 20, 10, 5, 1);
 wire.setColor('#ff0000');
@@ -125,6 +126,7 @@ getContainer(): HTMLElement   // l'elemento passato al costruttore
 ```
 
 **Caratteristiche:**
+
 - Accesso diretto alla memoria WASM per un rendering efficiente (vista `Float32Array` a copia zero su `Cavi.wasm.memory.buffer`)
 - Legge i colori dei cavi dai metadati di `Wire`, ricadendo su una palette di default (`['#00ff88', '#ff00ff', '#ffaa00']`) in base all'indice del cavo
 - Supporta sia il rendering a segmenti (`ctx.lineTo`) sia Bezier (`ctx.bezierCurveTo`), in base al `render_type` codificato nel buffer dati dei cavi
@@ -138,10 +140,10 @@ getContainer(): HTMLElement   // l'elemento passato al costruttore
 
 ```typescript
 interface IRenderer {
-    render: () => void;
-    setDebugDrawNodes: (enabled: boolean) => void;
-    getDebugDrawNodes: () => boolean;
-    getContainer: () => HTMLElement;
+  render: () => void;
+  setDebugDrawNodes: (enabled: boolean) => void;
+  getDebugDrawNodes: () => boolean;
+  getContainer: () => HTMLElement;
 }
 ```
 
@@ -151,8 +153,8 @@ Implementarla per costruire un renderer personalizzato (es. WebGL, SVG) — `Cav
 
 ```typescript
 interface IInteractionController {
-    attach: (cavi: Cavi) => void;
-    detach: () => void;
+  attach: (cavi: Cavi) => void;
+  detach: () => void;
 }
 ```
 
