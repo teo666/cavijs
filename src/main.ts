@@ -6,7 +6,7 @@ import './style.css'
 
 await Cavi.initWasm();
 const cavi = new Cavi();
-const renderer = new Renderer(document.getElementById('wireCanvas') as HTMLCanvasElement, cavi.getWorld());
+const renderer = new Renderer(document.getElementById('container') as HTMLElement, cavi.getWorld());
 
 cavi.setRenderer(renderer);
 
