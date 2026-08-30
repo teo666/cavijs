@@ -1,5 +1,5 @@
-import type { World } from "./world";
-import type { Cavi } from "./cavi";
+import type { World } from "../core/world";
+import type { Cavi } from "../core/cavi";
 
 /**
  * CaviControls is a web component that provides a GUI for controlling

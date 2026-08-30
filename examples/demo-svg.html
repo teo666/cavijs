@@ -4,13 +4,13 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>cavijs</title>
+    <title>cavijs - SVG renderer demo</title>
   </head>
   <body>
     <div id="container">
-        <canvas id="wireCanvas" width="1000" height="600"></canvas>
+        <div id="wireArea" style="position:relative;width:1000px;height:600px;border:2px solid #444;background:#0a0a0a;border-radius:8px;flex-shrink:0;"></div>
         <cavi-controls id="controls"></cavi-controls>
     </div>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="./main-svg.ts"></script>
   </body>
 </html>

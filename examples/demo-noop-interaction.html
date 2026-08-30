@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>cavijs - No-op interaction controller</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: sans-serif;
+        background: #222;
+        color: #ddd;
+      }
+      h1 {
+        margin-bottom: 6px;
+        text-align: center;
+      }
+      .instructions {
+        text-align: center;
+        margin-bottom: 16px;
+        color: #aaa;
+        max-width: 700px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .instructions code {
+        color: #ffeb3b;
+      }
+      #world {
+        overflow: hidden;
+        position: relative;
+        width: 1000px;
+        height: 400px;
+        background: #333;
+        margin: 0 auto;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        pointer-events: none;
+        background: transparent;
+        z-index: 30;
+      }
+      cavi-jack {
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        border: 2px solid #555;
+        position: absolute;
+        box-sizing: border-box;
+      }
+      .jackAudio {
+        background-color: #4caf50;
+      }
+      cavi-plug[plugged] {
+        border-color: #0c7413;
+        background-color: rgb(33, 191, 12);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>No-op interaction controller</h1>
+    <div class="instructions">
+      Try clicking/dragging the jacks or the plug below — nothing happens. This page assigns a
+      <code>&lt;cavi-interaction&gt;</code> whose <code>.controller</code> is an
+      <code>IInteractionController</code> with empty <code>attach()</code>/<code>detach()</code>
+      (see <code>src/exampleNoopInteraction.ts</code>) instead of the
+      <code>StandardInteractionController</code> that <code>&lt;cavi-world&gt;</code> would
+      otherwise create automatically — proof that Jack/Plug install no listeners of their own and
+      are entirely inert without some controller driving them.
+    </div>
+    <cavi-world id="world" gravity-y="5">
+      <!-- Given its own .controller (see exampleNoopInteraction.ts) before
+           <cavi-world> would otherwise auto-create a default one. -->
+      <cavi-interaction id="interaction"></cavi-interaction>
+
+      <cavi-jack id="jack1" class="jackAudio" x="150" y="150" type="audio"></cavi-jack>
+      <cavi-jack id="jack2" class="jackAudio" x="450" y="150" type="audio"></cavi-jack>
+
+      <cavi-wire id="wire1" length="10" tension="20" size="8" color="#ccc" type="audio">
+        <cavi-plug node="0" jack="jack1"></cavi-plug>
+        <cavi-plug node="9" jack="jack2"></cavi-plug>
+      </cavi-wire>
+    </cavi-world>
+    <script type="module" src="./exampleNoopInteraction.ts"></script>
+  </body>
+</html>

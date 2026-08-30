@@ -12,7 +12,8 @@ The TS project contain following classes:
 - **Node** - Individual node/point in a wire
 - **Socket** - Connection point (future implementation)
 - **Jack** - Connector (future implementation)
-- **Renderer** - Rendering interface
+- **Renderer** - Canvas-based rendering implementation
+- **SvgRenderer** - SVG-based rendering implementation, drop-in alternative to Renderer
 
 ## Architecture
 
@@ -131,12 +132,13 @@ setPosition(x: number, y: number): void
 
 ### Renderer
 
-Renderer class is responsible to render wires inside canvas. In each render cycle it uses the WASM buffer and wire metadata instances to determine rendering properties like color.
+Renderer class is responsible to render wires inside a `<canvas>`. In each render cycle it uses the WASM buffer and wire metadata instances to determine rendering properties like color.
 
 **Constructor:**
 ```typescript
-constructor(canvas: HTMLCanvasElement, world: World)
+constructor(container: HTMLElement, world: World)
 ```
+Looks up an existing `#wireCanvas` element inside `container` (it does not create one itself — see e.g. `CaviWorldElement`/`<cavi-world>` in `src/component/worldwc.ts`, which creates and sizes the canvas before constructing the renderer).
 
 **Features:**
 - Direct WASM memory access for efficient rendering (zero-copy)
@@ -152,9 +154,53 @@ render(): void           // Main render method (includes animation loop)
 clear(): void            // Clear the canvas
 getFPS(): number         // Get current frames per second
 drawInteractionRadii(x: number, y: number): void  // Draw mouse interaction zones
+stop(): void             // Cancel the animation loop
 ```
 
 The renderer reads wire colors from metadata and automatically handles the render loop, physics updates, and visualization.
+
+### SvgRenderer
+
+`SvgRenderer` is a drop-in alternative to `Renderer`: it implements the same `IRenderer` interface and renders each wire as an SVG `<path>` (one pooled, updated-in-place element per wire) instead of stroking a `<canvas>`. Anywhere `Renderer` is used, `SvgRenderer` can be substituted without other code changes.
+
+Unlike `Renderer`, it is **self-contained**: its constructor creates its own `<svg id="wireSvg">` inside the given container if one doesn't already exist, and manages its own sizing internally (an internal `ResizeObserver`, no `viewBox` — wire coordinates map 1:1 to SVG user-space pixels, just like the canvas backing store).
+
+**Constructor:**
+```typescript
+constructor(container: HTMLElement, world: World)
+```
+`container` can be any plain `HTMLElement` (it does not need a pre-created `#wireSvg`, nor does it need to come from `<cavi-world>`).
+
+**Features:**
+- Same zero-copy WASM buffer reading and wire-color-fallback logic as `Renderer`
+- Per-wire `<path>` pooling: DOM nodes are created/removed only when the wire count changes, never recreated every frame
+- Segment and Bezier curve rendering via `M`/`L`/`C` path commands
+- Debug overlay (physics nodes, mouse/pointer interaction radii) as SVG `<circle>`/`<text>` elements, toggled the same way as `Renderer`
+- Dispatches a `cavi-resize` CustomEvent on `container` on every resize — same contract as `StandardResizeController` (`src/renderer/resize.ts`), so code that listens for `cavi-resize` (e.g. to reposition jacks, see `examples/patchbay-shared.ts`) works unchanged regardless of which renderer is active
+
+**Methods:**
+```typescript
+render(): void           // Main render method (includes animation loop)
+getFPS(): number         // Get current frames per second
+setDebugDrawNodes(enabled: boolean): void
+getDebugDrawNodes(): boolean
+getContainer(): HTMLElement
+stop(): void             // Cancel the animation loop and disconnect the internal ResizeObserver
+```
+
+**Usage** (swap-in replacement for `Renderer`):
+```typescript
+import { Cavi, SvgRenderer } from 'cavijs';
+
+await Cavi.initWasm();
+const cavi = new Cavi();
+
+const container = document.getElementById('wireArea') as HTMLElement;
+const renderer = new SvgRenderer(container, cavi.getWorld());
+cavi.setRenderer(renderer);
+
+renderer.render();
+```
 
 
 ## Usage Example
@@ -168,9 +214,9 @@ await Cavi.initWasm();
 // Create instance
 const cavi = new Cavi();
 
-// Setup renderer (pass both canvas and world)
-const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-const renderer = new Renderer(canvas, cavi.getWorld());
+// Setup renderer (pass the container holding a #wireCanvas element, and world)
+const container = document.getElementById('container') as HTMLElement;
+const renderer = new Renderer(container, cavi.getWorld());
 cavi.setRenderer(renderer);
 
 // Add wires with metadata for custom colors
@@ -238,11 +284,39 @@ interface IRenderer {
 }
 ```
 
-The default `Renderer` class provides a complete implementation with:
+The default `Renderer` (canvas) and `SvgRenderer` (SVG) classes both provide complete implementations with:
 - Efficient zero-copy WASM memory access
 - Wire metadata support (colors and custom properties)
 - Built-in animation loop and physics updates
 - Mouse interaction visualization
 - FPS tracking accessible via `getFPS()`
 
+`SvgRenderer` (see above) is a working example of an alternative `IRenderer` implementation — a reasonable reference for anyone writing a third one (e.g. WebGL).
+
 Wire metadata allows attaching arbitrary rendering information without modifying core WASM code. Colors and other properties set via wire metadata are automatically used during rendering.
+
+## Project Layout
+
+- `src/` — the library itself, nothing else. Organized by concern:
+  - `src/core/` — `Cavi`, `World`, `Wire`, `Node`, and the shared `types.ts` (`IRenderer`, `IInteractionController`, `WireMeta`, ...)
+  - `src/renderer/` — `Renderer` (canvas), `SvgRenderer` (SVG), `StandardResizeController`
+  - `src/interaction/` — `StandardInteractionController`
+  - `src/component/` — the custom elements: `<cavi-jack>`, `<cavi-plug>`, `<cavi-wire>`, `<cavi-world>`, `<cavi-controls>`, `<cavi-interaction>`
+  - `src/index.ts` — the public entry point, re-exporting the above
+  - `src/tests/` — all `*.test.ts` files
+- `examples/` — every demo page and its driving script, kept out of `src/` since none of it is library code. Vite's `root` points here (see `vite.config.ts`), so `npm run dev` serves `examples/index.html` at `/`.
+
+## Demos
+
+The `examples/demo-*.html` pages (built via `vite.config.ts`'s `build.rollupOptions.input`) show the library in different setups:
+
+| Demo | Script | Renderer | Description |
+| --- | --- | --- | --- |
+| `examples/demo-basic.html` | `examples/main.ts` | `Renderer` (canvas) | Minimal setup, a few static wires |
+| `examples/demo-svg.html` | `examples/main-svg.ts` | `SvgRenderer` | Same minimal setup, using the SVG renderer |
+| `examples/demo-jack-plug.html` | `examples/example2.ts` | `Renderer` (canvas, via `<cavi-world>`) | Hand-authored `<cavi-jack>`/`<cavi-wire>` markup |
+| `examples/demo-patchbay.html` | `examples/example3.ts` | `Renderer` (canvas, via `<cavi-world>`) | Full modular-synth patchbay: many jacks materialized from CSS layout, pre-patched cables, interactive drag-to-connect |
+| `examples/demo-patchbay-svg.html` | `examples/example3-svg.ts` | `SvgRenderer` | Same patchbay demo, wired manually to `SvgRenderer` instead of `<cavi-world>`'s canvas `Renderer`; shares its jack-materialization/control-wiring logic with `demo-patchbay.html` via `examples/patchbay-shared.ts` |
+| `examples/demo-noop-interaction.html` | `examples/exampleNoopInteraction.ts` | `Renderer` (canvas, via `<cavi-world>`) | Custom no-op `IInteractionController` example |
+
+Run `npm run dev` and open any of these pages to try them.

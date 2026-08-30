@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Cavi } from './cavi';
-import { Node } from './node';
-import type { CaviWireElement } from './wirewc';
-import type { Jack } from './jack';
-import './wirewc';
+import { Cavi } from '../core/cavi';
+import { Node } from '../core/node';
+import type { CaviWireElement } from '../component/wirewc';
+import type { Jack } from '../component/jack';
+import '../component/wirewc';
 
 function rect(x: number, y: number, width: number, height: number): DOMRect {
   return {
