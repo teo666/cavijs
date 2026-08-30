@@ -10,8 +10,10 @@ export default defineConfig({
       input: {
         main: './index.html',
         basic: './demo-basic.html',
+        svg: './demo-svg.html',
         jackPlug: './demo-jack-plug.html',
         patchbay: './demo-patchbay.html',
+        patchbaySvg: './demo-patchbay-svg.html',
       },
     },
   },

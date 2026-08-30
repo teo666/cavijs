@@ -9,6 +9,7 @@ export { World } from './world';
 export { Wire } from './wire';
 export { Node } from './node';
 export { Renderer } from './renderer';
+export { SvgRenderer } from './renderer-svg';
 export { Jack } from './jack';
 export type { CableSession } from './jack';
 export { Plug } from './plug';
