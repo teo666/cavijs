@@ -35,26 +35,34 @@
         color: #555;
       }
       .jackAudio {
-        background-color: #4caf50;
         width: 40px;
         height: 40px;
       } /* Example color for jack1 */
+      .jackAudio::part(base) {
+        background-color: #4caf50;
+      }
       .jack2 {
-        background-color: #2196f3;
         width: 30px;
         height: 30px;
       } /* Example color for jack2 */
+      .jack2::part(base) {
+        background-color: #2196f3;
+      }
       .jack3 {
-        background-color: #ff00d9;
         width: 20px;
         height: 20px;
       } /* Example color for jack3 */
+      .jack3::part(base) {
+        background-color: #ff00d9;
+      }
 
        .jackMidi {
-        background-color: #7b7b7b;
         width: 30px;
         height: 30px;
       } /* Example color for jack3 */
+      .jackMidi::part(base) {
+        background-color: #7b7b7b;
+      }
       canvas {
         position: absolute;
         top: 0;
@@ -86,6 +94,9 @@
       cavi-jack.cavi-jack-full {
          box-shadow: 0 0 0 30px rgba(255, 1, 1, 0.6);
       }
+      cavi-jack.cavi-jack-at-capacity {
+        box-shadow: 0 0 0 3px rgba(255, 60, 60, 0.8);
+      }
     </style>
   </head>
   <body>
@@ -110,7 +121,7 @@
       <cavi-jack id="jack5" class="jack3" x="700" y="500" type="scsi"></cavi-jack>
       <cavi-jack id="jack6" class="jack3" x="200" y="300" type="scsi"></cavi-jack>
       <cavi-jack id="jack7" class="jack3" x="100" y="100" type="scsi" max-plugs="1"></cavi-jack>
-      <cavi-jack id="jack8" class="jackMidi" x="700" y="300" type="midi" cable-color="#7b7b7b" cable-tension=1" cable-size="10"></cavi-jack>
+      <cavi-jack id="jack8" class="jackMidi" x="700" y="300" type="midi" cable-color="#7b7b7b" cable-tension="1" cable-size="10"></cavi-jack>
 
 
       <cavi-wire
@@ -126,7 +137,7 @@
         <cavi-plug node="14" jack="jack2"></cavi-plug>
       </cavi-wire>
       <cavi-wire
-        id="wire1"
+        id="wire2"
         length="25"
         tension="20"
         size="10"
