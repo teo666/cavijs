@@ -147,6 +147,17 @@ interface IRenderer {
 
 Implementarla per costruire un renderer personalizzato (es. WebGL, SVG) — `Cavi.setRenderer()` / `World.setRenderer()` accettano qualsiasi cosa la soddisfi.
 
+## `IInteractionController` (`src/types.ts`)
+
+```typescript
+interface IInteractionController {
+    attach: (cavi: Cavi) => void;
+    detach: () => void;
+}
+```
+
+Contratto per qualunque cosa gestisca l'interazione utente (drag, click, touch...) con `Jack`/`Plug` — pluggabile allo stesso modo di `IRenderer`. Vedi [Componenti Jack & Plug](./05-jack-plug.md#interazione-standardinteractioncontroller-e-cavi-interaction) per l'implementazione standard (`StandardInteractionController`) e come sostituirla.
+
 ## `CaviControls` (`src/controls.ts`)
 
 Un Web Component `<cavi-controls>` che fornisce un pannello GUI di debug/tuning (Shadow DOM), stilizzato come una card scura e scrollabile.

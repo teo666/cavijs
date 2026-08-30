@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>cavijs - Modular Patchbay</title>
+    <title>cavijs - Modular Patchbay (SVG)</title>
     <style>
       * {
         box-sizing: border-box;
@@ -92,10 +92,10 @@
        * #panelScroll (viewport) vs #panel (content) are deliberately split:
        * #panel is sized to its own content (min-height:100%, grows taller
        * with enough module rows) and never clips — it's also the element
-       * passed to Renderer/Cavi as the "container" (jack x/y coordinates,
-       * canvas sizing, and CaviWireElement's auto-cleanup bounds check are
-       * all relative to it, see src/example3.ts). #panelScroll is the one
-       * that actually clips + scrolls. Auto-cleanup deletes a cable once
+       * passed to SvgRenderer/Cavi as the "container" (jack x/y coordinates,
+       * svg sizing, and CaviWireElement's auto-cleanup bounds check are
+       * all relative to it, see src/example3-svg.ts). #panelScroll is the
+       * one that actually clips + scrolls. Auto-cleanup deletes a cable once
        * every plug drifts outside `_container.getBoundingClientRect()` —
        * if #panel itself were the scrolling+clipping element, that rect
        * would be just the currently-visible scrolled window, so merely
@@ -131,7 +131,7 @@
           radial-gradient(ellipse at 50% -10%, #3a3a3a 0%, #232323 45%, #161616 100%);
       }
 
-      #wireCanvas {
+      #wireSvg {
         position: absolute;
         top: 0;
         left: 0;
@@ -271,45 +271,26 @@
       }
 
       /* ---------- Moog-style hex jack nut ---------- */
-      /* A real 1/4" jack socket is a hex nut (like a bolt head) with a
-         round black hole through the middle — not a plain chrome disc.
-         clip-path draws the hex facets; a conic-gradient fakes the way
-         each facet catches the light at a different angle. box-shadow
-         would be clipped away along with the corners, so the ambient
-         drop shadow and the interactive glows below use filter:
-         drop-shadow() instead, which follows the clipped silhouette. */
-      /* !important throughout this section: Jack/Plug's own shadow-DOM
-         :host rule (background-color/border/width/height) has the same
-         (0,1,0) specificity as a plain "cavi-jack {}" type selector would
-         need to beat — as an author style with no !important of its own,
-         it otherwise wins ties by being the later-evaluated stylesheet. */
       cavi-jack {
-        --hex-metal: conic-gradient(
-          from 200deg at 50% 50%,
-          #f4f4f4 0deg,
-          #8f8f8f 35deg,
-          #242424 70deg,
-          #b8b8b8 105deg,
-          #f6f6f6 145deg,
-          #6d6d6d 185deg,
-          #181818 225deg,
-          #d0d0d0 265deg,
-          #f4f4f4 305deg,
-          #7a7a7a 340deg,
-          #f4f4f4 360deg
-        );
         width: 40px !important;
         height: 40px !important;
         box-sizing: border-box !important;
         position: absolute !important;
-        border: none !important;
-        /* Jacks are absolutely-positioned children of #panel, coinciding
-           on-screen with their .module's opaque background (z-index: 20)
-           — without this they'd paint fully hidden behind it. */
         z-index: 25 !important;
-        /* clip-path: polygon(25% 2%, 75% 2%, 100% 50%, 75% 98%, 25% 98%, 0% 50%) !important; */
-        background: var(--hex-metal) !important;
-        filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.75)) !important;
+        filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.8)) !important;
+      }
+      cavi-jack::part(base) {
+        border: 1px solid rgba(0, 0, 0, 0.65) !important;
+        background: linear-gradient(180deg, #9a9a9a 0%, #6e6e6e 40%, #3c3c3c 75%, #161616 100%) !important;
+        box-shadow:
+          inset 0 1px 1px rgba(255, 255, 255, 0.3),
+          inset 0 -2px 3px rgba(0, 0, 0, 0.6) !important;
+      }
+      cavi-jack::part(hex) {
+        background: linear-gradient(180deg, #fbfbfb 0%, #d6d6d6 30%, #808080 62%, #2b2b2b 100%) !important;
+        box-shadow:
+          inset 0 2px 2px rgba(255, 255, 255, 0.55),
+          inset 0 -3px 3px rgba(0, 0, 0, 0.6) !important;
       }
       cavi-jack.size-sm {
         width: 30px !important;
@@ -337,7 +318,7 @@
 
       cavi-jack.cavi-magnet-target {
         filter:
-          drop-shadow(0 2px 2px rgba(0, 0, 0, 0.75))
+          drop-shadow(0 3px 3px rgba(0, 0, 0, 0.8))
           drop-shadow(0 0 5px rgba(255, 191, 64, 0.95))
           drop-shadow(0 0 12px rgba(255, 191, 64, 0.6)) !important;
       }
@@ -348,15 +329,15 @@
       }
       cavi-jack.cavi-jack-full {
         filter:
-          drop-shadow(0 2px 2px rgba(0, 0, 0, 0.75))
+          drop-shadow(0 3px 3px rgba(0, 0, 0, 0.8))
           drop-shadow(0 0 5px rgba(255, 60, 60, 0.95))
           drop-shadow(0 0 12px rgba(255, 60, 60, 0.6)) !important;
       }
       /* Persistent, unconditional "at capacity" tell — a small red LED
          baked into the hex face, visible even without hovering/dragging. */
-      cavi-jack.cavi-jack-at-capacity {
+      cavi-jack.cavi-jack-at-capacity::part(hex) {
         background: radial-gradient(circle at 78% 78%, #ff5a4a 0%, #b3170a 40%, transparent 42%),
-          var(--hex-metal) !important;
+          linear-gradient(180deg, #fbfbfb 0%, #d6d6d6 30%, #808080 62%, #2b2b2b 100%) !important;
       }
 
       /* ---------- Cables ---------- */
@@ -366,7 +347,7 @@
   <body>
     <div id="app">
       <header>
-        <h1>CAVI<span>·</span>MODULAR</h1>
+        <h1>CAVI<span>·</span>MODULAR <span>(SVG renderer)</span></h1>
         <div class="controls">
           <label><input type="checkbox" id="debugNodes" /> show physics nodes</label>
           <label>
@@ -381,17 +362,15 @@
       </header>
 
       <div id="panelScroll">
-      <cavi-world id="panel" gravity-y="5" drag-mode="click">
+      <div id="panel">
         <div id="woodTrim"></div>
 
         <!--
-          Each .module is a decorative synth module: a title, a couple of
-          purely-cosmetic knobs, and a row of .jack-slot placeholders. The
-          slots carry data-* attributes describing the real <cavi-jack> that
-          example3.ts materializes at the slot's on-screen position once the
-          page has laid out (see src/example3.ts) — keeping the responsive
-          panel layout (CSS) separate from the jacks' absolute x/y physics
-          coordinates (computed at runtime from the rendered layout).
+          Same declarative module/jack-slot markup as demo-patchbay.html —
+          src/example3-svg.ts materializes real <cavi-jack> elements from
+          these .jack-slot placeholders (via the shared logic in
+          src/patchbay-shared.ts), exactly like example3.ts does for the
+          canvas version.
         -->
 
         <div class="module">
@@ -570,9 +549,9 @@
             <div class="jack-slot" data-id="mix-out" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">out</span></div>
           </div>
         </div>
-      </cavi-world>
+      </div>
       </div>
     </div>
-    <script type="module" src="/src/example3.ts"></script>
+    <script type="module" src="./example3-svg.ts"></script>
   </body>
 </html>

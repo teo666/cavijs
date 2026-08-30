@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('./cavi', () => {
+vi.mock('../core/cavi', () => {
   class FakeCavi {
     static shared: unknown = null;
     static initWasm = vi.fn(() => Promise.resolve());
@@ -16,12 +16,15 @@ vi.mock('./cavi', () => {
     }
     setAcceleration = vi.fn();
     setDebugDrawNodes = vi.fn();
-    setDragMode = vi.fn();
+    setCableDropBehavior = vi.fn();
+    setPlugSpreadMode = vi.fn();
+    setPlugSpreadRadiusMultiplier = vi.fn();
+    setPlugSpreadRecompactDelayMs = vi.fn();
   }
   return { Cavi: FakeCavi };
 });
 
-vi.mock('./renderer', () => {
+vi.mock('../renderer/renderer', () => {
   class FakeRenderer {
     render = vi.fn();
     stop = vi.fn();
@@ -30,14 +33,15 @@ vi.mock('./renderer', () => {
   return { Renderer: FakeRenderer };
 });
 
-// Avoid pulling in the real Jack/CaviWireElement/Plug custom elements —
-// irrelevant to worldwc's own behavior and this file only needs './cavi'
-// and './renderer' to be the fakes above.
-vi.mock('./jack', () => ({}));
+// Avoid pulling in the real Jack/CaviWireElement/Plug/interaction custom
+// elements — irrelevant to worldwc's own behavior and this file only needs
+// '../core/cavi' and '../renderer/renderer' to be the fakes above.
+vi.mock('../component/jack', () => ({}));
+vi.mock('../component/interactionwc', () => ({}));
 
-import { Cavi } from './cavi';
-import type { Renderer } from './renderer';
-import { CaviWorldElement } from './worldwc';
+import { Cavi } from '../core/cavi';
+import type { Renderer } from '../renderer/renderer';
+import { CaviWorldElement } from '../component/worldwc';
 
 function flushMicrotasks(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -86,19 +90,33 @@ describe('CaviWorldElement', () => {
     expect(readyHandler).toHaveBeenCalledTimes(1);
   });
 
-  it('reads gravity-x/gravity-y/debug-nodes/drag-mode attributes into Cavi at setup', async () => {
+  it('reads gravity-x/gravity-y/debug-nodes attributes into Cavi at setup', async () => {
     const world = document.createElement('cavi-world') as CaviWorldElement;
     world.setAttribute('gravity-x', '3');
     world.setAttribute('gravity-y', '12');
     world.setAttribute('debug-nodes', '');
-    world.setAttribute('drag-mode', 'click');
     document.body.appendChild(world);
     await flushMicrotasks();
 
     const cavi = world.getCavi()!;
     expect(cavi.setAcceleration).toHaveBeenCalledWith(3, 12);
     expect(cavi.setDebugDrawNodes).toHaveBeenCalledWith(true);
-    expect(cavi.setDragMode).toHaveBeenCalledWith('click');
+  });
+
+  it('reads cable-drop-behavior/plug-spread-* attributes into Cavi at setup', async () => {
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    world.setAttribute('cable-drop-behavior', 'cancel');
+    world.setAttribute('plug-spread-mode', 'radial');
+    world.setAttribute('plug-spread-radius', '2.5');
+    world.setAttribute('plug-spread-timeout', '750');
+    document.body.appendChild(world);
+    await flushMicrotasks();
+
+    const cavi = world.getCavi()!;
+    expect(cavi.setCableDropBehavior).toHaveBeenCalledWith('cancel');
+    expect(cavi.setPlugSpreadMode).toHaveBeenCalledWith('radial');
+    expect(cavi.setPlugSpreadRadiusMultiplier).toHaveBeenCalledWith(2.5);
+    expect(cavi.setPlugSpreadRecompactDelayMs).toHaveBeenCalledWith(750);
   });
 
   it('stops the renderer loop on disconnect', async () => {

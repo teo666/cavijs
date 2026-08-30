@@ -1,6 +1,9 @@
-import { Cavi } from './cavi';
-import { Renderer } from './renderer';
+import { Cavi } from '../core/cavi';
+import { Renderer } from '../renderer/renderer';
+import type { IResizeController } from '../core/types';
+import { StandardResizeController } from '../renderer/resize';
 import './jack'; // registers cavi-jack, and transitively cavi-wire (wirewc) + cavi-plug
+import './interactionwc'; // registers cavi-interaction
 
 /**
  * WASM init is process-wide and not safe to run twice (Cavi.initWasm calls
@@ -25,6 +28,15 @@ let wasmInit: Promise<void> | null = null;
 export class CaviWorldElement extends HTMLElement {
   private _cavi: Cavi | null = null;
 
+  /**
+   * Keeps the canvas backing store sized to this element and announces
+   * layout changes via `cavi-resize` — pluggable the same way
+   * <cavi-interaction>'s `.controller` is: overridable before this element
+   * connects for a custom resize strategy, defaults to watching this
+   * element with a ResizeObserver (see StandardResizeController).
+   */
+  public resizeController: IResizeController = new StandardResizeController();
+
   connectedCallback(): void {
     if (this._cavi) return; // already initialized (e.g. reconnect after a DOM move)
 
@@ -43,8 +55,7 @@ export class CaviWorldElement extends HTMLElement {
       canvas.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
       this.insertBefore(canvas, this.firstChild);
     }
-    canvas.width = this.clientWidth;
-    canvas.height = this.clientHeight;
+    this.resizeController.attach(this, canvas);
 
     if (!wasmInit) wasmInit = Cavi.initWasm();
     wasmInit.then(() => this._setup(canvas!));
@@ -61,12 +72,36 @@ export class CaviWorldElement extends HTMLElement {
       parseFloat(this.getAttribute('gravity-y') ?? '5'),
     );
     cavi.setDebugDrawNodes(this.hasAttribute('debug-nodes'));
-    const dragMode = this.getAttribute('drag-mode');
-    if (dragMode === 'hold' || dragMode === 'click') cavi.setDragMode(dragMode);
+
+    const cableDropBehavior = this.getAttribute('cable-drop-behavior');
+    if (cableDropBehavior === 'cancel' || cableDropBehavior === 'dangle' || cableDropBehavior === 'detach') {
+      cavi.setCableDropBehavior(cableDropBehavior);
+    }
+    const plugSpreadMode = this.getAttribute('plug-spread-mode');
+    if (plugSpreadMode === 'towardOther' || plugSpreadMode === 'radial') {
+      cavi.setPlugSpreadMode(plugSpreadMode);
+    }
+    const plugSpreadRadius = this.getAttribute('plug-spread-radius');
+    if (plugSpreadRadius !== null && Number.isFinite(parseFloat(plugSpreadRadius))) {
+      cavi.setPlugSpreadRadiusMultiplier(parseFloat(plugSpreadRadius));
+    }
+    const plugSpreadTimeout = this.getAttribute('plug-spread-timeout');
+    if (plugSpreadTimeout !== null && Number.isFinite(parseFloat(plugSpreadTimeout))) {
+      cavi.setPlugSpreadRecompactDelayMs(parseFloat(plugSpreadTimeout));
+    }
 
     this._cavi = cavi;
     Cavi.shared = cavi;
     document.dispatchEvent(new CustomEvent('caviready', { detail: { cavi } }));
+
+    // Jack/Plug install no listeners of their own — without some
+    // <cavi-interaction>, nothing here would be interactive. An author can
+    // drop one in manually (e.g. with a custom `.controller`); otherwise
+    // this provides the standard mouse/touch drag-and-drop for free, same
+    // as the auto-created canvas above.
+    if (!this.querySelector('cavi-interaction')) {
+      this.appendChild(document.createElement('cavi-interaction'));
+    }
 
     // Parity with the manual controlsElement.setCavi(cavi) call in main.ts.
     const controls = this.querySelector('cavi-controls') as
@@ -78,6 +113,7 @@ export class CaviWorldElement extends HTMLElement {
   }
 
   disconnectedCallback(): void {
+    this.resizeController.detach();
     this._cavi?.getRenderer()?.stop();
   }
 

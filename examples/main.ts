@@ -1,12 +1,12 @@
-import { Cavi } from './cavi';
-import { Renderer } from './renderer';
-import { CaviControls } from './controls';
+import { Cavi } from '../src/core/cavi';
+import { Renderer } from '../src/renderer/renderer';
+import { CaviControls } from '../src/component/controls';
 import './style.css'
 
 
 await Cavi.initWasm();
 const cavi = new Cavi();
-const renderer = new Renderer(document.getElementById('wireCanvas') as HTMLCanvasElement, cavi.getWorld());
+const renderer = new Renderer(document.getElementById('container') as HTMLElement, cavi.getWorld());
 
 cavi.setRenderer(renderer);
 
