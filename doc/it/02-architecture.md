@@ -50,21 +50,27 @@ src/
 ## Punti chiave del design
 
 ### Facade (`Cavi`)
+
 `Cavi` è il punto di ingresso unico previsto per i consumatori: il metodo statico `Cavi.initWasm()` carica il modulo WASM una sola volta (`Cavi.wasm` contiene l'`InitOutput`, incluso `.memory` usato dal renderer per le viste a copia zero del buffer), poi ogni istanza `Cavi` possiede un `World`.
 
 ### I metadati vivono in TypeScript, non in WASM
+
 `Wire` mantiene un semplice oggetto `meta: WireMeta` (es. `color`) interamente lato JS. Il livello WASM non ha alcun concetto di colore o etichette — è un confine deliberato (vedi la [panoramica di `cavi`](../../../cavi/doc/it/01-overview.md)) affinché le preoccupazioni di rendering non trapelino mai nel motore fisico.
 
 ### Rendering a copia zero
+
 `Renderer.drawAllWires()` **non** chiama getter WASM per singolo nodo. Legge invece il buffer piatto `f32` che `WasmWorld::update()` ricostruisce ad ogni frame, tramite una vista `Float32Array` su `Cavi.wasm.memory.buffer`. Questo rispecchia il layout del buffer documentato nell'architettura di `cavi` (`[node_count, radius, render_type, path_length, ...path_data]` per cavo) ed evita una chiamata JS↔WASM per ogni nodo.
 
 ### Gestione del loop di rendering
+
 `Renderer.render()` guida l'intero loop: aggiorna la fisica (`world.update()`), pulisce il canvas, disegna e si ripianifica tramite `requestAnimationFrame`. Chi lo usa deve solo chiamare `renderer.render()` una volta per avviarlo.
 
 ### Interazione col mouse
+
 Il costruttore di `Renderer` collega un listener `mousemove` sul contenitore. Se un estremo di un cavo viene trascinato (stato `draggedWire`/`draggedEndpoint`), chiama direttamente `set_wire_start`/`set_wire_end` sul world WASM; altrimenti inoltra semplicemente la posizione del puntatore tramite `set_mouse` per il comportamento di repulsione del mouse del motore fisico.
 
 ### Web Component per i connettori
+
 `Jack` e `Plug` sono custom element nativi (`customElements.define`) che usano Shadow DOM, indipendenti dalla gerarchia di classi `Cavi`/`World`/`Wire` — interagiscono direttamente con un'istanza `Node` (`Plug.setNode`) invece di passare da `Cavi`. Vedi [Jack & Plug](./05-jack-plug.md).
 
 ## Strumenti di build

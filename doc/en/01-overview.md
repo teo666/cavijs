@@ -13,9 +13,9 @@
 
 ## Architecture split
 
-| Concern | Where |
-|---|---|
-| Physics simulation, collision detection, spline/curve math | Rust/WASM (`cavi`) |
+| Concern                                                       | Where                 |
+| ------------------------------------------------------------- | --------------------- |
+| Physics simulation, collision detection, spline/curve math    | Rust/WASM (`cavi`)    |
 | Rendering, wire metadata (colors, labels…), UI, extensibility | TypeScript (`cavijs`) |
 
 ## Main classes
@@ -35,6 +35,7 @@
 - `src/example2.ts`, `index2.html`, `src/style2.css`, `src/wirewc.ts` appear to be an alternate/experimental entry point — check their contents before relying on them.
 
 See also:
+
 - [Architecture](./02-architecture.md)
 - [API reference](./03-api.md)
 - [Getting started / running](./04-getting-started.md)

@@ -273,10 +273,18 @@ export class SvgRenderer implements IRenderer {
     this.debugLayer.appendChild(dot);
 
     this.debugLayer.appendChild(
-      this.makeLabel(mouseX + pointerRadius * 0.7, mouseY - pointerRadius * 0.7, `pointer: ${pointerRadius.toFixed(1)}`),
+      this.makeLabel(
+        mouseX + pointerRadius * 0.7,
+        mouseY - pointerRadius * 0.7,
+        `pointer: ${pointerRadius.toFixed(1)}`
+      )
     );
     this.debugLayer.appendChild(
-      this.makeLabel(mouseX + mouseRadius * 0.7, mouseY - mouseRadius * 0.7, `mouse: ${mouseRadius.toFixed(1)}`),
+      this.makeLabel(
+        mouseX + mouseRadius * 0.7,
+        mouseY - mouseRadius * 0.7,
+        `mouse: ${mouseRadius.toFixed(1)}`
+      )
     );
   }
 

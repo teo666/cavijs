@@ -1,7 +1,12 @@
 import type { Cavi } from '../src/core/cavi';
 import type { CaviWorldElement } from '../src/component/worldwc';
 import '../src/component/worldwc'; // registers cavi-world, and transitively cavi-jack/cavi-wire/cavi-plug
-import { materializeJacks, repositionJacksFromSlots, materializePatches, wireUpControls } from './patchbay-shared';
+import {
+  materializeJacks,
+  repositionJacksFromSlots,
+  materializePatches,
+  wireUpControls,
+} from './patchbay-shared';
 
 function main(): void {
   // <cavi-world id="panel" gravity-y="5"> (demo-patchbay.html) now owns WASM
@@ -23,7 +28,7 @@ function main(): void {
   document.addEventListener(
     'caviready',
     (e) => wireUpControls((e as CustomEvent<{ cavi: Cavi }>).detail.cavi, panel),
-    { once: true },
+    { once: true }
   );
 }
 

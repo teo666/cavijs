@@ -13,9 +13,9 @@ Il compito di `cavi` è gestire la fisica dei cavi e l'interazione col mouse, pr
 
 ## Divisione dell'architettura
 
-| Responsabilità | Dove |
-|---|---|
-| Simulazione fisica, collision detection, matematica di spline/curve | Rust/WASM (`cavi`) |
+| Responsabilità                                                       | Dove                  |
+| -------------------------------------------------------------------- | --------------------- |
+| Simulazione fisica, collision detection, matematica di spline/curve  | Rust/WASM (`cavi`)    |
 | Rendering, metadati dei cavi (colori, etichette…), UI, estensibilità | TypeScript (`cavijs`) |
 
 ## Classi principali
@@ -35,6 +35,7 @@ Il compito di `cavi` è gestire la fisica dei cavi e l'interazione col mouse, pr
 - `src/example2.ts`, `index2.html`, `src/style2.css`, `src/wirewc.ts` sembrano essere un punto di ingresso alternativo/sperimentale — verificarne il contenuto prima di farci affidamento.
 
 Vedi anche:
+
 - [Architettura](./02-architecture.md)
 - [Riferimento API](./03-api.md)
 - [Guida introduttiva / avvio](./04-getting-started.md)

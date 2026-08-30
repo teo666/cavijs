@@ -69,12 +69,16 @@ export class CaviWorldElement extends HTMLElement {
     cavi.setRenderer(renderer);
     cavi.setAcceleration(
       parseFloat(this.getAttribute('gravity-x') ?? '0'),
-      parseFloat(this.getAttribute('gravity-y') ?? '5'),
+      parseFloat(this.getAttribute('gravity-y') ?? '5')
     );
     cavi.setDebugDrawNodes(this.hasAttribute('debug-nodes'));
 
     const cableDropBehavior = this.getAttribute('cable-drop-behavior');
-    if (cableDropBehavior === 'cancel' || cableDropBehavior === 'dangle' || cableDropBehavior === 'detach') {
+    if (
+      cableDropBehavior === 'cancel' ||
+      cableDropBehavior === 'dangle' ||
+      cableDropBehavior === 'detach'
+    ) {
       cavi.setCableDropBehavior(cableDropBehavior);
     }
     const plugSpreadMode = this.getAttribute('plug-spread-mode');
@@ -105,8 +109,7 @@ export class CaviWorldElement extends HTMLElement {
 
     // Parity with the manual controlsElement.setCavi(cavi) call in main.ts.
     const controls = this.querySelector('cavi-controls') as
-      | (HTMLElement & { setCavi(c: Cavi): void })
-      | null;
+      (HTMLElement & { setCavi(c: Cavi): void }) | null;
     controls?.setCavi(cavi);
 
     renderer.render();

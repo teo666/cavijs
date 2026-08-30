@@ -310,7 +310,9 @@ describe('CaviWireElement auto-cleanup (auto-cleanup attribute)', () => {
     // The plug's own bound Node must have been rebound too, not just the
     // wire — update() (public, no-op only while dragging) re-syncs the
     // plug's on-screen position from whatever Node it currently holds.
-    const plugB0 = wireB.querySelectorAll('cavi-plug')[0] as unknown as { update(): void } & HTMLElement;
+    const plugB0 = wireB.querySelectorAll('cavi-plug')[0] as unknown as {
+      update(): void;
+    } & HTMLElement;
     plugB0.update();
     expect(plugB0.style.left).toBe('111px');
     expect(plugB0.style.top).toBe('222px');

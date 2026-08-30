@@ -22,5 +22,7 @@ class NoopInteractionController implements IInteractionController {
 // 'caviready' actually fires. Since WASM init takes real (async) time, a
 // plain synchronous assignment here always lands well before that — no
 // need to race the event at all.
-const el = document.getElementById('interaction') as HTMLElement & { controller: IInteractionController };
+const el = document.getElementById('interaction') as HTMLElement & {
+  controller: IInteractionController;
+};
 el.controller = new NoopInteractionController();

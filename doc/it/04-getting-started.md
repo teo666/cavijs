@@ -17,17 +17,18 @@ npm install
 
 ## Script (`package.json`)
 
-| Script | Comando | Scopo |
-|---|---|---|
-| `npm run dev` | `vite` | Avvia il dev server di Vite (hot reload) |
-| `npm run build` | `tsc && vite build` | Type-check, poi produce una build di produzione |
-| `npm run preview` | `vite preview` | Serve localmente la build di produzione |
-| `npm run format` | `prettier --write .` | Formatta il codebase |
-| `npm run format:check` | `prettier --check .` | Verifica la formattazione senza scrivere |
+| Script                 | Comando              | Scopo                                           |
+| ---------------------- | -------------------- | ----------------------------------------------- |
+| `npm run dev`          | `vite`               | Avvia il dev server di Vite (hot reload)        |
+| `npm run build`        | `tsc && vite build`  | Type-check, poi produce una build di produzione |
+| `npm run preview`      | `vite preview`       | Serve localmente la build di produzione         |
+| `npm run format`       | `prettier --write .` | Formatta il codebase                            |
+| `npm run format:check` | `prettier --check .` | Verifica la formattazione senza scrivere        |
 
 ## Avviare la demo
 
 `index.html` carica `src/main.ts`, che:
+
 1. Inizializza il modulo WASM (`Cavi.initWasm()`)
 2. Crea un'istanza `Cavi` e un `Renderer` collegato a `#wireCanvas`
 3. Aggiunge tre cavi demo (rosso/giallo/verde, due in bezier + uno a segmenti)

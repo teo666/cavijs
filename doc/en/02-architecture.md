@@ -50,21 +50,27 @@ src/
 ## Key design points
 
 ### Facade (`Cavi`)
+
 `Cavi` is the intended single entry point for consumers: static `Cavi.initWasm()` loads the WASM module once (`Cavi.wasm` holds the `InitOutput`, including `.memory` used by the renderer for zero-copy buffer views), then each `Cavi` instance owns one `World`.
 
 ### Metadata lives in TypeScript, not WASM
+
 `Wire` keeps a plain `meta: WireMeta` object (e.g. `color`) entirely on the JS side. The WASM layer has no concept of color or labels — this is a deliberate boundary (see [`cavi`'s overview](../../../cavi/doc/en/01-overview.md)) so rendering concerns never leak into the physics engine.
 
 ### Zero-copy rendering
+
 `Renderer.drawAllWires()` does **not** call per-node WASM getters. Instead it reads the flat `f32` buffer that `WasmWorld::update()` rebuilds every frame, via a `Float32Array` view over `Cavi.wasm.memory.buffer`. This mirrors the buffer layout documented in `cavi`'s architecture doc (`[node_count, radius, render_type, path_length, ...path_data]` per wire) and avoids one JS↔WASM call per node.
 
 ### Render loop ownership
+
 `Renderer.render()` drives the whole loop: it updates physics (`world.update()`), clears the canvas, draws, and re-schedules itself via `requestAnimationFrame`. Callers only need to call `renderer.render()` once to start it.
 
 ### Mouse interaction
+
 `Renderer`'s constructor attaches a `mousemove` listener on the container. If a wire endpoint is being dragged (`draggedWire`/`draggedEndpoint` state), it calls `set_wire_start`/`set_wire_end` on the WASM world directly; otherwise it just forwards the pointer position via `set_mouse` for the physics engine's mouse-repulsion behavior.
 
 ### Web Components for connectors
+
 `Jack` and `Plug` are native custom elements (`customElements.define`) using Shadow DOM, independent of the `Cavi`/`World`/`Wire` class hierarchy — they interact with a `Node` instance directly (`Plug.setNode`) rather than going through `Cavi`. See [Jack & Plug](./05-jack-plug.md).
 
 ## Build tooling

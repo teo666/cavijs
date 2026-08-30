@@ -316,13 +316,25 @@
            actually sells "two different pieces of metal, hex nut on round
            flange" rather than the eye reading one continuous blob. */
         border: 1px solid rgba(0, 0, 0, 0.65) !important;
-        background: linear-gradient(180deg, #9a9a9a 0%, #6e6e6e 40%, #3c3c3c 75%, #161616 100%) !important;
+        background: linear-gradient(
+          180deg,
+          #9a9a9a 0%,
+          #6e6e6e 40%,
+          #3c3c3c 75%,
+          #161616 100%
+        ) !important;
         box-shadow:
           inset 0 1px 1px rgba(255, 255, 255, 0.3),
           inset 0 -2px 3px rgba(0, 0, 0, 0.6) !important;
       }
       cavi-jack::part(hex) {
-        background: linear-gradient(180deg, #fbfbfb 0%, #d6d6d6 30%, #808080 62%, #2b2b2b 100%) !important;
+        background: linear-gradient(
+          180deg,
+          #fbfbfb 0%,
+          #d6d6d6 30%,
+          #808080 62%,
+          #2b2b2b 100%
+        ) !important;
         box-shadow:
           inset 0 2px 2px rgba(255, 255, 255, 0.55),
           inset 0 -3px 3px rgba(0, 0, 0, 0.6) !important;
@@ -348,12 +360,16 @@
       }
       cavi-plug[plugged] {
         border-color: #0d3d42 !important;
-        background: radial-gradient(circle at 32% 26%, #d6f7fb 0%, #6fd6e2 45%, #1f7c88 100%) !important;
+        background: radial-gradient(
+          circle at 32% 26%,
+          #d6f7fb 0%,
+          #6fd6e2 45%,
+          #1f7c88 100%
+        ) !important;
       }
 
       cavi-jack.cavi-magnet-target {
-        filter:
-          drop-shadow(0 3px 3px rgba(0, 0, 0, 0.8))
+        filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.8))
           drop-shadow(0 0 5px rgba(255, 191, 64, 0.95))
           drop-shadow(0 0 12px rgba(255, 191, 64, 0.6)) !important;
       }
@@ -363,15 +379,14 @@
           0 0 14px 4px rgba(255, 191, 64, 0.5) !important;
       }
       cavi-jack.cavi-jack-full {
-        filter:
-          drop-shadow(0 3px 3px rgba(0, 0, 0, 0.8))
-          drop-shadow(0 0 5px rgba(255, 60, 60, 0.95))
-          drop-shadow(0 0 12px rgba(255, 60, 60, 0.6)) !important;
+        filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.8))
+          drop-shadow(0 0 5px rgba(255, 60, 60, 0.95)) drop-shadow(0 0 12px rgba(255, 60, 60, 0.6)) !important;
       }
       /* Persistent, unconditional "at capacity" tell — a small red LED
          baked into the hex face, visible even without hovering/dragging. */
       cavi-jack.cavi-jack-at-capacity::part(hex) {
-        background: radial-gradient(circle at 78% 78%, #ff5a4a 0%, #b3170a 40%, transparent 42%),
+        background:
+          radial-gradient(circle at 78% 78%, #ff5a4a 0%, #b3170a 40%, transparent 42%),
           linear-gradient(180deg, #fbfbfb 0%, #d6d6d6 30%, #808080 62%, #2b2b2b 100%) !important;
       }
 
@@ -397,10 +412,10 @@
       </header>
 
       <div id="panelScroll">
-      <cavi-world id="panel" gravity-y="5">
-        <div id="woodTrim"></div>
+        <cavi-world id="panel" gravity-y="5">
+          <div id="woodTrim"></div>
 
-        <!--
+          <!--
           Each .module is a decorative synth module: a title, a couple of
           purely-cosmetic knobs, and a row of .jack-slot placeholders. The
           slots carry data-* attributes describing the real <cavi-jack> that
@@ -410,183 +425,550 @@
           coordinates (computed at runtime from the rendered layout).
         -->
 
-        <div class="module">
-          <div class="module-title">VCO 1</div>
-          <div class="knob-row">
-            <div class="knob-wrap"><div class="knob" style="--angle: -60deg"></div><span class="knob-label">freq</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: 10deg"></div><span class="knob-label">fine</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: 50deg"></div><span class="knob-label">wave</span></div>
+          <div class="module">
+            <div class="module-title">VCO 1</div>
+            <div class="knob-row">
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: -60deg"></div>
+                <span class="knob-label">freq</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 10deg"></div>
+                <span class="knob-label">fine</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 50deg"></div>
+                <span class="knob-label">wave</span>
+              </div>
+            </div>
+            <div class="jack-row">
+              <div class="jack-slot" data-id="vco1-cv" data-type="cv" data-cable-color="#a78bfa">
+                <span class="jack-label">cv</span>
+              </div>
+              <div class="jack-slot" data-id="vco1-fm" data-type="cv" data-cable-color="#a78bfa">
+                <span class="jack-label">fm</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="vco1-sync"
+                data-type="gate"
+                data-size="sm"
+                data-cable-color="#e0c23f"
+              >
+                <span class="jack-label">sync</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="vco1-out"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="4"
+                data-cable-color="#3fc6d8"
+              >
+                <span class="jack-label">out</span>
+              </div>
+            </div>
           </div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="vco1-cv" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
-            <div class="jack-slot" data-id="vco1-fm" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">fm</span></div>
-            <div class="jack-slot" data-id="vco1-sync" data-type="gate" data-size="sm" data-cable-color="#e0c23f"><span class="jack-label">sync</span></div>
-            <div class="jack-slot" data-id="vco1-out" data-type="audio" data-size="lg" data-max-plugs="4" data-cable-color="#3fc6d8"><span class="jack-label">out</span></div>
-          </div>
-        </div>
 
-        <div class="module">
-          <div class="module-title">VCO 2</div>
-          <div class="knob-row">
-            <div class="knob-wrap"><div class="knob" style="--angle: 40deg"></div><span class="knob-label">freq</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: -20deg"></div><span class="knob-label">fine</span></div>
+          <div class="module">
+            <div class="module-title">VCO 2</div>
+            <div class="knob-row">
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 40deg"></div>
+                <span class="knob-label">freq</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: -20deg"></div>
+                <span class="knob-label">fine</span>
+              </div>
+            </div>
+            <div class="jack-row">
+              <div class="jack-slot" data-id="vco2-cv" data-type="cv" data-cable-color="#a78bfa">
+                <span class="jack-label">cv</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="vco2-sync"
+                data-type="gate"
+                data-size="sm"
+                data-cable-color="#e0c23f"
+              >
+                <span class="jack-label">sync</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="vco2-out"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="4"
+                data-cable-color="#5aa8e8"
+              >
+                <span class="jack-label">out</span>
+              </div>
+            </div>
           </div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="vco2-cv" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
-            <div class="jack-slot" data-id="vco2-sync" data-type="gate" data-size="sm" data-cable-color="#e0c23f"><span class="jack-label">sync</span></div>
-            <div class="jack-slot" data-id="vco2-out" data-type="audio" data-size="lg" data-max-plugs="4" data-cable-color="#5aa8e8"><span class="jack-label">out</span></div>
-          </div>
-        </div>
 
-        <div class="module">
-          <div class="module-title">VCO 3</div>
-          <div class="knob-row">
-            <div class="knob-wrap"><div class="knob" style="--angle: -15deg"></div><span class="knob-label">freq</span></div>
+          <div class="module">
+            <div class="module-title">VCO 3</div>
+            <div class="knob-row">
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: -15deg"></div>
+                <span class="knob-label">freq</span>
+              </div>
+            </div>
+            <div class="jack-row">
+              <div class="jack-slot" data-id="vco3-cv" data-type="cv" data-cable-color="#a78bfa">
+                <span class="jack-label">cv</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="vco3-out"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="3"
+                data-cable-color="#8ed65a"
+              >
+                <span class="jack-label">out</span>
+              </div>
+            </div>
           </div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="vco3-cv" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
-            <div class="jack-slot" data-id="vco3-out" data-type="audio" data-size="lg" data-max-plugs="3" data-cable-color="#8ed65a"><span class="jack-label">out</span></div>
-          </div>
-        </div>
 
-        <div class="module">
-          <div class="module-title">NOISE</div>
-          <div class="knob-row">
-            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">level</span></div>
+          <div class="module">
+            <div class="module-title">NOISE</div>
+            <div class="knob-row">
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 0deg"></div>
+                <span class="knob-label">level</span>
+              </div>
+            </div>
+            <div class="jack-row">
+              <div
+                class="jack-slot"
+                data-id="noise-out"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="3"
+                data-cable-color="#e8834a"
+              >
+                <span class="jack-label">out</span>
+              </div>
+            </div>
           </div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="noise-out" data-type="audio" data-size="lg" data-max-plugs="3" data-cable-color="#e8834a"><span class="jack-label">out</span></div>
-          </div>
-        </div>
 
-        <div class="module">
-          <div class="module-title">LFO 1</div>
-          <div class="knob-row">
-            <div class="knob-wrap"><div class="knob" style="--angle: -10deg"></div><span class="knob-label">rate</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: 30deg"></div><span class="knob-label">depth</span></div>
+          <div class="module">
+            <div class="module-title">LFO 1</div>
+            <div class="knob-row">
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: -10deg"></div>
+                <span class="knob-label">rate</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 30deg"></div>
+                <span class="knob-label">depth</span>
+              </div>
+            </div>
+            <div class="jack-row">
+              <div
+                class="jack-slot"
+                data-id="lfo1-sync"
+                data-type="gate"
+                data-size="sm"
+                data-cable-color="#e0c23f"
+              >
+                <span class="jack-label">sync</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="lfo1-out"
+                data-type="cv"
+                data-max-plugs="6"
+                data-cable-color="#d966b3"
+              >
+                <span class="jack-label">cv out</span>
+              </div>
+            </div>
           </div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="lfo1-sync" data-type="gate" data-size="sm" data-cable-color="#e0c23f"><span class="jack-label">sync</span></div>
-            <div class="jack-slot" data-id="lfo1-out" data-type="cv" data-max-plugs="6" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
-          </div>
-        </div>
 
-        <div class="module">
-          <div class="module-title">LFO 2</div>
-          <div class="knob-row">
-            <div class="knob-wrap"><div class="knob" style="--angle: 25deg"></div><span class="knob-label">rate</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: -35deg"></div><span class="knob-label">shape</span></div>
+          <div class="module">
+            <div class="module-title">LFO 2</div>
+            <div class="knob-row">
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 25deg"></div>
+                <span class="knob-label">rate</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: -35deg"></div>
+                <span class="knob-label">shape</span>
+              </div>
+            </div>
+            <div class="jack-row">
+              <div
+                class="jack-slot"
+                data-id="lfo2-out"
+                data-type="cv"
+                data-max-plugs="6"
+                data-cable-color="#d966b3"
+              >
+                <span class="jack-label">cv out</span>
+              </div>
+            </div>
           </div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="lfo2-out" data-type="cv" data-max-plugs="6" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
-          </div>
-        </div>
 
-        <div class="module">
-          <div class="module-title">S&amp;H</div>
-          <div class="knob-row">
-            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">rate</span></div>
+          <div class="module">
+            <div class="module-title">S&amp;H</div>
+            <div class="knob-row">
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 0deg"></div>
+                <span class="knob-label">rate</span>
+              </div>
+            </div>
+            <div class="jack-row">
+              <div class="jack-slot" data-id="sh-in" data-type="cv" data-cable-color="#a78bfa">
+                <span class="jack-label">cv</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="sh-clock"
+                data-type="gate"
+                data-size="sm"
+                data-cable-color="#e0c23f"
+              >
+                <span class="jack-label">clk</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="sh-out"
+                data-type="cv"
+                data-max-plugs="3"
+                data-cable-color="#d966b3"
+              >
+                <span class="jack-label">cv out</span>
+              </div>
+            </div>
           </div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="sh-in" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
-            <div class="jack-slot" data-id="sh-clock" data-type="gate" data-size="sm" data-cable-color="#e0c23f"><span class="jack-label">clk</span></div>
-            <div class="jack-slot" data-id="sh-out" data-type="cv" data-max-plugs="3" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
-          </div>
-        </div>
 
-        <div class="module">
-          <div class="module-title">VCF</div>
-          <div class="knob-row">
-            <div class="knob-wrap"><div class="knob" style="--angle: 55deg"></div><span class="knob-label">cutoff</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: -45deg"></div><span class="knob-label">res</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">env</span></div>
+          <div class="module">
+            <div class="module-title">VCF</div>
+            <div class="knob-row">
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 55deg"></div>
+                <span class="knob-label">cutoff</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: -45deg"></div>
+                <span class="knob-label">res</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 0deg"></div>
+                <span class="knob-label">env</span>
+              </div>
+            </div>
+            <div class="jack-row">
+              <div
+                class="jack-slot"
+                data-id="vcf-in"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="1"
+                data-cable-color="#3fc6d8"
+              >
+                <span class="jack-label">in</span>
+              </div>
+              <div class="jack-slot" data-id="vcf-cv" data-type="cv" data-cable-color="#a78bfa">
+                <span class="jack-label">cv</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="vcf-out"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="1"
+                data-cable-color="#3fc6d8"
+              >
+                <span class="jack-label">out</span>
+              </div>
+            </div>
           </div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="vcf-in" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">in</span></div>
-            <div class="jack-slot" data-id="vcf-cv" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
-            <div class="jack-slot" data-id="vcf-out" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">out</span></div>
-          </div>
-        </div>
 
-        <div class="module">
-          <div class="module-title">VCA</div>
-          <div class="knob-row">
-            <div class="knob-wrap"><div class="knob" style="--angle: 20deg"></div><span class="knob-label">gain</span></div>
+          <div class="module">
+            <div class="module-title">VCA</div>
+            <div class="knob-row">
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 20deg"></div>
+                <span class="knob-label">gain</span>
+              </div>
+            </div>
+            <div class="jack-row">
+              <div
+                class="jack-slot"
+                data-id="vca-in"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="1"
+                data-cable-color="#e8834a"
+              >
+                <span class="jack-label">in</span>
+              </div>
+              <div class="jack-slot" data-id="vca-cv" data-type="cv" data-cable-color="#a78bfa">
+                <span class="jack-label">cv</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="vca-out"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="2"
+                data-cable-color="#e8834a"
+              >
+                <span class="jack-label">out</span>
+              </div>
+            </div>
           </div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="vca-in" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#e8834a"><span class="jack-label">in</span></div>
-            <div class="jack-slot" data-id="vca-cv" data-type="cv" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
-            <div class="jack-slot" data-id="vca-out" data-type="audio" data-size="lg" data-max-plugs="2" data-cable-color="#e8834a"><span class="jack-label">out</span></div>
-          </div>
-        </div>
 
-        <div class="module">
-          <div class="module-title">ENV</div>
-          <div class="knob-row">
-            <div class="knob-wrap"><div class="knob" style="--angle: -70deg"></div><span class="knob-label">a</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: -10deg"></div><span class="knob-label">d</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: 5deg"></div><span class="knob-label">s</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: 15deg"></div><span class="knob-label">r</span></div>
+          <div class="module">
+            <div class="module-title">ENV</div>
+            <div class="knob-row">
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: -70deg"></div>
+                <span class="knob-label">a</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: -10deg"></div>
+                <span class="knob-label">d</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 5deg"></div>
+                <span class="knob-label">s</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 15deg"></div>
+                <span class="knob-label">r</span>
+              </div>
+            </div>
+            <div class="jack-row">
+              <div
+                class="jack-slot"
+                data-id="env-trig"
+                data-type="gate"
+                data-size="sm"
+                data-cable-color="#e0c23f"
+              >
+                <span class="jack-label">trig</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="env-out"
+                data-type="cv"
+                data-max-plugs="4"
+                data-cable-color="#d966b3"
+              >
+                <span class="jack-label">cv out</span>
+              </div>
+            </div>
           </div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="env-trig" data-type="gate" data-size="sm" data-cable-color="#e0c23f"><span class="jack-label">trig</span></div>
-            <div class="jack-slot" data-id="env-out" data-type="cv" data-max-plugs="4" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
-          </div>
-        </div>
 
-        <div class="module">
-          <div class="module-title">RING MOD</div>
-          <div class="knob-row">
-            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">mix</span></div>
+          <div class="module">
+            <div class="module-title">RING MOD</div>
+            <div class="knob-row">
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 0deg"></div>
+                <span class="knob-label">mix</span>
+              </div>
+            </div>
+            <div class="jack-row">
+              <div
+                class="jack-slot"
+                data-id="ring-a"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="1"
+                data-cable-color="#5aa8e8"
+              >
+                <span class="jack-label">a</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="ring-b"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="1"
+                data-cable-color="#5aa8e8"
+              >
+                <span class="jack-label">b</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="ring-out"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="2"
+                data-cable-color="#5aa8e8"
+              >
+                <span class="jack-label">out</span>
+              </div>
+            </div>
           </div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="ring-a" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#5aa8e8"><span class="jack-label">a</span></div>
-            <div class="jack-slot" data-id="ring-b" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#5aa8e8"><span class="jack-label">b</span></div>
-            <div class="jack-slot" data-id="ring-out" data-type="audio" data-size="lg" data-max-plugs="2" data-cable-color="#5aa8e8"><span class="jack-label">out</span></div>
-          </div>
-        </div>
 
-        <div class="module">
-          <div class="module-title">DELAY</div>
-          <div class="knob-row">
-            <div class="knob-wrap"><div class="knob" style="--angle: 30deg"></div><span class="knob-label">time</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: -20deg"></div><span class="knob-label">fbk</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">mix</span></div>
+          <div class="module">
+            <div class="module-title">DELAY</div>
+            <div class="knob-row">
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 30deg"></div>
+                <span class="knob-label">time</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: -20deg"></div>
+                <span class="knob-label">fbk</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 0deg"></div>
+                <span class="knob-label">mix</span>
+              </div>
+            </div>
+            <div class="jack-row">
+              <div
+                class="jack-slot"
+                data-id="delay-in"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="1"
+                data-cable-color="#8ed65a"
+              >
+                <span class="jack-label">in</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="delay-out"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="2"
+                data-cable-color="#8ed65a"
+              >
+                <span class="jack-label">out</span>
+              </div>
+            </div>
           </div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="delay-in" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#8ed65a"><span class="jack-label">in</span></div>
-            <div class="jack-slot" data-id="delay-out" data-type="audio" data-size="lg" data-max-plugs="2" data-cable-color="#8ed65a"><span class="jack-label">out</span></div>
-          </div>
-        </div>
 
-        <div class="module">
-          <div class="module-title">MULTIPLE</div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="mult-in" data-type="cv" data-max-plugs="1" data-cable-color="#a78bfa"><span class="jack-label">cv</span></div>
-            <div class="jack-slot" data-id="mult-out1" data-type="cv" data-max-plugs="4" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
-            <div class="jack-slot" data-id="mult-out2" data-type="cv" data-max-plugs="4" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
-            <div class="jack-slot" data-id="mult-out3" data-type="cv" data-max-plugs="4" data-cable-color="#d966b3"><span class="jack-label">cv out</span></div>
+          <div class="module">
+            <div class="module-title">MULTIPLE</div>
+            <div class="jack-row">
+              <div
+                class="jack-slot"
+                data-id="mult-in"
+                data-type="cv"
+                data-max-plugs="1"
+                data-cable-color="#a78bfa"
+              >
+                <span class="jack-label">cv</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="mult-out1"
+                data-type="cv"
+                data-max-plugs="4"
+                data-cable-color="#d966b3"
+              >
+                <span class="jack-label">cv out</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="mult-out2"
+                data-type="cv"
+                data-max-plugs="4"
+                data-cable-color="#d966b3"
+              >
+                <span class="jack-label">cv out</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="mult-out3"
+                data-type="cv"
+                data-max-plugs="4"
+                data-cable-color="#d966b3"
+              >
+                <span class="jack-label">cv out</span>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <div class="module">
-          <div class="module-title">MIXER / OUT</div>
-          <div class="knob-row">
-            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">ch1</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">ch2</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">ch3</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">ch4</span></div>
-            <div class="knob-wrap"><div class="knob" style="--angle: 0deg"></div><span class="knob-label">mstr</span></div>
+          <div class="module">
+            <div class="module-title">MIXER / OUT</div>
+            <div class="knob-row">
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 0deg"></div>
+                <span class="knob-label">ch1</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 0deg"></div>
+                <span class="knob-label">ch2</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 0deg"></div>
+                <span class="knob-label">ch3</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 0deg"></div>
+                <span class="knob-label">ch4</span>
+              </div>
+              <div class="knob-wrap">
+                <div class="knob" style="--angle: 0deg"></div>
+                <span class="knob-label">mstr</span>
+              </div>
+            </div>
+            <div class="jack-row">
+              <div
+                class="jack-slot"
+                data-id="mix-in1"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="1"
+                data-cable-color="#3fc6d8"
+              >
+                <span class="jack-label">in1</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="mix-in2"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="1"
+                data-cable-color="#3fc6d8"
+              >
+                <span class="jack-label">in2</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="mix-in3"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="1"
+                data-cable-color="#3fc6d8"
+              >
+                <span class="jack-label">in3</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="mix-in4"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="1"
+                data-cable-color="#3fc6d8"
+              >
+                <span class="jack-label">in4</span>
+              </div>
+              <div
+                class="jack-slot"
+                data-id="mix-out"
+                data-type="audio"
+                data-size="lg"
+                data-max-plugs="1"
+                data-cable-color="#3fc6d8"
+              >
+                <span class="jack-label">out</span>
+              </div>
+            </div>
           </div>
-          <div class="jack-row">
-            <div class="jack-slot" data-id="mix-in1" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">in1</span></div>
-            <div class="jack-slot" data-id="mix-in2" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">in2</span></div>
-            <div class="jack-slot" data-id="mix-in3" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">in3</span></div>
-            <div class="jack-slot" data-id="mix-in4" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">in4</span></div>
-            <div class="jack-slot" data-id="mix-out" data-type="audio" data-size="lg" data-max-plugs="1" data-cable-color="#3fc6d8"><span class="jack-label">out</span></div>
-          </div>
-        </div>
-      </cavi-world>
+        </cavi-world>
       </div>
     </div>
     <script type="module" src="./example3.ts"></script>

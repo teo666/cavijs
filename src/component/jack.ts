@@ -100,7 +100,16 @@ export class Jack extends HTMLElement {
   private static _pointerY: number | null = null;
 
   static get observedAttributes() {
-    return ['color', 'x', 'y', 'type', 'max-plugs', 'magnet-class', 'full-class', 'at-capacity-class'];
+    return [
+      'color',
+      'x',
+      'y',
+      'type',
+      'max-plugs',
+      'magnet-class',
+      'full-class',
+      'at-capacity-class',
+    ];
   }
 
   constructor() {
@@ -350,7 +359,11 @@ export class Jack extends HTMLElement {
    * the wrap-around one) clears the minimum. `minGap` is derived from the
    * plug/spread-radius ratio so spread Plugs never visually overlap.
    */
-  private static _resolveAngularCollisions(angles: number[], radius: number, plugRadius: number): number[] {
+  private static _resolveAngularCollisions(
+    angles: number[],
+    radius: number,
+    plugRadius: number
+  ): number[] {
     if (angles.length < 2 || radius <= 0) return angles;
     const ratio = Math.min(1, plugRadius / radius);
     const minGap = 2 * Math.asin(ratio);
@@ -737,7 +750,10 @@ export class Jack extends HTMLElement {
       session.followPlug.update();
     }
 
-    Jack._setSessionMagnetTarget(session, Jack.findSnapTarget(session.followPlug, session.jack.type, session.jack));
+    Jack._setSessionMagnetTarget(
+      session,
+      Jack.findSnapTarget(session.followPlug, session.jack.type, session.jack)
+    );
   }
 
   /**

@@ -2,7 +2,12 @@ import { Cavi } from '../src/core/cavi';
 import { SvgRenderer } from '../src/renderer/renderer-svg';
 import '../src/component/jack'; // registers cavi-jack, and transitively cavi-wire (wirewc) + cavi-plug
 import '../src/component/interactionwc'; // registers cavi-interaction
-import { materializeJacks, repositionJacksFromSlots, materializePatches, wireUpControls } from './patchbay-shared';
+import {
+  materializeJacks,
+  repositionJacksFromSlots,
+  materializePatches,
+  wireUpControls,
+} from './patchbay-shared';
 
 /**
  * Same patchbay demo as example3.ts (demo-patchbay.html), but wired to

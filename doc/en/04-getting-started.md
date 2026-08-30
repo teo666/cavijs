@@ -17,17 +17,18 @@ npm install
 
 ## Scripts (`package.json`)
 
-| Script | Command | Purpose |
-|---|---|---|
-| `npm run dev` | `vite` | Start the Vite dev server (hot reload) |
-| `npm run build` | `tsc && vite build` | Type-check, then produce a production build |
-| `npm run preview` | `vite preview` | Serve the production build locally |
-| `npm run format` | `prettier --write .` | Format the codebase |
-| `npm run format:check` | `prettier --check .` | Check formatting without writing |
+| Script                 | Command              | Purpose                                     |
+| ---------------------- | -------------------- | ------------------------------------------- |
+| `npm run dev`          | `vite`               | Start the Vite dev server (hot reload)      |
+| `npm run build`        | `tsc && vite build`  | Type-check, then produce a production build |
+| `npm run preview`      | `vite preview`       | Serve the production build locally          |
+| `npm run format`       | `prettier --write .` | Format the codebase                         |
+| `npm run format:check` | `prettier --check .` | Check formatting without writing            |
 
 ## Running the demo
 
 `index.html` loads `src/main.ts`, which:
+
 1. Initializes the WASM module (`Cavi.initWasm()`)
 2. Creates a `Cavi` instance and a `Renderer` bound to `#wireCanvas`
 3. Adds three demo wires (red/yellow/green, two bezier + one segment-rendered)
