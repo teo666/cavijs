@@ -1,4 +1,5 @@
 import type { WasmNode, WasmWorld } from 'cavi';
+import type { Wire } from './wire';
 
 /**
  * Node is the TypeScript wrapper for the WASM Node class.
@@ -7,7 +8,13 @@ import type { WasmNode, WasmWorld } from 'cavi';
 export class Node {
   private wasmNode: WasmNode | null = null;
   private world: WasmWorld | null = null;
-  private wireIndex: number = -1;
+  /**
+   * The owning Wire, read live on every access rather than caching its
+   * index: a sibling wire's deletion shifts this wire's WASM index (see
+   * Wire._setIndex), and a cached copy would then silently read/write
+   * another wire's node.
+   */
+  private wire: Wire | null = null;
   private nodeIndex: number = -1;
   private _x: number;
   private _y: number;
@@ -19,7 +26,7 @@ export class Node {
     fixed: boolean = false,
     wasmNode?: WasmNode,
     world?: WasmWorld,
-    wireIndex?: number,
+    wire?: Wire,
     nodeIndex?: number
   ) {
     this._x = x;
@@ -28,11 +35,15 @@ export class Node {
     if (wasmNode) {
       this.wasmNode = wasmNode;
     }
-    if (world !== undefined && wireIndex !== undefined && nodeIndex !== undefined) {
+    if (world !== undefined && wire !== undefined && nodeIndex !== undefined) {
       this.world = world;
-      this.wireIndex = wireIndex;
+      this.wire = wire;
       this.nodeIndex = nodeIndex;
     }
+  }
+
+  private get wireIndex(): number {
+    return this.wire?.getIndex() ?? -1;
   }
 
   public get x(): number {
@@ -56,16 +67,19 @@ export class Node {
   }
 
   public get fixed(): boolean {
+    if (this.world && this.wireIndex >= 0 && this.nodeIndex >= 0) {
+      // WasmWorld has no direct fixed getter: read it off a temporary copy,
+      // freed right away rather than left to the finalizer.
+      const copy = this.world.get_wire_node(this.wireIndex, this.nodeIndex);
+      if (copy) {
+        const fixed = copy.get_fixed();
+        copy.free();
+        return fixed;
+      }
+    }
     if (this.wasmNode) {
       return this.wasmNode.get_fixed();
     }
-    // Cannot easily get fixed state from world buffer if logic is complex,
-    // usually rely on cache or check if get_wire_node returns valid (but that's a copy).
-    // Best effort: WasmWorld doesn't expose get_wire_node_fixed yet,
-    // so we might rely on the initial state or add that getter too.
-    // For now, let's assume if we are using world accessor, we might still want to check the wasm node if we have one,
-    // BUT the wasm node is a copy. So relying on it for read is safer than write, but still might be stale.
-    // Let's assume the user uses the setter correctly.
     return this._fixed;
   }
 

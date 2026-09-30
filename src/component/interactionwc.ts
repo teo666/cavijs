@@ -23,19 +23,12 @@ export class CaviInteractionElement extends HTMLElement {
   private _attachedTo: Cavi | null = null;
 
   connectedCallback(): void {
-    if (Cavi.shared) {
-      this._setup(Cavi.shared);
-    } else {
-      document.addEventListener(
-        'caviready',
-        (e: Event) => this._setup((e as CustomEvent<{ cavi: Cavi }>).detail.cavi),
-        { once: true }
-      );
-    }
+    Cavi.whenReady(this, (cavi) => this._setup(cavi));
   }
 
   private _setup(cavi: Cavi): void {
     if (!this.isConnected) return; // removed while waiting for caviready
+    if (this._attachedTo) return; // already attached (e.g. reconnected while waiting)
     this._attachedTo = cavi;
     this.controller.attach(cavi);
   }

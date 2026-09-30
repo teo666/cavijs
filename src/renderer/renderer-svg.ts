@@ -1,22 +1,28 @@
 import type { WasmWorld } from 'cavi';
-import type { IRenderer } from '../core/types';
+import type { IRenderer, RendererOptions } from '../core/types';
 import type { World } from '../core/world';
 import { Cavi } from '../core/cavi';
+import { clientToWorld, containerOrigin } from '../core/coords';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /**
  * SVG-based alternative to Renderer (src/renderer.ts): draws one <path> per
  * wire instead of stroking a canvas. Self-contained by design — unlike
- * Renderer (which expects a consumer, e.g. worldwc.ts, to create and size
- * the #wireCanvas for it), this class creates its own #wireSvg if none
+ * Renderer (which expects a consumer, e.g. worldwc.ts, to keep the
+ * #wireCanvas sized for it), this class creates its own #wireSvg if none
  * exists and manages its own sizing via an internal ResizeObserver, so
  * `new SvgRenderer(container, world)` is a drop-in swap for
- * `new Renderer(container, world)` anywhere without further wiring.
+ * `new Renderer(container, world)` anywhere without further wiring. Takes
+ * the same RendererOptions (see `surface` for pan/zoom setups).
  */
 export class SvgRenderer implements IRenderer {
   private container: HTMLElement;
+  /** See RendererOptions.surface — null means the svg lives in `container`. */
+  private surface: HTMLElement | null;
   private svg: SVGSVGElement;
+  /** Holds every drawn layer; carries the world->surface transform in surface mode. */
+  private viewLayer: SVGGElement;
   private wireLayer: SVGGElement;
   private debugLayer: SVGGElement;
   private world: World;
@@ -27,76 +33,101 @@ export class SvgRenderer implements IRenderer {
   private fps = 0;
 
   // Duck-typed members controls.ts reads directly off a renderer instance
-  // (getFPS() guarded with typeof, mouseX/mouseY read unguarded) — kept
-  // public (not private, unlike Renderer) since that's read from outside
-  // the class at runtime.
+  // (getFPS() guarded with typeof, mouseX/mouseY read unguarded) — last
+  // pointer position, in world coordinates.
   public mouseX: number = 200;
   public mouseY: number = 200;
-  public isDragging: boolean = false;
-  public draggedWire: number | null = null;
-  public draggedEndpoint: 'start' | 'end' | null = null;
+  private pointerInside: boolean = false;
 
-  private debugDrawNodes: boolean = true;
+  private debugDrawNodes: boolean = false;
   private rafId: number | null = null;
+  private running: boolean = false;
 
   /** Pooled per-wire <path> elements, indexed by wire index — updated in place each frame, only added/removed when wire count changes. */
   private wirePaths: SVGPathElement[] = [];
 
   private resizeObserver: ResizeObserver | null = null;
 
-  constructor(container: HTMLElement, world: World) {
+  /**
+   * Uses `options.svg` — any `<svg>`, anywhere on the page — else the
+   * `#wireSvg` found in the host (the surface if given, else `container`),
+   * creating one there if there is none. Its on-screen placement is
+   * measured every frame (see applyViewTransform).
+   */
+  constructor(
+    container: HTMLElement,
+    world: World,
+    options: RendererOptions & { svg?: SVGSVGElement } = {}
+  ) {
     this.container = container;
+    this.surface = options.surface ?? null;
     this.world = world;
     this.wasmWorld = world.getWasmWorld();
 
-    this.svg = this.ensureSvg();
-    this.wireLayer = this.ensureGroup('wireLayer');
-    this.debugLayer = this.ensureGroup('debugLayer');
+    this.svg = options.svg ?? this.ensureSvg();
+    this.viewLayer = this.ensureGroup(this.svg, 'viewLayer');
+    this.wireLayer = this.ensureGroup(this.viewLayer, 'wireLayer');
+    this.debugLayer = this.ensureGroup(this.viewLayer, 'debugLayer');
 
     this.attachResizeObserver();
-    this.addMouseMoveListener();
   }
 
   private ensureSvg(): SVGSVGElement {
-    let svg = this.container.querySelector<SVGSVGElement>('#wireSvg');
+    const host = this.surface ?? this.container;
+    let svg = this.surface
+      ? host.querySelector<SVGSVGElement>(':scope > #wireSvg')
+      : host.querySelector<SVGSVGElement>('#wireSvg');
     if (!svg) {
       svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
       svg.id = 'wireSvg';
-      svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;';
-      this.container.insertBefore(svg, this.container.firstChild);
+      svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;overflow:visible;';
+      host.insertBefore(svg, host.firstChild);
     }
     return svg;
   }
 
-  private ensureGroup(id: string): SVGGElement {
-    let g = this.svg.querySelector<SVGGElement>(`#${id}`);
+  private ensureGroup(parent: SVGElement, id: string): SVGGElement {
+    let g = parent.querySelector<SVGGElement>(`:scope > #${id}`);
     if (!g) {
       g = document.createElementNS(SVG_NS, 'g') as SVGGElement;
       g.id = id;
-      this.svg.appendChild(g);
+      parent.appendChild(g);
     }
     return g;
   }
 
   private attachResizeObserver(): void {
-    const resize = () => {
-      const width = this.container.clientWidth;
-      const height = this.container.clientHeight;
-      this.svg.setAttribute('width', String(width));
-      this.svg.setAttribute('height', String(height));
+    if (this.resizeObserver) return;
+    const resizeSvg = () => {
+      const host = this.surface ?? this.container;
+      this.svg.setAttribute('width', String(host.clientWidth));
+      this.svg.setAttribute('height', String(host.clientHeight));
+    };
+    resizeSvg();
+    this.resizeObserver = new ResizeObserver((entries) => {
+      resizeSvg();
       // Same event contract as StandardResizeController (src/resize.ts), so
       // consumers (e.g. repositionJacksFromSlots in patchbay-shared.ts) can
       // listen for 'cavi-resize' on the container regardless of which
       // IRenderer is active.
-      this.container.dispatchEvent(new CustomEvent('cavi-resize', { detail: { width, height } }));
-    };
-    resize();
-    this.resizeObserver = new ResizeObserver(resize);
+      if (entries.some((entry) => entry.target === this.container)) {
+        this.container.dispatchEvent(
+          new CustomEvent('cavi-resize', {
+            detail: { width: this.container.clientWidth, height: this.container.clientHeight },
+          })
+        );
+      }
+    });
     this.resizeObserver.observe(this.container);
+    if (this.surface) this.resizeObserver.observe(this.surface);
   }
 
   public getContainer(): HTMLElement {
     return this.container;
+  }
+
+  public getSurface(): HTMLElement {
+    return this.surface ?? this.container;
   }
 
   public getFPS(): number {
@@ -111,22 +142,46 @@ export class SvgRenderer implements IRenderer {
     return this.debugDrawNodes;
   }
 
-  private addMouseMoveListener(): void {
-    this.container.addEventListener('mousemove', (e) => {
-      const rect = this.svg.getBoundingClientRect();
-      this.mouseX = e.clientX - rect.left;
-      this.mouseY = e.clientY - rect.top;
+  /** Same as Renderer.handlePointerMove: feeds the physics mouse position, in world space. */
+  private handlePointerMove = (e: PointerEvent): void => {
+    const rect = this.svg.getBoundingClientRect();
+    this.pointerInside =
+      e.clientX >= rect.left &&
+      e.clientX <= rect.right &&
+      e.clientY >= rect.top &&
+      e.clientY <= rect.bottom;
+    if (!this.pointerInside) return;
 
-      if (this.isDragging && this.draggedWire !== null && this.draggedEndpoint !== null) {
-        if (this.draggedEndpoint === 'start') {
-          this.wasmWorld.set_wire_start(this.draggedWire, this.mouseX, this.mouseY);
-        } else {
-          this.wasmWorld.set_wire_end(this.draggedWire, this.mouseX, this.mouseY);
-        }
-      } else {
-        this.wasmWorld.set_mouse(this.mouseX, this.mouseY);
-      }
-    });
+    const p = clientToWorld(
+      e.clientX,
+      e.clientY,
+      this.container,
+      this.world.getCoordinateTransform()
+    );
+    this.mouseX = p.x;
+    this.mouseY = p.y;
+    this.wasmWorld.set_mouse(p.x, p.y);
+  };
+
+  /**
+   * Maps world coordinates onto the svg wherever it is on screen — same
+   * derivation as Renderer.applyViewTransform (minus the device-pixel
+   * ratio, which SVG doesn't need): world -> client through the registered
+   * zoom and the container's on-screen origin, then client -> svg user
+   * units through the svg's own on-screen position and scale. For the
+   * default svg at the container's top-left this is the identity.
+   */
+  private applyViewTransform(): void {
+    const rect = this.svg.getBoundingClientRect();
+    const width = Number(this.svg.getAttribute('width')) || 0;
+    const c = width > 0 ? rect.width / width || 1 : 1;
+    const t = this.world.getCoordinateTransform();
+    const origin = containerOrigin(this.container, t.scale);
+    const scale = t.scale / c;
+    this.viewLayer.setAttribute(
+      'transform',
+      `matrix(${scale} 0 0 ${scale} ${(origin.x - rect.left) / c} ${(origin.y - rect.top) / c})`
+    );
   }
 
   private syncPoolSize(count: number): void {
@@ -158,8 +213,7 @@ export class SvgRenderer implements IRenderer {
 
     let offset = 0;
     for (let wireIdx = 0; wireIdx < wireCount; wireIdx++) {
-      const nodeCount = wireData[offset++];
-      void nodeCount;
+      offset++; // node count — unused here
       const radius = wireData[offset++];
       const renderType = wireData[offset++];
       const pathLength = wireData[offset++];
@@ -208,17 +262,17 @@ export class SvgRenderer implements IRenderer {
   private drawNodeDebug(): void {
     const wires = this.world.getWires();
 
+    // Read straight from WASM rather than through Wire.getNode(), which
+    // would allocate a wrapper per node per frame.
     for (const wire of wires) {
+      const wireIndex = wire.getIndex();
       const radius = wire.getRadius();
       const nodeCount = wire.getNodeCount();
 
       for (let i = 0; i < nodeCount; i++) {
-        const node = wire.getNode(i);
-        if (!node) continue;
-
         const circle = document.createElementNS(SVG_NS, 'circle');
-        circle.setAttribute('cx', String(node.x));
-        circle.setAttribute('cy', String(node.y));
+        circle.setAttribute('cx', String(this.wasmWorld.get_wire_node_x(wireIndex, i)));
+        circle.setAttribute('cy', String(this.wasmWorld.get_wire_node_y(wireIndex, i)));
         circle.setAttribute('r', String(radius));
         circle.setAttribute('fill', 'none');
         circle.setAttribute('stroke', '#00ffff');
@@ -254,10 +308,9 @@ export class SvgRenderer implements IRenderer {
     return t;
   }
 
+  /** Draws the mouse/pointer interaction radii around (mouseX, mouseY), in world coordinates. */
   public drawInteractionRadii(mouseX: number, mouseY: number): void {
-    const width = Number(this.svg.getAttribute('width')) || 0;
-    const height = Number(this.svg.getAttribute('height')) || 0;
-    if (mouseX < 0 || mouseY < 0 || mouseX > width || mouseY > height) return;
+    if (!this.pointerInside) return;
 
     const mouseRadius = this.wasmWorld.get_mouse_radius();
     const pointerRadius = this.wasmWorld.get_pointer_radius();
@@ -288,7 +341,8 @@ export class SvgRenderer implements IRenderer {
     );
   }
 
-  public render(): void {
+  private frame = (): void => {
+    if (!this.running) return;
     const currentTime = performance.now();
 
     this.fpsFrameCount++;
@@ -300,6 +354,7 @@ export class SvgRenderer implements IRenderer {
 
     this.world.update();
 
+    this.applyViewTransform();
     this.drawAllWires();
 
     if (this.debugDrawNodes) {
@@ -310,15 +365,32 @@ export class SvgRenderer implements IRenderer {
       this.debugLayer.replaceChildren();
     }
 
-    this.rafId = requestAnimationFrame(this.render.bind(this));
+    this.rafId = requestAnimationFrame(this.frame);
+  };
+
+  /**
+   * Starts the render loop. Idempotent while running; can be called again
+   * after stop() (re-attaching the resize observer stop() disconnected).
+   */
+  public render(): void {
+    if (this.running) return;
+    this.running = true;
+    this.attachResizeObserver();
+    document.addEventListener('pointermove', this.handlePointerMove);
+    this.frame();
   }
 
+  /** Cancels the render loop, its pointer listener and its ResizeObserver, and clears the drawing. */
   public stop(): void {
+    this.running = false;
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
+    document.removeEventListener('pointermove', this.handlePointerMove);
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    this.syncPoolSize(0);
+    this.debugLayer.replaceChildren();
   }
 }

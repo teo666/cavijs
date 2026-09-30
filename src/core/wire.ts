@@ -69,24 +69,22 @@ export class Wire {
   }
 
   /**
-   * Get a node at a specific index
+   * Get a node at a specific index. The returned Node is a live view: it
+   * reads and writes the WASM node through this Wire (so it follows this
+   * wire's index if an earlier wire is deleted) rather than holding a copy.
    */
   public getNode(index: number): Node | null {
-    if (this.world && this.wireIndex >= 0) {
-      const wasmNode = this.world.get_wire_node(this.wireIndex, index);
-      if (wasmNode) {
-        return new Node(
-          wasmNode.get_x(),
-          wasmNode.get_y(),
-          wasmNode.is_fixed(),
-          wasmNode,
-          this.world,
-          this.wireIndex,
-          index
-        );
-      }
-    }
-    return null;
+    if (!this.world || this.wireIndex < 0) return null;
+    if (index < 0 || index >= this.world.get_wire_node_count(this.wireIndex)) return null;
+    return new Node(
+      this.world.get_wire_node_x(this.wireIndex, index),
+      this.world.get_wire_node_y(this.wireIndex, index),
+      false,
+      undefined,
+      this.world,
+      this,
+      index
+    );
   }
 
   /**
@@ -144,9 +142,22 @@ export class Wire {
   }
 
   /**
-   * Get the wire index in the world
+   * Get the wire index in the world. -1 once the wire has been deleted.
    */
   public getIndex(): number {
     return this.wireIndex;
+  }
+
+  /**
+   * Internal: called by World.deleteWire() to keep this handle pointing at
+   * the right WASM wire after an earlier deletion shifts every later index
+   * down by one (or to -1 once this wire itself is deleted, turning every
+   * method into a no-op instead of silently hitting whichever wire now
+   * occupies the old index). Updating the index in place — rather than
+   * handing out a fresh wrapper — keeps every reference already held
+   * elsewhere (CaviWireElement, a CableSession, each Plug's Node) valid.
+   */
+  public _setIndex(index: number): void {
+    this.wireIndex = index;
   }
 }

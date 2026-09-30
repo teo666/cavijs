@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>cavijs - Zoom/Pan, SVG renderer (CSS-positioned jacks + d3-zoom)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        overflow: hidden;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        background: #101010;
+        color: #ddd;
+      }
+      /* Floating info panel over the full-screen frame. */
+      .hud {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 100;
+        max-width: min(560px, calc(100vw - 24px));
+        padding: 10px 14px;
+        border: 1px solid #333;
+        border-radius: 8px;
+        background: rgba(16, 16, 16, 0.88);
+        backdrop-filter: blur(4px);
+      }
+      .hud a.back {
+        color: #6cb6ff;
+        font-size: 12px;
+        text-decoration: none;
+      }
+      h1 {
+        font-size: 15px;
+        margin: 4px 0 0;
+      }
+      .hud summary {
+        cursor: pointer;
+        color: #999;
+        font-size: 12px;
+        margin-top: 6px;
+      }
+      p.note {
+        color: #999;
+        font-size: 13px;
+        line-height: 1.5;
+        margin: 8px 0 0;
+      }
+      p.note code {
+        color: #9fd8e0;
+      }
+      /*
+       * Full-screen, untransformed frame: d3-zoom listens on it, and it's
+       * the SvgRenderer's `surface` (see demo-patchbay-zoom-svg.ts), so
+       * #wireSvg covers the whole screen and cables are never clipped to
+       * #panel's own box.
+       */
+      .viewport-frame {
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+        background: #101010;
+        cursor: grab;
+      }
+      .viewport-frame:active {
+        cursor: grabbing;
+      }
+      #viewport {
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform-origin: 0 0;
+      }
+      /*
+       * #panel is the renderer container (world origin). With a surface it
+       * needs no particular size; no opaque background, since cables are
+       * drawn on the surface beneath it.
+       */
+      #panel {
+        position: relative;
+      }
+      .panel {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(4, 90px);
+        grid-auto-rows: 90px;
+        gap: 20px;
+        padding: 30px;
+      }
+
+      /*
+       * A plain draggable HTML box wrapping a jack group — cavijs knows
+       * nothing about this either, and needs no particular `position` on
+       * it: every cavijs coordinate is anchored on the <cavi-world>
+       * container itself, never on whatever `offsetParent` a jack happens
+       * to have, so any wrapper may be positioned/transformed freely.
+       * Dragging it only needs notifyCoordinateTransformChanged(), the
+       * same channel already used for the outer d3-zoom pan/zoom above.
+       */
+      .jack-holder {
+        display: inline-block;
+        margin: 60px;
+        border: 1px dashed #555;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .jack-holder-handle {
+        padding: 6px 10px;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #999;
+        border-bottom: 1px dashed #555;
+        cursor: grab;
+        user-select: none;
+        touch-action: none;
+      }
+      .jack-holder-handle:active {
+        cursor: grabbing;
+      }
+      .jack-cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      cavi-jack {
+        width: 26px;
+        height: 26px;
+      }
+      cavi-jack::part(base) {
+        background: #3a3a3a;
+      }
+      cavi-jack.cavi-magnet-target {
+        box-shadow: 0 0 0 6px rgba(255, 235, 59, 0.5);
+      }
+      cavi-plug.cavi-magnet-active {
+        box-shadow: 0 0 0 6px rgba(255, 235, 59, 0.5);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="hud">
+      <a class="back" href="./">← all demos</a>
+      <h1>Zoom/Pan, SVG renderer — no x/y attributes anywhere</h1>
+      <details>
+        <summary>How it works</summary>
+        <p class="note">
+          Same validation as <code>demo-patchbay-zoom.html</code>, against
+          <code>SvgRenderer</code> instead of the canvas renderer, created with
+          <code>{ surface: #zoomFrame }</code> so the svg covers the whole screen and applies the
+          zoom itself. Scroll to zoom, drag to pan. Drag <code>j-c</code>/<code>j-d</code>'s dashed
+          box by its header — a plain draggable HTML element cavijs knows nothing about either; its
+          plugged cable stays glued to it via <code>notifyCoordinateTransformChanged()</code>, fired
+          on every drag step instead of every zoom step.
+        </p>
+      </details>
+    </div>
+
+    <div class="viewport-frame" id="zoomFrame">
+      <div id="viewport">
+        <div id="panel">
+          <div class="panel">
+            <div class="jack-cell">
+              <cavi-jack id="j-a" type="audio" cable-color="#8ed65a"></cavi-jack>
+            </div>
+            <div class="jack-cell">
+              <cavi-jack id="j-b" type="audio" cable-color="#8ed65a"></cavi-jack>
+            </div>
+          </div>
+          <div class="jack-holder" id="jackHolder">
+            <div class="jack-holder-handle" id="jackHolderHandle">⠿ drag module</div>
+            <div class="panel" style="grid-template-columns: repeat(2, 90px)">
+              <div class="jack-cell">
+                <cavi-jack id="j-c" type="audio" cable-color="#d966b3"></cavi-jack>
+              </div>
+              <div class="jack-cell">
+                <cavi-jack id="j-d" type="audio" cable-color="#d966b3"></cavi-jack>
+              </div>
+            </div>
+          </div>
+          <cavi-wire length="14" tension="20" size="5" color="#8ed65a" type="audio">
+            <cavi-plug node="0" jack="j-a"></cavi-plug>
+            <cavi-plug node="13" jack="j-b"></cavi-plug>
+          </cavi-wire>
+          <cavi-wire length="14" tension="20" size="5" color="#d966b3" type="audio">
+            <cavi-plug node="0" jack="j-c"></cavi-plug>
+            <cavi-plug node="13" jack="j-d"></cavi-plug>
+          </cavi-wire>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./demo-patchbay-zoom-svg.ts"></script>
+  </body>
+</html>

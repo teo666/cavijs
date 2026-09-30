@@ -17,20 +17,11 @@ export class CaviWireElement extends HTMLElement {
    */
   private static readonly OUTSIDE_FRAMES_BEFORE_CLEANUP = 30;
 
-  /**
-   * Every connected <cavi-wire>, used only to rebind survivors after one of
-   * them deletes itself (see _destroy) — deleting a wire shifts the WASM
-   * index of every wire created after it, which would otherwise leave
-   * other CaviWireElements/Plugs reading through a stale index forever.
-   */
-  private static readonly _registry = new Set<CaviWireElement>();
-
   private _wire: Wire | null = null;
   private _plugs: Plug[] = [];
   private _rafId: number | null = null;
   private _cavi: Cavi | null = null;
   private _container: HTMLElement | null = null;
-  private _autoCleanup: boolean = false;
   /**
    * Consecutive frames this wire's plugs have been found entirely outside
    * the container — a layout reflow (e.g. a responsive container resizing,
@@ -49,28 +40,44 @@ export class CaviWireElement extends HTMLElement {
   connectedCallback() {
     // Transparent to layout — child plugs position relative to the container
     this.style.display = 'contents';
-    CaviWireElement._registry.add(this);
 
-    if (Cavi.shared) {
-      this._setup(Cavi.shared);
-    } else {
-      document.addEventListener(
-        'caviready',
-        (e: Event) => this._setup((e as CustomEvent<{ cavi: Cavi }>).detail.cavi),
-        { once: true }
-      );
+    // Reconnected after a DOM move (disconnect + connect in the same task):
+    // the WASM wire is still alive (see disconnectedCallback), so just
+    // resume the per-frame sync instead of creating a duplicate wire.
+    if (this._wire) {
+      this._startUpdateLoop();
+      return;
     }
+
+    Cavi.whenReady(this, (cavi) => this._setup(cavi));
   }
 
+  /**
+   * Removing a <cavi-wire> from the DOM (e.g. Jack's 'cancel' drop
+   * behavior, or any consumer calling `.remove()`) also deletes its WASM
+   * wire — otherwise it would keep being simulated and drawn on the canvas
+   * with no plugs attached. Deferred to a microtask so a plain DOM move
+   * (disconnect immediately followed by connect) keeps the live wire.
+   */
   disconnectedCallback() {
-    CaviWireElement._registry.delete(this);
-    if (this._rafId !== null) {
-      cancelAnimationFrame(this._rafId);
-      this._rafId = null;
-    }
+    this._stopUpdateLoop();
+    queueMicrotask(() => {
+      if (!this.isConnected) this._releaseWire();
+    });
+  }
+
+  /** Deletes this element's WASM wire, if it still owns one. Idempotent. */
+  private _releaseWire(): void {
+    const wire = this._wire;
+    this._wire = null;
+    if (!wire || !this._cavi) return;
+    const index = wire.getIndex();
+    if (index >= 0) this._cavi.deleteWire(index);
   }
 
   private _setup(cavi: Cavi): void {
+    // Removed (or already set up) while waiting for 'caviready'.
+    if (!this.isConnected || this._wire) return;
     const nodeCount = parseInt(this.getAttribute('length') ?? '10');
     const tension = parseFloat(this.getAttribute('tension') ?? '20');
     const radius = parseFloat(this.getAttribute('size') ?? '5');
@@ -82,7 +89,6 @@ export class CaviWireElement extends HTMLElement {
 
     this._cavi = cavi;
     this._container = cavi.getContainer();
-    this._autoCleanup = this.hasAttribute('auto-cleanup');
 
     const plugEls = Array.from(this.children).filter(
       (el) => el.tagName.toLowerCase() === 'cavi-plug'
@@ -114,10 +120,9 @@ export class CaviWireElement extends HTMLElement {
       y2 = 300;
     for (const { nodeIdx, jackId } of validPlugs) {
       if (!jackId) continue;
-      const jack = document.getElementById(jackId);
+      const jack = document.getElementById(jackId) as unknown as Jack | null;
       if (!jack) continue;
-      const jx = parseFloat(jack.getAttribute('x') ?? '0');
-      const jy = parseFloat(jack.getAttribute('y') ?? '0');
+      const { x: jx, y: jy } = jack.getWorldPosition();
       if (nodeIdx === 0) {
         x1 = jx;
         y1 = jy;
@@ -143,8 +148,7 @@ export class CaviWireElement extends HTMLElement {
       if (jackId) {
         const jackEl = document.getElementById(jackId) as unknown as Jack | null;
         if (jackEl) {
-          const jx = parseFloat(jackEl.getAttribute('x') ?? '0');
-          const jy = parseFloat(jackEl.getAttribute('y') ?? '0');
+          const { x: jx, y: jy } = jackEl.getWorldPosition();
           node.setPosition(jx, jy);
           node.fixed = true;
 
@@ -172,6 +176,7 @@ export class CaviWireElement extends HTMLElement {
    * — visually detaching the plug icon from the wire it's still bound to.
    */
   private _startUpdateLoop(): void {
+    this._stopUpdateLoop();
     const tick = () => {
       for (const plug of this._plugs) {
         plug.update();
@@ -186,29 +191,43 @@ export class CaviWireElement extends HTMLElement {
     this._rafId = requestAnimationFrame(tick);
   }
 
+  private _stopUpdateLoop(): void {
+    if (this._rafId !== null) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = null;
+    }
+  }
+
   /**
    * Auto-cleanup entry point (opt-in via the `auto-cleanup` attribute — see
-   * grep for "auto-cleanup" to find every place this feature touches).
-   * Self-contained and called unconditionally once per frame from the
-   * update loop above: a no-op unless `auto-cleanup` is set, otherwise once
-   * every plug of this cable has drifted entirely outside the container the
-   * world was initialized with, the cable is no longer visible or
+   * grep for "auto-cleanup" to find every place this feature touches; Jack
+   * sets it on a new cable dropped with the 'detach' behavior). Called
+   * unconditionally once per frame from the update loop above, and reads
+   * the attribute live, so it can be added or removed at any time: a no-op
+   * unless it's set, otherwise once every plug of this cable has drifted
+   * entirely outside both the world container and the renderer's surface
+   * (see RendererOptions.surface — so a cable still visible in a
+   * zoomed-out view is never deleted), the cable is no longer visible or
    * reachable, so it is deleted — freeing its WASM-side wire, its DOM
-   * (which cascades disconnectedCallback on every child <cavi-plug>, in
-   * turn detaching each from its Jack and dropping its own pointer
-   * listeners), and this element's own RAF loop.
+   * (which cascades disconnectedCallback on every child <cavi-plug>), and
+   * this element's own RAF loop.
    *
    * Checked via real bounding-box overlap (not the physics node's raw x/y)
    * so it stays correct regardless of where in the DOM a <cavi-wire> lives
    * relative to the container.
    */
   private _cleanupIfOutsideContainer(): void {
-    if (!this._autoCleanup || !this._container || this._plugs.length === 0) return;
+    if (!this.hasAttribute('auto-cleanup') || !this._container || this._plugs.length === 0) {
+      return;
+    }
 
-    const containerRect = this._container.getBoundingClientRect();
-    const allOutside = this._plugs.every(
-      (plug) => !rectsOverlap(plug.getBoundingClientRect(), containerRect)
-    );
+    const bounds = [this._container.getBoundingClientRect()];
+    const surface = this._cavi?.getSurface?.();
+    if (surface && surface !== this._container) bounds.push(surface.getBoundingClientRect());
+    const allOutside = this._plugs.every((plug) => {
+      const r = plug.getBoundingClientRect();
+      return bounds.every((b) => !rectsOverlap(r, b));
+    });
 
     if (!allOutside) {
       this._framesOutside = 0;
@@ -221,51 +240,19 @@ export class CaviWireElement extends HTMLElement {
   }
 
   /**
-   * Deletes this cable's WASM-side wire and removes it from the DOM.
-   *
-   * World.deleteWire() shifts the index of every wire created after this
-   * one down by one, but every other CaviWireElement (and each of its
-   * Plugs' Node objects) cached its own Wire at the index it had when
-   * created — left alone, they'd silently keep reading/writing through a
-   * now-wrong index forever. Rebind every survivor whose index just shifted
-   * to the fresh Wire object World.deleteWire() already created for it.
+   * Deletes this cable's WASM-side wire and removes it from the DOM. The
+   * wire is released synchronously here (not left to disconnectedCallback's
+   * deferred cleanup) so the physics world never simulates it for one more
+   * frame. Sibling wires need no rebinding: World.deleteWire() shifts their
+   * Wire handles' indices in place (see Wire._setIndex).
    */
   private _destroy(): void {
-    const cavi = this._cavi;
-    const wire = this._wire;
-    if (wire && cavi) {
-      const deletedIndex = wire.getIndex();
-      cavi.deleteWire(deletedIndex);
-
-      for (const other of CaviWireElement._registry) {
-        if (other === this) continue;
-        const oldIndex = other._wire?.getIndex() ?? -1;
-        if (oldIndex > deletedIndex) {
-          const freshWire = cavi.getWireByIndex(oldIndex - 1);
-          if (freshWire) other._rebindAfterIndexShift(freshWire);
-        }
-      }
-    }
+    this._releaseWire();
+    // Plugs defer their own detach to a microtask (so a DOM move keeps them
+    // plugged — see Plug.disconnectedCallback); a deletion is final, so
+    // free the jacks right away.
+    for (const plug of this._plugs) plug.detach();
     this.remove();
-  }
-
-  /**
-   * Rebinds this element's Wire and every Plug's Node after a sibling
-   * deletion shifted our index — see _destroy. Each plug's `node`
-   * attribute is the live ground truth for which node index it's bound to
-   * (kept in sync by whoever moves a plug to a different node — e.g.
-   * Jack's cable-creation drag updates it on every growth step), so it's
-   * re-read here rather than relying on a value cached at setup time,
-   * which would go stale the moment the wire's node count changed after
-   * this element was first connected.
-   */
-  private _rebindAfterIndexShift(newWire: Wire): void {
-    this._wire = newWire;
-    for (const plug of this._plugs) {
-      const nodeIdx = parseInt(plug.getAttribute('node') ?? '0');
-      const node = newWire.getNode(nodeIdx);
-      if (node) plug.setNode(node);
-    }
   }
 
   public getWire(): Wire | null {

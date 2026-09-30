@@ -3,6 +3,7 @@ import type { Wire } from '../core/wire';
 import type { Node } from '../core/node';
 import type { CaviWireElement } from './wirewc';
 import { Cavi } from '../core/cavi';
+import { clientToWorld, IDENTITY_TRANSFORM, type CoordinateTransform } from '../core/coords';
 import './wirewc';
 
 /** Node count/distance growth used while dragging a cable out of a Jack. */
@@ -78,6 +79,26 @@ export class Jack extends HTMLElement {
   private _recompactTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
+   * Watches this Jack's own rendered box for changes (a responsive
+   * flex/grid reflow, window resize, content/font load, ...) so a Jack with
+   * no explicit `x`/`y` (see _hasExplicitPosition/getWorldPosition) keeps
+   * any already-plugged cable glued to it as its CSS-driven position moves.
+   * Only created for a Jack in auto-position mode — see
+   * connectedCallback/disconnectedCallback.
+   */
+  private _resizeObserver: ResizeObserver | null = null;
+  /**
+   * The <cavi-world>/renderer container this Jack listens to for
+   * 'cavi-transform-change' (see Cavi.notifyCoordinateTransformChanged) —
+   * a pure CSS-transform pan/zoom step changes this Jack's rendered
+   * position without changing its own box size, so it never fires
+   * _resizeObserver on its own and needs this separate signal instead.
+   * Tracked so disconnectedCallback can remove the exact same listener.
+   */
+  private _transformChangeContainer: HTMLElement | null = null;
+  private _onTransformChange = (): void => this._syncAutoPosition();
+
+  /**
    * How many drags that could try to connect a plug to a jack are
    * currently in progress, fed externally via Jack.setDragActive — a count
    * rather than a boolean so overlapping/concurrent drags (e.g.
@@ -121,11 +142,22 @@ export class Jack extends HTMLElement {
     Jack._registry.add(this);
     this.render();
     this.updatePosition();
+    this._setupAutoPositionWatchers();
+    // <cavi-world>'s Cavi instance is created asynchronously (after WASM
+    // init) — if it isn't ready yet, the container-based
+    // 'cavi-transform-change' listener above attached to nothing. Re-run
+    // once this Jack's own world is ready.
+    if (!Cavi.for(this)) {
+      Cavi.whenReady(this, () => {
+        if (this.isConnected) this._setupAutoPositionWatchers();
+      });
+    }
   }
 
   disconnectedCallback() {
     Jack._registry.delete(this);
     this._cancelRecompactTimer();
+    this._teardownAutoPositionWatchers();
   }
 
   attributeChangedCallback(name: string, oldValue: string, newValue: string) {
@@ -133,7 +165,12 @@ export class Jack extends HTMLElement {
       this.render();
     }
     if (name === 'x' || name === 'y') {
+      // Adding/removing x or y can flip _hasExplicitPosition() and
+      // therefore the positioning mode itself (see render()'s :host
+      // position/transform), not just the coordinate values.
+      this.render();
       this.updatePosition();
+      this._setupAutoPositionWatchers();
     }
     if (name === 'type') {
       this._type = newValue ?? '';
@@ -154,10 +191,22 @@ export class Jack extends HTMLElement {
     }
   }
 
+  /**
+   * Runs on every pointer move. All layout reads (bounding rects) happen in
+   * a first pass and all DOM writes (classes, cursor, spread positions) in a
+   * second: interleaving them per jack forced the browser into one
+   * synchronous layout per jack on every pointermove, which gets expensive
+   * with a large patchbay.
+   */
   private static _refreshAll(): void {
-    for (const jack of Jack._registry) {
-      jack._refreshFullState();
-      jack._refreshSpread();
+    const measured = Array.from(Jack._registry, (jack) => ({
+      jack,
+      blocked: jack._computeBlocked(),
+      hovering: jack._plugs.size > 0 && !Jack._dragActive && jack._hoveringExpandedArea(),
+    }));
+    for (const { jack, blocked, hovering } of measured) {
+      jack._applyFullState(blocked);
+      jack._refreshSpread(hovering);
     }
   }
 
@@ -207,17 +256,31 @@ export class Jack extends HTMLElement {
    *   that could try to connect here.
    */
   private _refreshFullState(): void {
-    const atCapacity = !this.canAcceptMore();
-    this.classList.toggle(this._atCapacityClass, atCapacity);
+    this._applyFullState(this._computeBlocked());
+  }
 
-    const c = this.getCenter();
-    const hovering =
-      Jack._pointerX !== null &&
-      Jack._pointerY !== null &&
-      Math.hypot(Jack._pointerX - c.x, Jack._pointerY - c.y) <= CABLE_SNAP_DISTANCE;
-    const blocked = hovering && Jack._dragActive && atCapacity;
+  /**
+   * Read-only half of _refreshFullState: whether the "you can't drop here"
+   * preview should show. Only measures anything while a drag is active over
+   * an at-capacity jack — the common case costs no layout read at all.
+   */
+  private _computeBlocked(): boolean {
+    if (!Jack._dragActive || this.canAcceptMore()) return false;
+    if (Jack._pointerX === null || Jack._pointerY === null) return false;
+    // Measured in world space against the same CABLE_SNAP_DISTANCE
+    // findSnapTarget uses, so this preview lights up over exactly the ring
+    // that would actually accept the drop — at any zoom level.
+    const c = this.getWorldPosition();
+    const p = this._clientToLocal(Jack._pointerX, Jack._pointerY);
+    return Math.hypot(p.x - c.x, p.y - c.y) <= CABLE_SNAP_DISTANCE;
+  }
+
+  /** Write-only half of _refreshFullState. */
+  private _applyFullState(blocked: boolean): void {
+    this.classList.toggle(this._atCapacityClass, !this.canAcceptMore());
     this.classList.toggle(this._fullClass, blocked);
-    this.style.cursor = blocked ? 'not-allowed' : '';
+    const cursor = blocked ? 'not-allowed' : '';
+    if (this.style.cursor !== cursor) this.style.cursor = cursor;
   }
 
   /** Distance (viewport px) from the pointer to a point, or Infinity if there's no known pointer position. */
@@ -264,17 +327,16 @@ export class Jack extends HTMLElement {
    * timeout resets, rather than continuing to count down, if the pointer
    * re-enters before it fires. No-op for a Jack with no Plugs, or while
    * some other drag is in progress (so the spread animation doesn't fight
-   * an unrelated active gesture).
+   * an unrelated active gesture). `hovering` is measured up front by
+   * _refreshAll's read pass.
    */
-  private _refreshSpread(): void {
+  private _refreshSpread(hovering: boolean): void {
     if (this._plugs.size === 0) {
       this._cancelRecompactTimer();
       this._spread = false;
       return;
     }
     if (Jack._dragActive) return;
-
-    const hovering = this._hoveringExpandedArea();
 
     if (hovering) {
       this._cancelRecompactTimer();
@@ -286,7 +348,7 @@ export class Jack extends HTMLElement {
     }
 
     if (this._spread && this._recompactTimer === null) {
-      const cavi = Cavi.shared;
+      const cavi = Cavi.for(this);
       const delay = cavi?.getPlugSpreadRecompactDelayMs?.() ?? 500;
       this._recompactTimer = setTimeout(() => {
         this._recompactTimer = null;
@@ -317,29 +379,43 @@ export class Jack extends HTMLElement {
    * disconnected hit-target.
    */
   private _applySpreadPositions(): void {
-    const cavi = Cavi.shared;
+    const cavi = Cavi.for(this);
     const plugs = Array.from(this._plugs);
-    const center = this.getCenter();
-    const radius = this._hoverRadius() * (cavi?.getPlugSpreadRadiusMultiplier?.() ?? 1.8);
-    const plugRadius = plugs[0]?.getBoundingClientRect().width / 2 || radius / 4;
+    const screenCenter = this.getCenter();
     const mode = cavi?.getPlugSpreadMode?.() ?? 'towardOther';
 
+    // Angles are computed from on-screen geometry (a direction is
+    // scale-invariant, so no conversion is needed for them)...
     let angles: number[];
     if (mode === 'radial' || plugs.length === 1) {
       angles = plugs.map((_, i) => (i * 2 * Math.PI) / plugs.length);
     } else {
-      angles = plugs.map((plug) => this._towardOtherEndAngle(plug, center));
-      angles = Jack._resolveAngularCollisions(angles, radius, plugRadius);
+      angles = plugs.map((plug) => this._towardOtherEndAngle(plug, screenCenter));
+      angles = Jack._resolveAngularCollisions(
+        angles,
+        this._hoverRadius(),
+        plugs[0]?.getBoundingClientRect().width / 2 || this._hoverRadius() / 4
+      );
     }
 
-    const offsetParent = this.offsetParent || document.body;
-    const parentRect = offsetParent.getBoundingClientRect();
+    // ...but the positions handed to setSpreadPosition are *world* values
+    // (they become physics node coordinates), so both the center and the
+    // spread radius have to be world lengths too. _hoverRadius() is
+    // measured from a client rect and therefore already multiplied by the
+    // current zoom — leaving it unscaled here fanned the plugs out `scale`
+    // times too far on every zoom step, the most visible symptom of the
+    // screen/world mix-up this whole file used to have.
+    const center = this.getWorldPosition();
+    const radius =
+      (this._hoverRadius() / this._worldTransform().scale) *
+      (cavi?.getPlugSpreadRadiusMultiplier?.() ?? 1.8);
 
     plugs.forEach((plug, i) => {
       const angle = angles[i];
-      const x = center.x + radius * Math.cos(angle);
-      const y = center.y + radius * Math.sin(angle);
-      plug.setSpreadPosition(x - parentRect.left, y - parentRect.top);
+      plug.setSpreadPosition(
+        center.x + radius * Math.cos(angle),
+        center.y + radius * Math.sin(angle)
+      );
     });
   }
 
@@ -390,23 +466,169 @@ export class Jack extends HTMLElement {
       if (!moved) break;
     }
 
-    const result = new Array<number>(angles.length);
+    const result: number[] = Array.from({ length: angles.length }, () => 0);
     order.forEach((originalIndex, sortedIndex) => {
       result[originalIndex] = sorted[sortedIndex];
     });
     return result;
   }
 
+  /**
+   * Whether this Jack has an explicit `x` and/or `y` attribute — the
+   * positioning mode switch used throughout this class. When true, those
+   * attributes remain the sole source of truth for this Jack's position,
+   * exactly as before this feature existed. When false, this Jack's
+   * position is left entirely to CSS (flexbox/grid/whatever the page
+   * already does), and getWorldPosition() derives it from the actual
+   * rendered box instead.
+   */
+  private _hasExplicitPosition(): boolean {
+    return this.hasAttribute('x') || this.hasAttribute('y');
+  }
+
+  /**
+   * This Jack's position in world/logical coordinates: the ground truth fed
+   * to <cavi-wire>'s declarative jack-bound plugs (see wirewc.ts's
+   * getWorldPosition() calls) and usable by any other consumer that needs
+   * this Jack's position without caring whether it came from explicit
+   * attributes or CSS layout.
+   *
+   * - Explicit mode (`x`/`y` set): reproduces the historical
+   *   `parseFloat(getAttribute(...))` behavior exactly — unaffected by any
+   *   registered coordinate transform, since an author who typed exact
+   *   numbers presumably wants exactly those numbers.
+   * - Auto mode (no `x`/`y`): measures this Jack's actual rendered center
+   *   (getCenter(), viewport px) and converts it to world space through
+   *   _clientToLocal below — anchored on the *renderer container*, so the
+   *   result is the very same origin `<cavi-plug>`'s absolute `left`/`top`
+   *   and the renderer's canvas resolve against, and is unaffected by the
+   *   current on-screen zoom/pan.
+   */
+  public getWorldPosition(): { x: number; y: number } {
+    if (this._hasExplicitPosition()) {
+      return {
+        x: parseFloat(this.getAttribute('x') ?? '0'),
+        y: parseFloat(this.getAttribute('y') ?? '0'),
+      };
+    }
+
+    const c = this.getCenter();
+    return this._clientToLocal(c.x, c.y);
+  }
+
+  /**
+   * The element world coordinate (0, 0) is anchored on: the renderer's own
+   * container (<cavi-world>) of the world `el` belongs to (see Cavi.for),
+   * never an individual element's `offsetParent`.
+   *
+   * Anchoring on `offsetParent` — as this class and Plug used to — silently
+   * splits the coordinate space the moment the page nests any
+   * `position: relative` wrapper between <cavi-world> and its jacks (a
+   * CSS-Grid panel, a draggable module box, a card, ...): that wrapper
+   * becomes the *jacks'* offsetParent, while a <cavi-plug> (child of a
+   * `display: contents` <cavi-wire> hanging directly off <cavi-world>) and
+   * the canvas keep resolving against the container. Every jack in such a
+   * wrapper then reports a position short by the wrapper's own offset, and
+   * its cables render visibly detached from it. One shared anchor removes
+   * the whole class of bug — and the CSS contortions consumers otherwise
+   * need to keep every wrapper unpositioned.
+   */
+  private static _worldContainerOf(el: Element): HTMLElement {
+    return Cavi.for(el)?.getContainer?.() ?? document.body;
+  }
+
+  /** The registered screen<->world transform of `el`'s world, or identity if none/no Cavi. */
+  private static _worldTransformOf(el: Element): CoordinateTransform {
+    return Cavi.for(el)?.getCoordinateTransform?.() ?? IDENTITY_TRANSFORM;
+  }
+
+  private _worldTransform(): CoordinateTransform {
+    return Jack._worldTransformOf(this);
+  }
+
+  /**
+   * Converts a raw viewport point (e.g. PointerEvent.clientX/clientY) into
+   * the container-relative world space of `el`'s world — used everywhere a
+   * session/drag needs to place a node under the live cursor (createCable,
+   * updateCableSession, ...), and by getWorldPosition() for a measured
+   * element center.
+   */
+  private static _clientToLocalOf(
+    el: Element,
+    clientX: number,
+    clientY: number
+  ): { x: number; y: number } {
+    return clientToWorld(clientX, clientY, Jack._worldContainerOf(el), Jack._worldTransformOf(el));
+  }
+
+  private _clientToLocal(clientX: number, clientY: number): { x: number; y: number } {
+    return Jack._clientToLocalOf(this, clientX, clientY);
+  }
+
   private updatePosition() {
-    const x = this.getAttribute('x') || '0';
-    const y = this.getAttribute('y') || '0';
-    this.style.left = `${x}px`;
-    this.style.top = `${y}px`;
+    if (this._hasExplicitPosition()) {
+      const x = this.getAttribute('x') || '0';
+      const y = this.getAttribute('y') || '0';
+      this.style.left = `${x}px`;
+      this.style.top = `${y}px`;
+    }
+    // In auto mode, this Jack's position is left entirely to CSS — nothing
+    // to set here, but already-plugged cables still need re-gluing below
+    // whenever this runs (e.g. right after connecting).
 
     // Keep any already-plugged cables glued to this jack when it moves
     // (e.g. a responsive layout reflow recomputing x/y on resize) instead
     // of leaving their fixed endpoint stranded at the old position.
     for (const plug of this._plugs) plug.snapToJack();
+  }
+
+  /**
+   * Re-measures and re-glues plugged cables — see
+   * _resizeObserver/_onTransformChange. No-op in explicit-position mode.
+   */
+  private _syncAutoPosition(): void {
+    if (this._hasExplicitPosition()) return;
+    for (const plug of this._plugs) plug.snapToJack();
+  }
+
+  /**
+   * Creates this Jack's auto-position watchers (ResizeObserver +
+   * 'cavi-transform-change' listener) if it's in auto-position mode and
+   * they don't already exist — idempotent, since attributeChangedCallback
+   * can flip the mode after connectedCallback already ran, and a custom
+   * element can also receive attributeChangedCallback before
+   * connectedCallback during upgrade. In explicit-position mode, any
+   * previously-created watchers (from before x/y were added) are torn down
+   * instead, since they'd otherwise keep firing pointless re-syncs.
+   */
+  private _setupAutoPositionWatchers(): void {
+    if (this._hasExplicitPosition()) {
+      this._teardownAutoPositionWatchers();
+      return;
+    }
+    if (!this._resizeObserver && typeof ResizeObserver !== 'undefined') {
+      this._resizeObserver = new ResizeObserver(() => this._syncAutoPosition());
+      this._resizeObserver.observe(this);
+    }
+    const container = Cavi.for(this)?.getContainer() ?? null;
+    if (container !== this._transformChangeContainer) {
+      this._transformChangeContainer?.removeEventListener(
+        'cavi-transform-change',
+        this._onTransformChange
+      );
+      container?.addEventListener('cavi-transform-change', this._onTransformChange);
+      this._transformChangeContainer = container;
+    }
+  }
+
+  private _teardownAutoPositionWatchers(): void {
+    this._resizeObserver?.disconnect();
+    this._resizeObserver = null;
+    this._transformChangeContainer?.removeEventListener(
+      'cavi-transform-change',
+      this._onTransformChange
+    );
+    this._transformChangeContainer = null;
   }
 
   private render() {
@@ -426,15 +648,32 @@ export class Jack extends HTMLElement {
     // exposes them to page-level CSS despite Shadow DOM encapsulation,
     // without hardcoding any particular metal look into the library itself
     // — see demo-patchbay.html for a themed example.
+    // Explicit x/y mode positions/centers this host itself via absolute
+    // positioning (unchanged from before this attribute became optional).
+    // In auto mode there is no x/y to position from — this host is left to
+    // the page's own CSS layout (flexbox/grid/flow/...) entirely, and its
+    // rendered position is instead measured back out via getWorldPosition().
+    //
+    // Auto mode still needs `position: relative` (not `static`) on :host,
+    // even though it never sets top/left/transform itself: `:host`'s own
+    // `position` is what makes it a containing block for this shadow
+    // tree's `.base`/`.hex` (`position: absolute; inset: 0`) and `.inner`
+    // (`position: absolute; top/left: 50%`) below. A `position: static`
+    // host is not a containing block, so those absolutely-positioned
+    // descendants escape the shadow boundary entirely and resolve against
+    // the nearest *positioned ancestor in the light DOM* instead (e.g. a
+    // CSS-Grid panel with `position: relative`) — silently stretching a
+    // jack's visuals to fill that ancestor's whole box.
+    const explicitPosition = this._hasExplicitPosition();
     const style = `
             :host {
                 display: block;
                 width: 24px;
                 height: 24px;
-                position: absolute;
+                position: ${explicitPosition ? 'absolute' : 'relative'};
                 box-sizing: border-box;
                 z-index: 10; /* Jack under Plug */
-                transform: translate(-50%, -50%); /* Centered on coordinates */
+                ${explicitPosition ? 'transform: translate(-50%, -50%); /* Centered on coordinates */' : ''}
                 cursor: crosshair; /* Hints that dragging from here creates a cable */
                 touch-action: none; /* Prevent the browser from scrolling while dragging on touch */
             }
@@ -545,19 +784,31 @@ export class Jack extends HTMLElement {
    */
   public static findSnapTarget(plug: Plug, type: string, exclude?: Jack): Jack | null {
     const rect = plug.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
+    // Compared in *world* space, not raw screen px: jacks are drawn
+    // `scale` times bigger/smaller under zoom, so a fixed screen-px
+    // threshold silently shrinks the snap ring to a fraction of a jack when
+    // zoomed in, and grows it over several neighboring jacks when zoomed
+    // out — the snap stops matching what the user sees.
+    const center = Jack._clientToLocalOf(
+      plug,
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2
+    );
+    // Only jacks of the plug's own world: with several <cavi-world>s on a
+    // page, a cable must never snap to a jack of another simulation.
+    const world = Cavi.for(plug);
 
     let bestJack: Jack | null = null;
     let bestDist = CABLE_SNAP_DISTANCE;
 
     for (const jack of Jack.registry) {
       if (exclude && jack === exclude) continue;
+      if (Cavi.for(jack) !== world) continue;
       if (!jack.canAcceptMore()) continue;
       if (!jack.canAccept(type)) continue;
 
-      const c = jack.getCenter();
-      const dist = Math.hypot(centerX - c.x, centerY - c.y);
+      const c = jack.getWorldPosition();
+      const dist = Math.hypot(center.x - c.x, center.y - c.y);
       if (dist < bestDist) {
         bestDist = dist;
         bestJack = jack;
@@ -580,7 +831,7 @@ export class Jack extends HTMLElement {
    */
   public createCable(clientX: number, clientY: number): CableSession | null {
     if (!this.canAcceptMore()) return null;
-    const cavi = Cavi.shared;
+    const cavi = Cavi.for(this);
     if (!cavi) return null;
 
     const wireEl = document.createElement('cavi-wire') as CaviWireElement;
@@ -605,9 +856,15 @@ export class Jack extends HTMLElement {
     wireEl.appendChild(originPlugEl);
     wireEl.appendChild(followPlugEl);
 
-    // Inserted as a sibling of this Jack so it shares the same offsetParent
-    // (and therefore coordinate space) already used by Plug's own drag math.
-    (this.parentElement ?? document.body).appendChild(wireEl);
+    // Inserted directly into the world container, never next to this Jack:
+    // a <cavi-plug> is `position: absolute` with left/top in world
+    // coordinates, so it must resolve against the container's padding box
+    // (the same origin the canvas and every conversion use — see
+    // _worldContainerOf). Next to the Jack, any positioned or transformed
+    // wrapper in between (a CSS-Grid panel, a module box dragged with
+    // `transform`, ...) would become the plugs' containing block instead,
+    // and the plugs would render offset by that wrapper's own position.
+    (cavi.getContainer() ?? this.parentElement ?? document.body).appendChild(wireEl);
 
     const wire = wireEl.getWire();
     if (!wire) {
@@ -618,19 +875,17 @@ export class Jack extends HTMLElement {
     const originPlug = originPlugEl as unknown as Plug;
     const followPlug = followPlugEl as unknown as Plug;
 
-    const offsetParent = this.offsetParent || document.body;
-    const parentRect = offsetParent.getBoundingClientRect();
-
     const originNode = wire.getNode(0)!;
-    const center = this.getCenter();
-    originNode.setPosition(center.x - parentRect.left, center.y - parentRect.top);
+    const originLocal = this.getWorldPosition();
+    originNode.setPosition(originLocal.x, originLocal.y);
     originNode.fixed = true;
     originPlug.attach(this);
     originPlug.setAttribute('plugged', 'true');
     originPlug.update();
 
     const followNode = wire.getNode(CABLE_MIN_NODES - 1)!;
-    followNode.setPosition(clientX - parentRect.left, clientY - parentRect.top);
+    const followLocal = this._clientToLocal(clientX, clientY);
+    followNode.setPosition(followLocal.x, followLocal.y);
     followNode.fixed = true;
     followPlug.update();
 
@@ -708,10 +963,7 @@ export class Jack extends HTMLElement {
    * refreshes the magnet-highlight preview.
    */
   public static updateCableSession(session: CableSession, clientX: number, clientY: number): void {
-    const offsetParent = session.jack.offsetParent || document.body;
-    const parentRect = offsetParent.getBoundingClientRect();
-    const x = clientX - parentRect.left;
-    const y = clientY - parentRect.top;
+    const { x, y } = session.jack._clientToLocal(clientX, clientY);
 
     // Anchor the free terminal at the cursor before any growth below: it's
     // the interpolation target used for newly-inserted nodes (see growCable).
@@ -721,8 +973,10 @@ export class Jack extends HTMLElement {
     // progress.
     session.followNode.setMousePosition(x, y);
 
-    const center = session.jack.getCenter();
-    const distance = Math.hypot(clientX - center.x, clientY - center.y);
+    // World-space distance, so a cable grows the same number of nodes for
+    // the same logical reach regardless of the current zoom level.
+    const center = session.jack.getWorldPosition();
+    const distance = Math.hypot(x - center.x, y - center.y);
     const desired = Math.min(
       CABLE_MAX_NODES,
       Math.max(CABLE_MIN_NODES, CABLE_MIN_NODES + Math.floor(distance * CABLE_NODES_PER_PX))
@@ -738,13 +992,11 @@ export class Jack extends HTMLElement {
       const newNode = session.jack.growCable(session.wire, desired);
       session.followPlug.setNode(newNode);
       session.followNode = newNode;
-      // Keep the DOM in sync with reality: CaviWireElement treats a
-      // <cavi-plug node="N"> attribute as the ground truth for which node
-      // index it's bound to (e.g. when re-deriving it after a sibling
-      // wire's deletion shifts this wire's WASM index — see
-      // _rebindAfterIndexShift in wirewc.ts). Leaving it at its
-      // creation-time value here would make that later rebind snap the
-      // plug back to a now-intermediate node instead of the real terminal.
+      // Keep the DOM in sync with reality: a <cavi-plug node="N"> attribute
+      // is the declarative ground truth for which node index it's bound
+      // to. Leaving it at its creation-time value here would make anything
+      // that later re-derives the binding from markup snap the plug back to
+      // a now-intermediate node instead of the real terminal.
       session.followPlug.setAttribute('node', String(desired - 1));
     } else {
       session.followPlug.update();
@@ -769,11 +1021,9 @@ export class Jack extends HTMLElement {
     Jack._setSessionMagnetTarget(session, null);
 
     if (bestJack) {
-      const offsetParent = session.jack.offsetParent || document.body;
-      const parentRect = offsetParent.getBoundingClientRect();
-      const c = bestJack.getCenter();
+      const local = bestJack.getWorldPosition();
 
-      session.followNode.setPosition(c.x - parentRect.left, c.y - parentRect.top);
+      session.followNode.setPosition(local.x, local.y);
       session.followNode.fixed = true;
       session.followPlug.update();
       session.followPlug.attach(bestJack);
@@ -781,7 +1031,7 @@ export class Jack extends HTMLElement {
       return;
     }
 
-    const behavior = Cavi.shared?.getCableDropBehavior?.() ?? 'detach';
+    const behavior = Cavi.for(session.jack)?.getCableDropBehavior?.() ?? 'detach';
     if (behavior === 'cancel') {
       session.originPlug.detach();
       session.followPlug.detach();
@@ -800,6 +1050,9 @@ export class Jack extends HTMLElement {
       if (originNode) originNode.fixed = false;
       session.originPlug.detach();
       session.originPlug.removeAttribute('plugged');
+      // A fully detached cable is attached to nothing: once it has drifted
+      // out of view it is deleted, instead of being simulated forever.
+      session.wireEl.setAttribute('auto-cleanup', '');
     }
   }
 

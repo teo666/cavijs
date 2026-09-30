@@ -68,6 +68,10 @@
         color: #999;
         font-size: 0.9rem;
       }
+      .card code {
+        color: #9fd8e0;
+        font-size: 0.85em;
+      }
       ul.links {
         list-style: none;
         margin: 0;
@@ -100,23 +104,71 @@
         handles cable simulation and mouse interaction, and lets you own the rendering.
       </p>
 
-      <h2>Demos</h2>
+      <h2>Basics</h2>
       <div class="cards">
         <a class="card" href="demo-basic.html">
-          <strong>Basic cable demo</strong>
-          <span>Drag a cable directly on canvas.</span>
+          <strong>Basic cables — canvas</strong>
+          <span
+            >Minimal setup: a few simulated wires drawn by the canvas <code>Renderer</code>.</span
+          >
         </a>
+        <a class="card" href="demo-svg.html">
+          <strong>Basic cables — SVG</strong>
+          <span>The same minimal setup, drawn by <code>SvgRenderer</code> instead.</span>
+        </a>
+      </div>
+
+      <h2>Jacks &amp; plugs</h2>
+      <div class="cards">
         <a class="card" href="demo-jack-plug.html">
           <strong>Jack &amp; Plug</strong>
-          <span>Drag plugs into jacks to connect and disconnect cables.</span>
+          <span
+            >Hand-authored <code>&lt;cavi-jack&gt;</code>/<code>&lt;cavi-wire&gt;</code> markup:
+            drag plugs into jacks to connect and disconnect cables.</span
+          >
         </a>
+        <a class="card" href="demo-noop-interaction.html">
+          <strong>Custom interaction controller</strong>
+          <span
+            >A no-op <code>IInteractionController</code>: shows that jacks and plugs never listen
+            for input themselves.</span
+          >
+        </a>
+      </div>
+
+      <h2>Patchbay</h2>
+      <div class="cards">
         <a class="card" href="demo-patchbay.html">
-          <strong>Modular Patchbay</strong>
-          <span>A larger patchbay-style demo with multiple cable types.</span>
+          <strong>Modular patchbay — canvas</strong>
+          <span
+            >Many jacks laid out by CSS, pre-patched cables of several types, drag-to-connect.</span
+          >
         </a>
         <a class="card" href="demo-patchbay-svg.html">
-          <strong>Modular Patchbay</strong>
-          <span>A larger patchbay-style demo with multiple cable types and svg renders</span>
+          <strong>Modular patchbay — SVG</strong>
+          <span>The same patchbay, wired manually to <code>SvgRenderer</code>.</span>
+        </a>
+      </div>
+
+      <h2>Zoom &amp; pan</h2>
+      <div class="cards">
+        <a class="card" href="demo-patchbay-zoom.html">
+          <strong>Zoom/pan — canvas (full screen)</strong>
+          <span
+            >d3-zoom on a full-screen frame, CSS-positioned jacks, draggable module; cables stay
+            visible at any zoom via <code>surface</code>.</span
+          >
+        </a>
+        <a class="card" href="demo-patchbay-zoom-svg.html">
+          <strong>Zoom/pan — SVG (full screen)</strong>
+          <span>The same zoom/pan setup on <code>SvgRenderer</code>.</span>
+        </a>
+        <a class="card" href="demo-d3-interaction.html">
+          <strong>d3-drag interaction controller</strong>
+          <span
+            >A custom <code>IInteractionController</code> built on d3-drag, with several draggable
+            modules under d3-zoom.</span
+          >
         </a>
       </div>
 
@@ -139,6 +191,11 @@
         <li>
           <a href="https://github.com/teo666/cavijs/blob/dev/doc/en/05-jack-plug.md"
             >Jack &amp; Plug</a
+          >
+        </li>
+        <li>
+          <a href="https://github.com/teo666/cavijs/blob/dev/doc/en/06-zoom-multiworld.md"
+            >Zoom, pan &amp; multiple worlds</a
           >
         </li>
         <li><a href="https://github.com/teo666/cavijs/tree/dev/doc/it">Italiano</a></li>

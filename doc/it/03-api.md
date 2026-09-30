@@ -25,9 +25,15 @@ render(): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
 getContainer(): HTMLElement | null
+getSurface(): HTMLElement | null        // la superficie di disegno del renderer (il container, se non è stata data una `surface`)
+setCoordinateTransformProvider(fn: (() => CoordinateTransform) | null): void
+getCoordinateTransform(): CoordinateTransform
+notifyCoordinateTransformChanged(): void
+static for(el: Element): Cavi | null   // il Cavi a cui appartiene `el`
+static whenReady(el: Element, fn: (cavi: Cavi) => void): void
 ```
 
-`Cavi.wasm: InitOutput` (statico) contiene il modulo WASM caricato, incluso `.memory`, usato da `Renderer` per l'accesso a copia zero al buffer. `Cavi.shared` è uno slot statico per un'istanza condivisa (attualmente non usato dalla demo — verificare prima di farci affidamento).
+`Cavi.wasm: InitOutput` (statico) contiene il modulo WASM caricato, incluso `.memory`, usato da `Renderer` per l'accesso a copia zero al buffer. `Cavi.for(el)` restituisce il `Cavi` a cui appartiene un elemento — quello il cui container del renderer (registrato da `setRenderer`) è `el` o il suo antenato più vicino — così più mondi possono coesistere nella stessa pagina; restituisce `null` dentro un `<cavi-world>` ancora in inizializzazione, e ripiega su `Cavi.shared` (l'ultimo mondo inizializzato, mantenuto per compatibilità) fuori da qualunque container registrato. `Cavi.whenReady(el, fn)` esegue `fn` appena quell'istanza esiste. Vedi [Zoom, pan e più mondi](./06-zoom-multiworld.md).
 
 ## `World` (`src/world.ts`)
 
@@ -55,9 +61,7 @@ setFriction(friction: number): void
 getFriction(): number
 ```
 
-Il costruttore di `World` imposta `response_coef` a `0.0` di default (risposta alla self-collision dei cavi disabilitata a meno di attivazione esplicita). Mantiene un proprio array `Wire[]` sincronizzato con gli indici dei cavi WASM — `deleteWire` ricrea i wrapper `Wire` per ogni cavo successivo a quello eliminato, poiché gli indici si spostano, riportando anche sul nuovo wrapper i metadati (`meta`, es. `color`) del vecchio — dato che vivono solo lato JS e non in WASM, andrebbero altrimenti persi silenziosamente (bug corretto qui, non nel livello `CaviWireElement`/DOM, dato che è un problema puramente di `World`/`Wire`).
-
-> **Attenzione**: `deleteWire`/`Cavi.deleteWire` ricreano solo i wrapper `Wire` interni di `World`. Qualunque `Wire`/`Node` ottenuto **prima** della cancellazione e tenuto altrove (una cache, una chiusura, ecc.) mantiene il vecchio indice e continua silenziosamente a leggere/scrivere il cavo sbagliato dopo che gli indici si sono spostati. `CaviWireElement` (`src/wirewc.ts`) gestisce già questo caso per i cavi dichiarativi/creati da `Jack` tramite un proprio registro statico e un ri-aggancio (`_rebindAfterIndexShift`) eseguito subito dopo ogni `deleteWire` — vedi la sezione auto-cleanup in [`Jack`/`Plug`](./05-jack-plug.md). Chi chiama `deleteWire` al di fuori di `CaviWireElement` (es. direttamente su `World`/`Cavi`) deve gestire da sé il ri-aggancio di eventuali riferimenti già in cache.
+Il costruttore di `World` imposta `response_coef` a `0.0` di default (risposta alla self-collision dei cavi disabilitata a meno di attivazione esplicita). Mantiene un proprio array `Wire[]` sincronizzato con gli indici dei cavi WASM: `deleteWire` scala **sul posto** l'indice di ogni handle `Wire` successivo (`Wire._setIndex`) e imposta a `-1` quello cancellato, che diventa un no-op. Ogni riferimento `Wire`/`Node` tenuto altrove (un `CaviWireElement`, una `CableSession`, il `Node` di un `Plug`) resta quindi valido dopo una cancellazione — nessun ri-aggancio necessario. `World` contiene anche il provider della trasformazione di coordinate (`setCoordinateTransformProvider`/`getCoordinateTransform`), così un renderer legge sempre lo zoom del proprio mondo.
 
 ## `Wire` (`src/wire.ts`)
 
@@ -106,15 +110,17 @@ setPosition(x: number, y: number): void
 setMousePosition(x: number, y: number): void   // inoltra a World.setMouse
 ```
 
-Un `Node` può essere "live" (costruito con `world`/`wireIndex`/`nodeIndex`, es. tramite `Wire.getNode()`) — nel qual caso `x`/`y` sono sempre letti direttamente da WASM — oppure un semplice contenitore di dati (costruito solo con `x`/`y`/`fixed`/una copia opzionale di `wasmNode`), usato ad esempio da `Plug` per collegarsi a un nodo specifico.
+Un `Node` è "live" (costruito con `world`/`wire`/`nodeIndex`, come fa `Wire.getNode()`) — `x`/`y`/`fixed` sono allora sempre letti da WASM attraverso il suo `Wire`, quindi segue l'indice del cavo se un cavo precedente viene cancellato — oppure un semplice contenitore di dati (costruito solo con `x`/`y`/`fixed`), usato ad esempio nei test. `Wire.getNode(index)` restituisce `null` per un indice fuori range.
 
 ## `Renderer` (`src/renderer.ts`)
 
 Renderer Canvas 2D che implementa `IRenderer`.
 
 ```typescript
-constructor(container: HTMLElement, world: World)
-// cerca '#wireCanvas' dentro `container` e ne ottiene il contesto 2D
+constructor(container: HTMLElement, world: World, options?: RendererOptions & { canvas?: HTMLCanvasElement })
+// usa options.canvas (qualsiasi canvas, ovunque: la sua posizione a schermo viene misurata
+// a ogni frame), altrimenti '#wireCanvas' nell'host (options.surface, altrimenti container),
+// creandolo se manca
 
 render(): void            // metodo principale di rendering; include il loop di animazione auto-pianificato
 clear(): void
@@ -122,7 +128,9 @@ getFPS(): number
 drawInteractionRadii(x: number, y: number): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
-getContainer(): HTMLElement   // l'elemento passato al costruttore
+getContainer(): HTMLElement   // l'elemento passato al costruttore (origine del mondo)
+getSurface(): HTMLElement     // options.surface, altrimenti il container
+stop(): void                  // ferma il loop, rimuove il listener del puntatore, pulisce il canvas
 ```
 
 **Caratteristiche:**
@@ -132,9 +140,12 @@ getContainer(): HTMLElement   // l'elemento passato al costruttore
 - Supporta sia il rendering a segmenti (`ctx.lineTo`) sia Bezier (`ctx.bezierCurveTo`), in base al `render_type` codificato nel buffer dati dei cavi
 - Loop `requestAnimationFrame` integrato con tracciamento FPS (aggiornato una volta al secondo)
 - Disegna indicatori del raggio di interazione mouse/puntatore (cerchi tratteggiati) alla posizione corrente del mouse
-- Collega un proprio listener `mousemove` su `container`; gestisce anche il trascinamento degli estremi dei cavi (`set_wire_start`/`set_wire_end`) quando `draggedWire`/`draggedEndpoint` sono impostati (il collegamento inizio/fine drag per questo non è presente in `Renderer` stesso — vedi `Plug` per il modello di interazione drag usato dai componenti Jack/Plug)
+- Mentre è attivo ascolta `pointermove` sul document (rimosso da `stop()`) e passa alla fisica la posizione del mouse in coordinate del mondo, tramite lo stesso `clientToWorld` consapevole dello zoom usato ovunque
+- `render()` è idempotente (una seconda chiamata non avvia un secondo loop) e può essere richiamato dopo `stop()`
+- HiDPI: il backing store del canvas è `devicePixelRatio` volte la sua dimensione CSS (vedi `sizeCanvasToHost`), e il renderer scala il disegno di conseguenza
+- `options.surface`: vedi [Zoom, pan e più mondi](./06-zoom-multiworld.md) — il canvas vive su un elemento non trasformato e il renderer applica da sé lo zoom registrato, così i cavi non vengono mai tagliati al box del container
 - Chiama internamente `world.update()` ad ogni frame — chi usa il loop di `Renderer.render()` **non** dovrebbe chiamare anche `Cavi.update()`/`World.update()` ad ogni frame
-- `setDebugDrawNodes(true)` (opzione globale, default `false`) attiva un overlay di debug che disegna la circonferenza di ogni nodo di ogni cavo (via `Wire.getNode()`, non parsing del buffer path) alla sua posizione fisica reale, con raggio pari a `Wire.getRadius()` — utile per verificare la posizione dei nodi indipendentemente dal path renderizzato (segmenti/Bezier)
+- `setDebugDrawNodes(true)` (opzione globale, default `false`) attiva un overlay di debug che disegna la circonferenza di ogni nodo di ogni cavo (letta direttamente da WASM, non dal parsing del buffer path) alla sua posizione fisica reale, con raggio pari a `Wire.getRadius()` — utile per verificare la posizione dei nodi indipendentemente dal path renderizzato (segmenti/Bezier)
 
 ## `IRenderer` (`src/types.ts`)
 
@@ -144,6 +155,8 @@ interface IRenderer {
   setDebugDrawNodes: (enabled: boolean) => void;
   getDebugDrawNodes: () => boolean;
   getContainer: () => HTMLElement;
+  getSurface?: () => HTMLElement; // opzionale: default getContainer()
+  stop: () => void;
 }
 ```
 
@@ -188,8 +201,8 @@ import { Cavi, Renderer } from 'cavijs';
 await Cavi.initWasm();
 
 const cavi = new Cavi();
-const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-const renderer = new Renderer(canvas, cavi.getWorld());
+const container = document.getElementById('container') as HTMLElement;
+const renderer = new Renderer(container, cavi.getWorld()); // crea #wireCanvas se manca
 cavi.setRenderer(renderer);
 
 const wire1 = cavi.addWire(100, 100, 500, 100, 20, 10, 5, 1);

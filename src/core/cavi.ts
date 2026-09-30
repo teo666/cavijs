@@ -3,6 +3,7 @@ import initSync, { type InitOutput } from 'cavi';
 import type { IRenderer } from './types';
 import { Wire } from './wire';
 import { World } from './world';
+import type { CoordinateTransform } from './coords';
 
 /**
  * Cavi is the main class that provides a simple interface to use cavi in the browser.
@@ -10,7 +11,56 @@ import { World } from './world';
  */
 export class Cavi {
   static wasm: InitOutput;
+  /**
+   * The most recently created <cavi-world>'s Cavi (or whatever a manual
+   * setup assigns here). Kept as a fallback for elements that live outside
+   * any registered container — prefer Cavi.for(element).
+   */
   static shared: Cavi | null = null;
+
+  /** Renderer container -> the Cavi rendering it, filled by setRenderer. */
+  private static readonly _byContainer = new WeakMap<Element, Cavi>();
+
+  /**
+   * The Cavi instance `el` belongs to: the one whose renderer container is
+   * `el` or its nearest ancestor (crossing shadow roots). Lets several
+   * worlds coexist on one page, each Jack/Plug/Wire talking to its own.
+   * Returns null while `el` sits inside a <cavi-world> that hasn't finished
+   * initializing, and falls back to Cavi.shared for elements outside any
+   * registered container (single-world pages, tests).
+   */
+  static for(el: Element): Cavi | null {
+    let insideWorld = false;
+    for (let n: Element | null = el; n instanceof Element;) {
+      const cavi = Cavi._byContainer.get(n);
+      if (cavi) return cavi;
+      if (n.tagName === 'CAVI-WORLD') insideWorld = true;
+      const root = n.getRootNode();
+      n = n.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+    }
+    return insideWorld ? null : Cavi.shared;
+  }
+
+  /**
+   * Runs `fn` with `el`'s Cavi as soon as it exists — immediately if it
+   * already does. Waits on the `caviready` of the nearest enclosing
+   * <cavi-world> (which bubbles to document), or of document for elements
+   * outside any, so an element never binds to another world's instance
+   * just because that one finished initializing first.
+   */
+  static whenReady(el: Element, fn: (cavi: Cavi) => void): void {
+    const now = Cavi.for(el);
+    if (now) {
+      fn(now);
+      return;
+    }
+    const target: EventTarget = el.closest('cavi-world') ?? document;
+    target.addEventListener(
+      'caviready',
+      (e: Event) => fn(Cavi.for(el) ?? (e as CustomEvent<{ cavi: Cavi }>).detail.cavi),
+      { once: true }
+    );
+  }
 
   private world: World;
   private wasm: InitOutput | null = null;
@@ -21,7 +71,8 @@ export class Cavi {
    * - 'dangle': the free end is left unfixed (falls/swings under physics)
    *   but the cable stays attached at its origin Jack.
    * - 'detach' (default): both ends are unfixed — the whole cable falls
-   *   away disconnected, but is not removed from the DOM.
+   *   away disconnected. It is marked `auto-cleanup`, so it is deleted
+   *   once it has drifted out of view instead of being simulated forever.
    * - 'cancel': the in-progress <cavi-wire> is removed outright, as if it
    *   never existed.
    * Only applies to a brand-new cable-creation session — relocating an
@@ -87,6 +138,7 @@ export class Cavi {
   public setRenderer(value: IRenderer | null): void {
     if (value) {
       this.world.setRenderer(value);
+      Cavi._byContainer.set(value.getContainer(), this);
     }
   }
 
@@ -254,5 +306,54 @@ export class Cavi {
    */
   public getContainer(): HTMLElement | null {
     return this.world.getRenderer()?.getContainer() ?? null;
+  }
+
+  /**
+   * The element the renderer's drawing surface covers — getContainer()
+   * unless the renderer was given a separate `surface` (RendererOptions).
+   */
+  public getSurface(): HTMLElement | null {
+    const renderer = this.world.getRenderer();
+    return renderer?.getSurface?.() ?? renderer?.getContainer() ?? null;
+  }
+
+  /**
+   * Registers how to convert between screen and world coordinates when the
+   * world container has a pan/zoom transform applied by the consuming app
+   * (e.g. via d3-zoom) — cavijs never implements or auto-detects pan/zoom
+   * itself (see src/core/coords.ts for why: it can't tell "the" zoom
+   * transform apart from any other unrelated `transform` an author's CSS
+   * happens to use). Pass null to go back to the identity transform (the
+   * default — zero behavior change for a consumer who never calls this).
+   *
+   * Consulted by Jack.getWorldPosition() when a Jack has no explicit `x`/`y`
+   * attributes, so an auto-detected position is converted back to a stable
+   * logical space before reaching the physics engine, regardless of any
+   * zoom currently applied on screen. Call notifyCoordinateTransformChanged
+   * after the transform changes (e.g. on every zoom event) so every
+   * auto-positioned Jack re-syncs.
+   */
+  public setCoordinateTransformProvider(fn: (() => CoordinateTransform) | null): void {
+    this.world.setCoordinateTransformProvider(fn);
+  }
+
+  /**
+   * The current screen<->world coordinate transform — IDENTITY_TRANSFORM if
+   * no provider was registered via setCoordinateTransformProvider.
+   */
+  public getCoordinateTransform(): CoordinateTransform {
+    return this.world.getCoordinateTransform();
+  }
+
+  /**
+   * Announces that the registered coordinate transform's value just changed
+   * (e.g. a zoom/pan step) by dispatching a `cavi-transform-change`
+   * CustomEvent on getContainer() — every auto-positioned Jack listens for
+   * this to re-measure and re-snap its plugs, since a pure CSS-transform
+   * zoom/pan does not resize the container and therefore never fires a
+   * ResizeObserver on its own.
+   */
+  public notifyCoordinateTransformChanged(): void {
+    this.getContainer()?.dispatchEvent(new CustomEvent('cavi-transform-change'));
   }
 }

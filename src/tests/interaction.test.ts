@@ -71,6 +71,11 @@ class FakeWire {
   getNode(index: number): Node | null {
     return this.nodes[index] ?? null;
   }
+  /** Deletion is a no-op on this fake's FakeCavi; any index >= 0 lets CaviWireElement release it. */
+  getIndex(): number {
+    return 0;
+  }
+
   getNodeCount(): number {
     return this.nodes.length;
   }

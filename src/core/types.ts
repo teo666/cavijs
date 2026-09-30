@@ -1,4 +1,3 @@
-import type { WasmWorld } from 'cavi';
 import type { Cavi } from './cavi';
 
 export interface IRenderer {
@@ -6,7 +5,35 @@ export interface IRenderer {
   setDebugDrawNodes: (enabled: boolean) => void;
   getDebugDrawNodes: () => boolean;
   getContainer: () => HTMLElement;
+  /**
+   * The element the drawing surface (canvas/svg) is sized to and clipped
+   * by. Defaults to getContainer(). Differs from it only when the renderer
+   * was given a `surface` (see RendererOptions): an untransformed ancestor
+   * the drawing lives in, so a consumer's pan/zoom never clips cables to
+   * the container's own box. Optional for backward compatibility with
+   * custom renderers written before it existed.
+   */
+  getSurface?: () => HTMLElement;
   stop: () => void;
+}
+
+/** Options shared by Renderer and SvgRenderer. */
+export interface RendererOptions {
+  /**
+   * An element *outside* the pan/zoom-transformed subtree (typically the
+   * fixed-size frame the consumer's zoom listens on) to host the drawing
+   * surface. When set, the canvas/svg is placed in it, sized to it, and the
+   * renderer itself maps world coordinates through the registered
+   * CoordinateTransform (Cavi.setCoordinateTransformProvider) — instead of
+   * living inside the world container and being CSS-scaled with it, which
+   * clips every cable to the container's box (visible as soon as you zoom
+   * out) and blurs the canvas raster when zooming in.
+   *
+   * The surface should be positioned (worldwc sets `position: relative` on
+   * it if it is `static`), and the world content drawn over the surface
+   * should not have an opaque background, since cables are drawn beneath it.
+   */
+  surface?: HTMLElement;
 }
 
 /**
@@ -35,7 +62,14 @@ export interface IInteractionController {
  * up by default.
  */
 export interface IResizeController {
-  attach: (container: HTMLElement, canvas: HTMLCanvasElement) => void;
+  /**
+   * `surface`, when given, is what `canvas` gets sized to instead of
+   * `container` (see RendererOptions.surface) — `cavi-resize` is still
+   * announced on `container`. Renderer additionally re-checks the canvas
+   * size at the start of every frame (see sizeCanvasToHost), so a resize
+   * never blanks a frame that was already drawn.
+   */
+  attach: (container: HTMLElement, canvas: HTMLCanvasElement, surface?: HTMLElement) => void;
   detach: () => void;
 }
 

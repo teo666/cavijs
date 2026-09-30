@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Jack } from '../component/jack';
 import { Plug } from '../component/plug';
+import { Cavi } from '../core/cavi';
 import { Node } from '../core/node';
+import type { CoordinateTransform } from '../core/coords';
 
 /**
  * Plug is a pure domain/data element — these tests drive it entirely
@@ -60,6 +62,7 @@ function drag(plug: Plug, x: number, y: number): void {
 
 afterEach(() => {
   document.body.innerHTML = '';
+  Cavi.shared = null;
 });
 
 describe('Plug drag & drop', () => {
@@ -304,5 +307,90 @@ describe('Plug.setSpreadPosition', () => {
     expect(node.x).toBe(10);
     expect(node.y).toBe(10);
     plug.cancelDrag();
+  });
+});
+
+/**
+ * Plug's half of the screen<->world contract — see the matching
+ * "Jack coordinate space under zoom/pan" block in jack.test.ts.
+ */
+describe('Plug coordinate space under zoom/pan', () => {
+  /** Registers a minimal Cavi stand-in exposing just the two accessors Plug consults. */
+  function installCavi(container: HTMLElement, transform: CoordinateTransform): void {
+    Cavi.shared = {
+      getContainer: () => container,
+      getCoordinateTransform: () => transform,
+    } as unknown as Cavi;
+  }
+
+  function makeContainer(left: number, top: number): HTMLElement {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(rect(left, top));
+    return el;
+  }
+
+  it('drops a dragged plug exactly under the cursor, whatever the pan/zoom', () => {
+    // The container lives inside the zoomed subtree, so its client rect
+    // already carries the pan — only the scale is left to divide out.
+    installCavi(makeContainer(300, -40), { scale: 2, translateX: 300, translateY: -40 });
+    const { plug, node } = makePlug(0, 0, 'audio');
+
+    plug.beginDrag();
+    plug.updateDragPosition(300 + 55 * 2, -40 + 40 * 2);
+
+    expect(node.x).toBe(55);
+    expect(node.y).toBe(40);
+    // The node position is also what the plug element renders at (inside
+    // that same scaled subtree), so the two can never disagree.
+    expect(plug.style.left).toBe('55px');
+    expect(plug.style.top).toBe('40px');
+    plug.cancelDrag();
+  });
+
+  it('feeds the physics mouse the world position, not the raw screen one', () => {
+    installCavi(makeContainer(0, 0), { scale: 2, translateX: 0, translateY: 0 });
+    const { plug, node } = makePlug(0, 0, 'audio');
+    const setMousePosition = vi.spyOn(node, 'setMousePosition');
+
+    plug.beginDrag();
+    plug.updateDragPosition(110, 80);
+
+    expect(setMousePosition).toHaveBeenCalledWith(55, 40);
+    plug.cancelDrag();
+  });
+
+  it('snapToJack reads the jack world position rather than re-deriving it from screen px', () => {
+    installCavi(makeContainer(0, 0), { scale: 2, translateX: 0, translateY: 0 });
+    // An explicit-x/y jack: its attributes are the literal world position,
+    // no matter where its box happens to render on screen.
+    const jack = makeJack('j1', 9999, 9999, { type: 'audio', x: '70', y: '90' });
+    const { plug, node } = makePlug(0, 0, 'audio');
+    plug.attach(jack);
+
+    plug.snapToJack();
+
+    expect(node.x).toBe(70);
+    expect(node.y).toBe(90);
+  });
+
+  it('snapToJack keeps an auto-positioned jack glued across a zoom change', () => {
+    const container = makeContainer(0, 0);
+    installCavi(container, { scale: 1, translateX: 0, translateY: 0 });
+    const jack = makeJack('j1', 55, 40, { type: 'audio' }); // world (55, 40) at 1x
+    const { plug, node } = makePlug(0, 0, 'audio');
+    plug.attach(jack);
+
+    plug.snapToJack();
+    expect(node.x).toBe(55);
+
+    // Zoom to 2x: the jack now *renders* at (110, 80), but it is still the
+    // very same logical point, so the wire endpoint must not move.
+    installCavi(container, { scale: 2, translateX: 0, translateY: 0 });
+    vi.spyOn(jack, 'getBoundingClientRect').mockReturnValue(rect(110, 80));
+
+    plug.snapToJack();
+    expect(node.x).toBe(55);
+    expect(node.y).toBe(40);
   });
 });

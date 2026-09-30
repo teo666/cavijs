@@ -3,10 +3,23 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "files": [
+    "dist-lib"
+  ],
+  "main": "./dist-lib/cavijs.js",
+  "module": "./dist-lib/cavijs.js",
+  "types": "./dist-lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist-lib/types/index.d.ts",
+      "import": "./dist-lib/cavijs.js"
+    }
+  },
   "packageManager": "pnpm@11.5.2",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:lib": "vite build --config vite.lib.config.ts && tsc -p tsconfig.lib.json",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -16,6 +29,13 @@
     "lint:fix": "oxlint --fix"
   },
   "devDependencies": {
+    "@types/d3-drag": "^3.0.7",
+    "@types/d3-selection": "^3.0.11",
+    "@types/d3-zoom": "^3.0.8",
+    "@types/node": "^24.19.0",
+    "d3-drag": "^3.0.0",
+    "d3-selection": "^3.0.0",
+    "d3-zoom": "^3.0.0",
     "jsdom": "^30.0.1",
     "oxlint": "^1.80.0",
     "prettier": "^3.4.2",

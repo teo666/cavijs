@@ -40,3 +40,4 @@ See also:
 - [API reference](./03-api.md)
 - [Getting started / running](./04-getting-started.md)
 - [Jack & Plug components](./05-jack-plug.md)
+- [Zoom, pan and multiple worlds](./06-zoom-multiworld.md)

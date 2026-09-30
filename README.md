@@ -153,14 +153,15 @@ Renderer class is responsible to render wires inside a `<canvas>`. In each rende
 **Constructor:**
 
 ```typescript
-constructor(container: HTMLElement, world: World)
+constructor(container: HTMLElement, world: World, options?: RendererOptions & { canvas?: HTMLCanvasElement })
 ```
 
-Looks up an existing `#wireCanvas` element inside `container` (it does not create one itself — see e.g. `CaviWorldElement`/`<cavi-world>` in `src/component/worldwc.ts`, which creates and sizes the canvas before constructing the renderer).
+Uses `options.canvas` (any canvas, anywhere on the page — its placement is measured every frame), else an existing `#wireCanvas` inside the host (`options.surface`, else `container`), creating one if there is none. `<cavi-world>` (`src/component/worldwc.ts`) creates the canvas and keeps it sized through its `IResizeController`. `options.surface` enables the pan/zoom-friendly mode described in [Pan/zoom and multiple worlds](#panzoom-and-multiple-worlds).
 
 **Features:**
 
 - Direct WASM memory access for efficient rendering (zero-copy)
+- HiDPI: the canvas backing store follows `devicePixelRatio`
 - Uses wire metadata for rendering colors (with fallback to default colors)
 - Supports both segment and Bezier curve rendering
 - Built-in animation loop with FPS tracking
@@ -170,11 +171,12 @@ Looks up an existing `#wireCanvas` element inside `container` (it does not creat
 **Methods:**
 
 ```typescript
-render(): void           // Main render method (includes animation loop)
+render(): void           // Starts the animation loop (idempotent, restartable after stop())
 clear(): void            // Clear the canvas
 getFPS(): number         // Get current frames per second
 drawInteractionRadii(x: number, y: number): void  // Draw mouse interaction zones
-stop(): void             // Cancel the animation loop
+getSurface(): HTMLElement // options.surface, else the container
+stop(): void             // Cancel the loop, remove the pointer listener, clear the canvas
 ```
 
 The renderer reads wire colors from metadata and automatically handles the render loop, physics updates, and visualization.
@@ -188,7 +190,7 @@ Unlike `Renderer`, it is **self-contained**: its constructor creates its own `<s
 **Constructor:**
 
 ```typescript
-constructor(container: HTMLElement, world: World)
+constructor(container: HTMLElement, world: World, options?: RendererOptions)
 ```
 
 `container` can be any plain `HTMLElement` (it does not need a pre-created `#wireSvg`, nor does it need to come from `<cavi-world>`).
@@ -258,13 +260,27 @@ cavi.setAcceleration(0, 9.8);
 renderer.render();
 ```
 
+## Pan/zoom and multiple worlds
+
+cavijs does not implement pan/zoom: the page transforms a wrapper around `<cavi-world>` (e.g. with d3-zoom) and registers the current transform with `setCoordinateTransform(() => ({ scale, translateX, translateY }))`, calling `notifyCoordinateTransformChanged()` after each step.
+
+To keep cables visible and sharp at any zoom, give the world a **surface**, an untransformed element such as the frame the zoom listens on: `<cavi-world surface="#zoomFrame">`, or `new Renderer(container, world, { surface })` / `new SvgRenderer(container, world, { surface })`. The canvas/svg is then placed in and sized to that element, and the renderer applies the zoom itself, so cables are no longer clipped to the container's box when zooming out.
+
+To draw into a canvas of your own — e.g. stacked above jacks and plugs — use `<cavi-world canvas="#myCanvas">` (or the `.canvas` property; `{ canvas }` / `{ svg }` for a hand-made renderer). It can sit anywhere on the page: its on-screen position is measured every frame.
+
+Several `<cavi-world>`s can coexist on one page: every element resolves its own world with `Cavi.for(element)`. `Cavi.shared` remains as a fallback for single-world setups.
+
+Details: [doc/en/06-zoom-multiworld.md](doc/en/06-zoom-multiworld.md).
+
 ## Building
 
-After modifying Rust code:
-
 ```bash
-wasm-pack build --target web
+pnpm build       # type-check + demo site (dist/, deployed to GitHub Pages)
+pnpm build:lib   # library: dist-lib/cavijs.js + dist-lib/types/*.d.ts
+pnpm test        # vitest (jsdom + the real cavi WASM module)
 ```
+
+The WASM engine comes from the `cavi` package; after modifying its Rust code, rebuild it there with `wasm-pack build --target web`.
 
 ## CaviControls Component
 
@@ -309,6 +325,11 @@ The TypeScript wrapper is designed to be extended. Custom renderers can be creat
 ```typescript
 interface IRenderer {
   render(): void;
+  stop(): void;
+  setDebugDrawNodes(enabled: boolean): void;
+  getDebugDrawNodes(): boolean;
+  getContainer(): HTMLElement;
+  getSurface?(): HTMLElement; // optional, defaults to getContainer()
 }
 ```
 
@@ -339,13 +360,16 @@ Wire metadata allows attaching arbitrary rendering information without modifying
 
 The `examples/demo-*.html` pages (built via `vite.config.ts`'s `build.rollupOptions.input`) show the library in different setups:
 
-| Demo                                  | Script                               | Renderer                                | Description                                                                                                                                                                                                         |
-| ------------------------------------- | ------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `examples/demo-basic.html`            | `examples/main.ts`                   | `Renderer` (canvas)                     | Minimal setup, a few static wires                                                                                                                                                                                   |
-| `examples/demo-svg.html`              | `examples/main-svg.ts`               | `SvgRenderer`                           | Same minimal setup, using the SVG renderer                                                                                                                                                                          |
-| `examples/demo-jack-plug.html`        | `examples/example2.ts`               | `Renderer` (canvas, via `<cavi-world>`) | Hand-authored `<cavi-jack>`/`<cavi-wire>` markup                                                                                                                                                                    |
-| `examples/demo-patchbay.html`         | `examples/example3.ts`               | `Renderer` (canvas, via `<cavi-world>`) | Full modular-synth patchbay: many jacks materialized from CSS layout, pre-patched cables, interactive drag-to-connect                                                                                               |
-| `examples/demo-patchbay-svg.html`     | `examples/example3-svg.ts`           | `SvgRenderer`                           | Same patchbay demo, wired manually to `SvgRenderer` instead of `<cavi-world>`'s canvas `Renderer`; shares its jack-materialization/control-wiring logic with `demo-patchbay.html` via `examples/patchbay-shared.ts` |
-| `examples/demo-noop-interaction.html` | `examples/exampleNoopInteraction.ts` | `Renderer` (canvas, via `<cavi-world>`) | Custom no-op `IInteractionController` example                                                                                                                                                                       |
+| Demo                                   | Script                               | Renderer                                | Description                                                                                                           |
+| -------------------------------------- | ------------------------------------ | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `examples/demo-basic.html`             | `examples/main.ts`                   | `Renderer` (canvas)                     | Minimal setup, a few static wires                                                                                     |
+| `examples/demo-svg.html`               | `examples/main-svg.ts`               | `SvgRenderer`                           | Same minimal setup, using the SVG renderer                                                                            |
+| `examples/demo-jack-plug.html`         | `examples/example2.ts`               | `Renderer` (canvas, via `<cavi-world>`) | Hand-authored `<cavi-jack>`/`<cavi-wire>` markup                                                                      |
+| `examples/demo-noop-interaction.html`  | `examples/exampleNoopInteraction.ts` | `Renderer` (canvas, via `<cavi-world>`) | Custom no-op `IInteractionController` example                                                                         |
+| `examples/demo-patchbay.html`          | `examples/example3.ts`               | `Renderer` (canvas, via `<cavi-world>`) | Full modular-synth patchbay: many jacks materialized from CSS layout, pre-patched cables, interactive drag-to-connect |
+| `examples/demo-patchbay-svg.html`      | `examples/example3-svg.ts`           | `SvgRenderer`                           | Same patchbay, wired manually to `SvgRenderer` (shares its logic via `examples/patchbay-shared.ts`)                   |
+| `examples/demo-patchbay-zoom.html`     | `examples/demo-patchbay-zoom.ts`     | `Renderer` (canvas, via `<cavi-world>`) | Full-screen d3-zoom pan/zoom with CSS-positioned jacks and a draggable module, using `surface`                        |
+| `examples/demo-patchbay-zoom-svg.html` | `examples/demo-patchbay-zoom-svg.ts` | `SvgRenderer`                           | Same full-screen zoom demo on the SVG renderer                                                                        |
+| `examples/demo-d3-interaction.html`    | `examples/demo-d3-interaction.ts`    | `Renderer` (canvas, via `<cavi-world>`) | Custom `IInteractionController` built on d3-drag, several draggable modules under d3-zoom                             |
 
-Run `npm run dev` and open any of these pages to try them.
+`examples/index.html` links every demo. Run `npm run dev` and open any of these pages to try them.

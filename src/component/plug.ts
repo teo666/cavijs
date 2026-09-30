@@ -1,5 +1,7 @@
 import { Node } from '../core/node';
 import { Jack } from './jack'; // Ensure Jack is imported if we check types
+import { Cavi } from '../core/cavi';
+import { clientToWorld, IDENTITY_TRANSFORM } from '../core/coords';
 
 /**
  * Plug represents a movable terminal of a cable. Can be attached/detached
@@ -66,8 +68,15 @@ export class Plug extends HTMLElement {
     this.render();
   }
 
+  /**
+   * Leaving the document frees this Plug's slot on its Jack — deferred to a
+   * microtask so a plain DOM move of its <cavi-wire> (disconnect
+   * immediately followed by connect) keeps the cable plugged in.
+   */
   disconnectedCallback() {
-    this.detach();
+    queueMicrotask(() => {
+      if (!this.isConnected) this.detach();
+    });
   }
 
   /**
@@ -153,12 +162,30 @@ export class Plug extends HTMLElement {
   public snapToJack(): void {
     if (this._dragging || !this._node || !this._jack) return;
 
-    const offsetParent = this.offsetParent || document.body;
-    const parentRect = offsetParent.getBoundingClientRect();
-    const c = this._jack.getCenter();
-
-    this._node.setPosition(c.x - parentRect.left, c.y - parentRect.top);
+    // Straight from the Jack's own world position rather than re-deriving
+    // it from its screen rect here: that keeps explicit-x/y jacks exact,
+    // and keeps auto-positioned ones going through the single
+    // container-anchored, zoom-corrected conversion (see
+    // Jack.getWorldPosition) instead of a second, subtly different one.
+    const { x, y } = this._jack.getWorldPosition();
+    this._node.setPosition(x, y);
     this.updatePosition();
+  }
+
+  /**
+   * Converts a raw viewport point into world space — Plug's twin of
+   * Jack._clientToLocal, anchored on the same renderer container of this
+   * Plug's own world (see Jack._worldContainerOf for why it must not be
+   * `offsetParent`).
+   */
+  private _clientToLocal(clientX: number, clientY: number): { x: number; y: number } {
+    const cavi = Cavi.for(this);
+    return clientToWorld(
+      clientX,
+      clientY,
+      cavi?.getContainer?.() ?? document.body,
+      cavi?.getCoordinateTransform?.() ?? IDENTITY_TRANSFORM
+    );
   }
 
   private _setMagnetTarget(jack: Jack | null): void {
@@ -190,11 +217,7 @@ export class Plug extends HTMLElement {
   public updateDragPosition(clientX: number, clientY: number): void {
     if (!this._node) return;
 
-    const offsetParent = this.offsetParent || document.body;
-    const parentRect = offsetParent.getBoundingClientRect();
-
-    const x = clientX - parentRect.left;
-    const y = clientY - parentRect.top;
+    const { x, y } = this._clientToLocal(clientX, clientY);
 
     this._node.setPosition(x, y);
     // always update mouse position in the world for physics interaction with other nodes/wires
@@ -213,11 +236,9 @@ export class Plug extends HTMLElement {
     if (!this._node) return;
 
     if (bestJack) {
-      const offsetParent = this.offsetParent || document.body;
-      const parentRect = offsetParent.getBoundingClientRect();
-      const c = bestJack.getCenter();
+      const local = bestJack.getWorldPosition();
 
-      this._node.setPosition(c.x - parentRect.left, c.y - parentRect.top);
+      this._node.setPosition(local.x, local.y);
       this._node.fixed = true;
       this.updatePosition();
       this.attach(bestJack);

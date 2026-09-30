@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>cavijs - d3-drag interaction</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        background: #181818;
+        color: #ddd;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0 0 4px;
+      }
+      p.note {
+        max-width: 640px;
+        color: #999;
+        font-size: 13px;
+        line-height: 1.5;
+        margin: 0 0 20px;
+      }
+      p.note code {
+        color: #9fd8e0;
+      }
+
+      /*
+       * #viewport is panned/zoomed entirely by d3-zoom (see
+       * demo-d3-interaction.ts) — cavijs never applies or detects this
+       * transform itself, it's just told about it via
+       * setCoordinateTransform/notifyCoordinateTransformChanged, same as
+       * demo-patchbay-zoom.ts. D3InteractionController's own d3-drag
+       * (jack/plug dragging) and this d3-zoom behavior share the same
+       * #zoomFrame: each side's `.filter()` hands off gestures that start
+       * on a jack/plug to the drag behavior and everything else to zoom —
+       * see main()'s zoom filter below.
+       */
+      .viewport-frame {
+        position: relative;
+        width: 100%;
+        height: 82vh;
+        min-height: 460px;
+        overflow: hidden;
+        border: 1px solid #333;
+        background: #101010;
+        cursor: grab;
+      }
+      .viewport-frame:active {
+        cursor: grabbing;
+      }
+      #viewport {
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform-origin: 0 0;
+      }
+      /*
+       * #panel is the <cavi-world> container (world origin). Its canvas
+       * lives on #zoomFrame instead (surface="#zoomFrame"), so cables are
+       * never clipped to this element's box at any zoom — see
+       * demo-patchbay-zoom.html.
+       */
+      #panel {
+        position: relative;
+        min-height: 400px;
+      }
+      /*
+       * Each `.jack-unit` is its own plain draggable HTML box — cavijs
+       * knows nothing about any of this, same as .viewport-frame/#viewport
+       * above. Dragged via d3-drag (see makeDraggableUnit() in
+       * demo-d3-interaction.ts) and moved through `transform`, which
+       * doesn't take part in layout — so dragging one unit never pushes
+       * the others around, as `margin` did on these inline-blocks.
+       */
+      .jack-unit {
+        display: inline-block;
+        vertical-align: top;
+        margin: 40px;
+        border: 1px dashed #555;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .jack-unit-handle {
+        padding: 6px 10px;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #999;
+        border-bottom: 1px dashed #555;
+        cursor: grab;
+        user-select: none;
+        touch-action: none;
+      }
+      .jack-unit-handle:active {
+        cursor: grabbing;
+      }
+      .jack-unit-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 90px);
+        grid-auto-rows: 90px;
+        gap: 20px;
+        padding: 30px;
+      }
+      .jack-cell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      cavi-jack {
+        width: 26px;
+        height: 26px;
+      }
+      cavi-jack::part(base) {
+        background: #3a3a3a;
+      }
+      cavi-jack.cavi-magnet-target {
+        box-shadow: 0 0 0 6px rgba(255, 235, 59, 0.5);
+      }
+      cavi-plug.cavi-magnet-active {
+        box-shadow: 0 0 0 6px rgba(255, 235, 59, 0.5);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>D3InteractionController — d3-drag instead of hand-rolled pointer events</h1>
+    <p class="note">
+      Same jack/plug/wire markup as the other patchbay demos, but driven by
+      <code>D3InteractionController</code> (<code>examples/d3-interaction.ts</code>) instead of the
+      library's default <code>StandardInteractionController</code> — a drop-in replacement built on
+      <a href="https://d3js.org/d3-drag" style="color: #9fd8e0">d3-drag</a> for gesture handling
+      instead of hand-rolled pointerdown/pointermove/pointerup bookkeeping. Press and hold (no
+      click-to-carry here — see the comment at the top of d3-interaction.ts) on a jack to pull a new
+      cable, or on a plugged cable's plug to relocate it. Pan/zoom is
+      <a href="https://d3js.org/d3-zoom" style="color: #9fd8e0">d3-zoom</a>, same as
+      <code>demo-patchbay-zoom.html</code> — scroll to zoom, drag empty space to pan; dragging a
+      jack/plug is claimed by d3-drag instead (see the zoom behavior's <code>.filter()</code> in
+      demo-d3-interaction.ts). Each dashed box below is its own independent
+      <code>.jack-unit</code> — a plain draggable HTML element cavijs knows nothing about, dragged
+      by its header via a separate d3-drag instance per unit (see <code>makeDraggableUnit()</code>).
+      Plugged cables stay glued to a unit as you drag it, including the ones crossing between units.
+    </p>
+
+    <div class="viewport-frame" id="zoomFrame">
+      <div id="viewport">
+        <cavi-world id="panel" gravity-y="5" canvas="#myCanvas" surface="#zoomFrame">
+          <div class="jack-unit" id="unit-a">
+            <div class="jack-unit-handle">⠿ Unit A</div>
+            <div class="jack-unit-grid">
+              <div class="jack-cell">
+                <cavi-jack id="j-a" type="audio" cable-color="#3fc6d8"></cavi-jack>
+              </div>
+              <div class="jack-cell">
+                <cavi-jack id="j-b" type="audio" cable-color="#3fc6d8"></cavi-jack>
+              </div>
+            </div>
+          </div>
+          <div class="jack-unit" id="unit-b">
+            <div class="jack-unit-handle">⠿ Unit B</div>
+            <div class="jack-unit-grid">
+              <div class="jack-cell">
+                <cavi-jack id="j-c" type="audio" cable-color="#e8834a"></cavi-jack>
+              </div>
+              <div class="jack-cell">
+                <cavi-jack id="j-d" type="audio" cable-color="#e8834a"></cavi-jack>
+              </div>
+            </div>
+          </div>
+          <div class="jack-unit" id="unit-c">
+            <div class="jack-unit-handle">⠿ Unit C</div>
+            <div class="jack-unit-grid">
+              <div class="jack-cell">
+                <cavi-jack id="j-e" type="audio" cable-color="#8ed65a"></cavi-jack>
+              </div>
+              <div class="jack-cell">
+                <cavi-jack id="j-f" type="audio" cable-color="#8ed65a"></cavi-jack>
+              </div>
+            </div>
+          </div>
+          <cavi-wire length="14" tension="20" size="5" color="#3fc6d8" type="audio">
+            <cavi-plug node="0" jack="j-a"></cavi-plug>
+            <cavi-plug node="13" jack="j-b"></cavi-plug>
+          </cavi-wire>
+          <cavi-wire length="14" tension="20" size="5" color="#e8834a" type="audio">
+            <cavi-plug node="0" jack="j-c"></cavi-plug>
+            <cavi-plug node="13" jack="j-d"></cavi-plug>
+          </cavi-wire>
+          <cavi-wire length="18" tension="20" size="5" color="#8ed65a" type="audio">
+            <cavi-plug node="0" jack="j-b"></cavi-plug>
+            <cavi-plug node="17" jack="j-e"></cavi-plug>
+          </cavi-wire>
+        </cavi-world>
+      </div>
+      <canvas id="myCanvas"></canvas>
+    </div>
+
+    <script type="module" src="./demo-d3-interaction.ts"></script>
+  </body>
+</html>

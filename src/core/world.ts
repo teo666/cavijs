@@ -1,6 +1,7 @@
 import { WasmWorld } from 'cavi';
 import { Wire } from './wire';
 import type { IRenderer } from './types';
+import { type CoordinateTransform, IDENTITY_TRANSFORM } from './coords';
 
 /**
  * World is the main container for the cavi simulation.
@@ -10,6 +11,7 @@ export class World {
   private wasmWorld: WasmWorld;
   private wires: Wire[] = [];
   private _renderer: IRenderer | null = null;
+  private _transformProvider: (() => CoordinateTransform) | null = null;
 
   constructor() {
     this.wasmWorld = new WasmWorld();
@@ -49,20 +51,12 @@ export class World {
   public deleteWire(index: number): void {
     if (index >= 0 && index < this.wires.length) {
       this.wasmWorld.delete_wire(index);
-      this.wires.splice(index, 1);
-      // Update indices for remaining wires
+      const [removed] = this.wires.splice(index, 1);
+      // Invalidate the deleted handle and shift every later one down in
+      // place, so references held elsewhere stay valid (see Wire._setIndex).
+      removed._setIndex(-1);
       for (let i = index; i < this.wires.length; i++) {
-        // Wire indices are now shifted down by 1. Metadata (color,
-        // etc.) lives only on the JS-side Wire wrapper, never in
-        // WASM, so it must be carried over by hand onto the new
-        // wrapper or it would silently reset (e.g. the wire's color
-        // reverting to the renderer's index-based fallback palette).
-        const meta = this.wires[i].getAllMetaData();
-        const wire = new Wire(this.wasmWorld, i);
-        for (const [key, value] of Object.entries(meta)) {
-          wire.setMetaData(key, value);
-        }
-        this.wires[i] = wire;
+        this.wires[i]._setIndex(i);
       }
     }
   }
@@ -106,6 +100,20 @@ export class World {
    */
   public getRenderer(): IRenderer | null {
     return this._renderer;
+  }
+
+  /**
+   * See Cavi.setCoordinateTransformProvider. Lives on World (not Cavi) so a
+   * renderer — which only ever holds its World — reads the transform of its
+   * own simulation instead of whichever Cavi happens to be `Cavi.shared`.
+   */
+  public setCoordinateTransformProvider(fn: (() => CoordinateTransform) | null): void {
+    this._transformProvider = fn;
+  }
+
+  /** The current screen<->world transform, IDENTITY_TRANSFORM if none was registered. */
+  public getCoordinateTransform(): CoordinateTransform {
+    return this._transformProvider?.() ?? IDENTITY_TRANSFORM;
   }
 
   /**

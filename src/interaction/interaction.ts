@@ -29,10 +29,12 @@ import type { IInteractionController } from '../core/types';
  */
 export class StandardInteractionController implements IInteractionController {
   private _attached: boolean = false;
+  private _cavi: Cavi | null = null;
 
-  public attach(_cavi: Cavi): void {
+  public attach(cavi: Cavi): void {
     if (this._attached) return;
     this._attached = true;
+    this._cavi = cavi;
     document.addEventListener('pointerdown', this._handlePointerDown);
     document.addEventListener('pointermove', this._handleHoverMove);
   }
@@ -40,6 +42,7 @@ export class StandardInteractionController implements IInteractionController {
   public detach(): void {
     if (!this._attached) return;
     this._attached = false;
+    this._cavi = null;
     document.removeEventListener('pointerdown', this._handlePointerDown);
     document.removeEventListener('pointermove', this._handleHoverMove);
     // Leaving hover state stuck would strand every Jack's hover-spread/
@@ -63,6 +66,10 @@ export class StandardInteractionController implements IInteractionController {
     if (e.button !== 0) return;
     const el = this._closestCaviElement(e);
     if (!el) return;
+    // Every <cavi-world> gets its own controller, all listening on the
+    // document — each only handles elements of its own world, or a click
+    // would start one gesture per world on the same jack.
+    if (Cavi.for(el) !== this._cavi) return;
 
     if (el instanceof Plug) {
       // A Plug not currently spread out sits fixed exactly on its Jack's
