@@ -5,6 +5,21 @@ import { Cavi } from '../core/cavi';
 import { clientToWorld, containerOrigin } from '../core/coords';
 import { sizeCanvasToHost } from './resize';
 
+/**
+ * Resolution of the shadow layers relative to the canvas backing store
+ * (per axis): the shadow is blurred on 1/16 of the pixels, then scaled up.
+ */
+const SHADOW_LAYER_SCALE = 0.25;
+
+interface ShadowLayers {
+  /** Every wire stroked unblurred in solid black. */
+  strokeCanvas: HTMLCanvasElement;
+  strokeCtx: CanvasRenderingContext2D;
+  /** strokeCanvas's shadow, blurred once. */
+  blurCanvas: HTMLCanvasElement;
+  blurCtx: CanvasRenderingContext2D;
+}
+
 export class Renderer implements IRenderer {
   private container: HTMLElement;
   /** See RendererOptions.surface — null means the canvas lives in `container`. */
@@ -34,6 +49,14 @@ export class Renderer implements IRenderer {
   /** Offscreen 1x1 canvas reused to normalize arbitrary CSS color strings (hex/named/rgb/...) into RGB, for lightenColor. */
   private colorProbeCanvas: HTMLCanvasElement | null = null;
   private colorProbeContext: CanvasRenderingContext2D | null = null;
+  /** See setWireShadows. */
+  private wireShadows: boolean = false;
+  /** Offscreen layers of the shadow pass, created on first use (see drawWireShadows). */
+  private shadowLayers: ShadowLayers | null = null;
+  /** World -> backing-store pixel transform applied by the last applyViewTransform. */
+  private viewScale: number = 1;
+  private viewOffsetX: number = 0;
+  private viewOffsetY: number = 0;
 
   /**
    * Uses `options.canvas` — any canvas, anywhere on the page — else the
@@ -106,6 +129,23 @@ export class Renderer implements IRenderer {
 
   public getDebugDrawNodes(): boolean {
     return this.debugDrawNodes;
+  }
+
+  /**
+   * Toggles a soft cast shadow under every wire (see drawWireShadows).
+   * Off by default: it costs one extra blur per frame, on a low-resolution layer.
+   */
+  public setWireShadows(enabled: boolean): void {
+    this.wireShadows = enabled;
+    if (!enabled) {
+      // Release the layers' backing stores rather than keep them around
+      // for a feature that is off.
+      this.shadowLayers = null;
+    }
+  }
+
+  public getWireShadows(): boolean {
+    return this.wireShadows;
   }
 
   private drawNodeDebug() {
@@ -251,8 +291,16 @@ export class Renderer implements IRenderer {
     return result;
   }
 
-  private drawAllWires() {
-    // Access wire data directly from WASM memory (ZERO COPY!)
+  /**
+   * Builds each wire's path into `ctx` straight from WASM memory (zero
+   * copy), calling `visit` once per drawable wire with its path ready to
+   * stroke. Shared by the shadow pass and the base color pass, so both
+   * trace exactly the same geometry.
+   */
+  private traceWires(
+    ctx: CanvasRenderingContext2D,
+    visit: (wireIdx: number, radius: number) => void
+  ): void {
     const ptr = this.wasmWorld.wire_data_ptr();
     const len = this.wasmWorld.wire_data_len();
 
@@ -261,12 +309,8 @@ export class Renderer implements IRenderer {
     // Create Float32Array view directly into WASM memory (buffer is now f32)
     const wireData = new Float32Array(Cavi.wasm.memory.buffer, ptr, len);
 
-    // Default colors as fallback
-    const defaultColors = ['#00ff88', '#ff00ff', '#ffaa00'];
-
     let offset = 0;
     const wireCount = this.world.getWireCount();
-    const wires = this.world.getWires();
 
     for (let wireIdx = 0; wireIdx < wireCount; wireIdx++) {
       offset++; // node count — unused here
@@ -274,76 +318,161 @@ export class Renderer implements IRenderer {
       const renderType = wireData[offset++];
       const pathLength = wireData[offset++];
 
-      // Get wire instance to access metadata
-      const wire = wires[wireIdx];
-      const wireColor = wire?.getColor() || defaultColors[wireIdx % defaultColors.length];
-
-      // Draw wire path
-      if (pathLength >= 2) {
-        this.context.lineWidth = radius * 2;
-        this.context.lineCap = 'round';
-        this.context.lineJoin = 'round';
-
-        this.context.beginPath();
-
-        // Start at first point
-        this.context.moveTo(wireData[offset], wireData[offset + 1]);
-
-        offset += 2;
-
-        if (renderType === 0) {
-          // Render as segments
-          const targetOffset = offset + pathLength - 2;
-          while (offset < targetOffset) {
-            const x = wireData[offset++];
-            const y = wireData[offset++];
-            this.context.lineTo(x, y);
-          }
-        } else {
-          // Render as Bezier curves
-          const targetOffset = offset + pathLength - 2;
-          while (offset < targetOffset) {
-            const cp1x = wireData[offset++];
-            const cp1y = wireData[offset++];
-            const cp2x = wireData[offset++];
-            const cp2y = wireData[offset++];
-            const x = wireData[offset++];
-            const y = wireData[offset++];
-
-            this.context.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
-          }
-        }
-
-        // // Base color pass, with a soft cast shadow (the canvas shadow
-        // // renderer casts the shadow of this stroked shape for free, in the
-        // // same call — no extra path/pass needed for the shadow itself).
-        // this.context.shadowColor = 'rgb(0, 0, 0)';
-        // this.context.shadowBlur = radius * 2;
-        // this.context.shadowOffsetX = 0;
-        // this.context.shadowOffsetY = radius * 0.6;
-        this.context.strokeStyle = wireColor;
-        this.context.stroke();
-
-        // // Highlight pass, on the same path already built above: a thin,
-        // // lighter centerline streak to fake a rounded/glossy tube — cheap
-        // // approximation vs. a true perpendicular-offset highlight, which
-        // // the 2D canvas API doesn't give you for free. No shadow of its own.
-        // // A small ctx.filter blur softens its edge into the base color
-        // // beneath instead of reading as a hard-edged second stroke — much
-        // // cheaper than a true cross-section gradient, which would need the
-        // // path re-built as an offset polygon per curve segment.
-        // this.context.shadowColor = 'transparent';
-        // this.context.shadowBlur = 0;
-        // this.context.shadowOffsetY = 0;
-        // this.context.filter = `blur(${radius * 0.35}px)`;
-        // this.context.lineWidth = radius * 0.7;
-        // this.context.strokeStyle = this.lightenColor(wireColor, 0.45, 0.5);
-        //  this.context.stroke();
-        //  this.context.filter = 'none';
-      } else {
+      if (pathLength < 2) {
         offset += pathLength;
+        continue;
       }
+
+      ctx.beginPath();
+
+      // Start at first point
+      ctx.moveTo(wireData[offset], wireData[offset + 1]);
+
+      offset += 2;
+
+      const targetOffset = offset + pathLength - 2;
+      if (renderType === 0) {
+        // Render as segments
+        while (offset < targetOffset) {
+          const x = wireData[offset++];
+          const y = wireData[offset++];
+          ctx.lineTo(x, y);
+        }
+      } else {
+        // Render as Bezier curves
+        while (offset < targetOffset) {
+          const cp1x = wireData[offset++];
+          const cp1y = wireData[offset++];
+          const cp2x = wireData[offset++];
+          const cp2y = wireData[offset++];
+          const x = wireData[offset++];
+          const y = wireData[offset++];
+
+          ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
+        }
+      }
+
+      visit(wireIdx, radius);
     }
+  }
+
+  /**
+   * The two offscreen layers of the shadow pass (see drawWireShadows), kept
+   * at SHADOW_LAYER_SCALE of the visible canvas's backing size. Null if a
+   * 2D context is unavailable.
+   */
+  private getShadowLayers(): ShadowLayers | null {
+    if (!this.shadowLayers) {
+      const strokeCanvas = document.createElement('canvas');
+      const blurCanvas = document.createElement('canvas');
+      const strokeCtx = strokeCanvas.getContext('2d');
+      const blurCtx = blurCanvas.getContext('2d');
+      if (!strokeCtx || !blurCtx) return null;
+      this.shadowLayers = { strokeCanvas, strokeCtx, blurCanvas, blurCtx };
+    }
+    const width = Math.max(1, Math.ceil(this.canvas.width * SHADOW_LAYER_SCALE));
+    const height = Math.max(1, Math.ceil(this.canvas.height * SHADOW_LAYER_SCALE));
+    // Only reassign on change: setting width/height clears and reallocates.
+    for (const layer of [this.shadowLayers.strokeCanvas, this.shadowLayers.blurCanvas]) {
+      if (layer.width !== width) layer.width = width;
+      if (layer.height !== height) layer.height = height;
+    }
+    return this.shadowLayers;
+  }
+
+  /**
+   * Soft cast shadow under every wire, for a single blur per frame no
+   * matter how many wires there are. A canvas shadow on each wire's own
+   * stroke() runs one blur per wire — the dominant cost of the frame as
+   * soon as there are more than a handful. Instead:
+   *
+   * 1. every wire is stroked, unblurred and in solid black, into a stroke
+   *    layer at SHADOW_LAYER_SCALE of the canvas resolution;
+   * 2. that layer is blurred once into a blur layer of the same size —
+   *    drawn fully off-canvas, with the shadow offset bringing only its
+   *    blurred shadow back into view (unlike ctx.filter, shadowBlur on
+   *    drawImage works in every browser);
+   * 3. the blur layer is scaled back up onto the canvas.
+   *
+   * The low resolution is what keeps the blur cheap — it runs on 1/16 of
+   * the pixels — and is invisible in a shadow this soft.
+   *
+   * Blur and offset follow the thickest wire (radius * 2 and radius * 0.6,
+   * in world units), so thinner wires get a slightly wider shadow than a
+   * per-wire shadow would give them.
+   */
+  private drawWireShadows(): void {
+    const layers = this.getShadowLayers();
+    if (!layers) return;
+    const { strokeCanvas, strokeCtx, blurCanvas, blurCtx } = layers;
+    const { width, height } = strokeCanvas;
+
+    strokeCtx.setTransform(1, 0, 0, 1, 0, 0);
+    strokeCtx.clearRect(0, 0, width, height);
+    // The canvas's view transform, shrunk to the layer's resolution.
+    const k = SHADOW_LAYER_SCALE;
+    const scale = this.viewScale * k;
+    strokeCtx.setTransform(scale, 0, 0, scale, this.viewOffsetX * k, this.viewOffsetY * k);
+    strokeCtx.strokeStyle = '#000';
+    strokeCtx.lineCap = 'round';
+    strokeCtx.lineJoin = 'round';
+
+    let maxRadius = 0;
+    this.traceWires(strokeCtx, (_wireIdx, radius) => {
+      strokeCtx.lineWidth = radius * 2;
+      strokeCtx.stroke();
+      if (radius > maxRadius) maxRadius = radius;
+    });
+    if (maxRadius === 0) return;
+
+    // shadowBlur/shadowOffset ignore the canvas transform (they are in
+    // layer pixels), so scale them to stay constant in world units across
+    // zoom and devicePixelRatio.
+    blurCtx.clearRect(0, 0, width, height);
+    blurCtx.shadowColor = 'rgb(0, 0, 0)';
+    blurCtx.shadowBlur = maxRadius * 2 * scale;
+    blurCtx.shadowOffsetX = width;
+    blurCtx.shadowOffsetY = maxRadius * 0.6 * scale;
+    blurCtx.drawImage(strokeCanvas, -width, 0);
+
+    const ctx = this.context;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(blurCanvas, 0, 0, width / k, height / k);
+    ctx.restore();
+  }
+
+  private drawAllWires() {
+    // Default colors as fallback
+    const defaultColors = ['#00ff88', '#ff00ff', '#ffaa00'];
+    const wires = this.world.getWires();
+    const ctx = this.context;
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    this.traceWires(ctx, (wireIdx, radius) => {
+      // Get wire instance to access metadata
+      const wireColor = wires[wireIdx]?.getColor() || defaultColors[wireIdx % defaultColors.length];
+
+      ctx.lineWidth = radius * 2;
+      ctx.strokeStyle = wireColor;
+      ctx.stroke();
+
+      // // Highlight pass, on the same path already built above: a thin,
+      // // lighter centerline streak to fake a rounded/glossy tube — cheap
+      // // approximation vs. a true perpendicular-offset highlight, which
+      // // the 2D canvas API doesn't give you for free.
+      // // A small ctx.filter blur softens its edge into the base color
+      // // beneath instead of reading as a hard-edged second stroke — much
+      // // cheaper than a true cross-section gradient, which would need the
+      // // path re-built as an offset polygon per curve segment.
+      // ctx.filter = `blur(${radius * 0.35}px)`;
+      // ctx.lineWidth = radius * 0.7;
+      // ctx.strokeStyle = this.lightenColor(wireColor, 0.45, 0.5);
+      // ctx.stroke();
+      // ctx.filter = 'none';
+    });
   }
 
   /**
@@ -374,14 +503,10 @@ export class Renderer implements IRenderer {
     const t = this.world.getCoordinateTransform();
     const origin = containerOrigin(this.container, t.scale);
     const scale = (dpr * t.scale) / c;
-    this.context.setTransform(
-      scale,
-      0,
-      0,
-      scale,
-      (dpr * (origin.x - left)) / c,
-      (dpr * (origin.y - top)) / c
-    );
+    this.viewScale = scale;
+    this.viewOffsetX = (dpr * (origin.x - left)) / c;
+    this.viewOffsetY = (dpr * (origin.y - top)) / c;
+    this.context.setTransform(scale, 0, 0, scale, this.viewOffsetX, this.viewOffsetY);
   }
 
   private frame = (): void => {
@@ -407,7 +532,8 @@ export class Renderer implements IRenderer {
     this.clear();
     this.applyViewTransform();
 
-    // Draw all wires using efficient memory access
+    // Draw all wires using efficient memory access, over their shadows
+    if (this.wireShadows) this.drawWireShadows();
     this.drawAllWires();
 
     // Debug: draw the circumference of every wire node, and the

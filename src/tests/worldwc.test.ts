@@ -33,6 +33,7 @@ vi.mock('../core/cavi', () => {
     }
     setAcceleration = vi.fn();
     setDebugDrawNodes = vi.fn();
+    setWireShadows = vi.fn();
     setCableDropBehavior = vi.fn();
     setPlugSpreadMode = vi.fn();
     setPlugSpreadRadiusMultiplier = vi.fn();
@@ -112,17 +113,19 @@ describe('CaviWorldElement', () => {
     expect(readyHandler).toHaveBeenCalledTimes(1);
   });
 
-  it('reads gravity-x/gravity-y/debug-nodes attributes into Cavi at setup', async () => {
+  it('reads gravity-x/gravity-y/debug-nodes/wire-shadows attributes into Cavi at setup', async () => {
     const world = document.createElement('cavi-world') as CaviWorldElement;
     world.setAttribute('gravity-x', '3');
     world.setAttribute('gravity-y', '12');
     world.setAttribute('debug-nodes', '');
+    world.setAttribute('wire-shadows', '');
     document.body.appendChild(world);
     await flushMicrotasks();
 
     const cavi = world.getCavi()!;
     expect(cavi.setAcceleration).toHaveBeenCalledWith(3, 12);
     expect(cavi.setDebugDrawNodes).toHaveBeenCalledWith(true);
+    expect(cavi.setWireShadows).toHaveBeenCalledWith(true);
   });
 
   it('reads cable-drop-behavior/plug-spread-* attributes into Cavi at setup', async () => {

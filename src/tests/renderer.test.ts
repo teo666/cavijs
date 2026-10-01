@@ -1,14 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Renderer } from '../renderer/renderer';
+import { Cavi } from '../core/cavi';
 
 /**
  * jsdom has no 2D canvas: stub getContext with a recorder, enough to check
  * where the canvas Renderer maps world coordinates to.
  */
-let ctx: { setTransform: ReturnType<typeof vi.fn>; [key: string]: unknown };
+let ctx: {
+  setTransform: ReturnType<typeof vi.fn>;
+  stroke: ReturnType<typeof vi.fn>;
+  drawImage: ReturnType<typeof vi.fn>;
+  [key: string]: unknown;
+};
 
 beforeEach(() => {
-  ctx = new Proxy({ setTransform: vi.fn() } as typeof ctx, {
+  ctx = new Proxy({ setTransform: vi.fn(), stroke: vi.fn(), drawImage: vi.fn() } as typeof ctx, {
     get: (target, key: string) => (key in target ? target[key] : vi.fn()),
     set: () => true,
   });
@@ -116,6 +122,56 @@ describe('Renderer — canvas placement', () => {
     renderer.render();
 
     expect(lastTransform()).toEqual([1, 0, 0, 1, 0, 0]);
+    renderer.stop();
+  });
+});
+
+/**
+ * A fake world whose WASM wire buffer holds `count` straight two-point
+ * segment wires, in the layout drawAllWires reads: node count, radius,
+ * render type, path length, then the path's coordinates.
+ */
+function makeWorldWithWires(count: number) {
+  const data: number[] = [];
+  for (let i = 0; i < count; i++) data.push(2, 3, 0, 4, 0, i * 10, 100, i * 10);
+  Cavi.wasm = { memory: { buffer: new Float32Array(data).buffer } } as any;
+  const world = makeFakeWorld();
+  return {
+    ...world,
+    getWasmWorld: () => ({
+      ...world.getWasmWorld(),
+      wire_data_ptr: () => 0,
+      wire_data_len: () => data.length,
+    }),
+    getWireCount: () => count,
+  };
+}
+
+describe('Renderer — wire shadows', () => {
+  it('is off by default and draws no shadow layer', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const renderer = new Renderer(container, makeWorldWithWires(3));
+    renderer.render();
+
+    expect(renderer.getWireShadows()).toBe(false);
+    expect(ctx.drawImage).not.toHaveBeenCalled();
+    expect(ctx.stroke).toHaveBeenCalledTimes(3);
+    renderer.stop();
+  });
+
+  it('composites every wire shadow with a single blurred draw', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const renderer = new Renderer(container, makeWorldWithWires(5));
+    renderer.setWireShadows(true);
+    renderer.render();
+
+    // One unblurred stroke per wire into the shadow layer, one per wire on
+    // the canvas — but a fixed two draws for all of them: the single blur
+    // into the blur layer, and its scaled-up composite onto the canvas.
+    expect(ctx.stroke).toHaveBeenCalledTimes(10);
+    expect(ctx.drawImage).toHaveBeenCalledTimes(2);
     renderer.stop();
   });
 });

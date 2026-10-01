@@ -125,6 +125,12 @@ export function wireUpControls(cavi: Cavi, panel: HTMLElement): void {
     cavi.setDebugDrawNodes(debugCheckbox.checked);
   });
 
+  // Canvas demo only: SvgRenderer draws no shadows, so its page has no toggle.
+  const shadowsCheckbox = document.getElementById('wireShadows') as HTMLInputElement | null;
+  shadowsCheckbox?.addEventListener('change', () => {
+    cavi.setWireShadows(shadowsCheckbox.checked);
+  });
+
   // Applied live to every jack, so it takes effect on the next cable
   // grown/created from any of them — see Jack's cable-node-spawn attribute.
   const spawnSelect = document.getElementById('spawnMode') as HTMLSelectElement;

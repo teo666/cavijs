@@ -157,6 +157,7 @@ export class CaviWorldElement extends HTMLElement {
       parseFloat(this.getAttribute('gravity-y') ?? '5')
     );
     cavi.setDebugDrawNodes(this.hasAttribute('debug-nodes'));
+    cavi.setWireShadows(this.hasAttribute('wire-shadows'));
 
     const cableDropBehavior = this.getAttribute('cable-drop-behavior');
     if (

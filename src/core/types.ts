@@ -4,6 +4,12 @@ export interface IRenderer {
   render: () => void;
   setDebugDrawNodes: (enabled: boolean) => void;
   getDebugDrawNodes: () => boolean;
+  /**
+   * Soft cast shadow under every wire. Optional: renderers that can't draw
+   * one (e.g. SvgRenderer) simply leave it out.
+   */
+  setWireShadows?: (enabled: boolean) => void;
+  getWireShadows?: () => boolean;
   getContainer: () => HTMLElement;
   /**
    * The element the drawing surface (canvas/svg) is sized to and clipped

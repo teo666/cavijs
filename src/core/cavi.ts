@@ -240,6 +240,21 @@ export class Cavi {
   }
 
   /**
+   * Toggles a soft cast shadow under every wire, on the configured
+   * renderer. No-op for renderers that don't support it (e.g. SvgRenderer).
+   */
+  public setWireShadows(enabled: boolean): void {
+    this.world.getRenderer()?.setWireShadows?.(enabled);
+  }
+
+  /**
+   * Whether wire shadows are currently enabled.
+   */
+  public getWireShadows(): boolean {
+    return this.world.getRenderer()?.getWireShadows?.() ?? false;
+  }
+
+  /**
    * Sets what happens when a brand-new cable is dropped over empty space
    * — see the `cableDropBehavior` field above.
    */
