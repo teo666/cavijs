@@ -29,6 +29,20 @@
       p.note code {
         color: #9fd8e0;
       }
+      .mode-toggle {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        margin: 0 0 12px;
+        font-size: 13px;
+        color: #bbb;
+      }
+      .mode-toggle label {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        cursor: pointer;
+      }
 
       /*
        * #viewport is panned/zoomed entirely by d3-zoom (see
@@ -134,9 +148,11 @@
       <code>D3InteractionController</code> (<code>examples/d3-interaction.ts</code>) instead of the
       library's default <code>StandardInteractionController</code> — a drop-in replacement built on
       <a href="https://d3js.org/d3-drag" style="color: #9fd8e0">d3-drag</a> for gesture handling
-      instead of hand-rolled pointerdown/pointermove/pointerup bookkeeping. Press and hold (no
-      click-to-carry here — see the comment at the top of d3-interaction.ts) on a jack to pull a new
-      cable, or on a plugged cable's plug to relocate it. Pan/zoom is
+      instead of hand-rolled pointerdown/pointermove/pointerup bookkeeping. Press and hold on a jack
+      to pull a new cable, or on a plugged cable's plug to relocate it. Switch to
+      <strong>Carry</strong> below to also pick a cable/plug up with a single click (mouse/pen) and
+      drop it with the next one, no button held — press-and-drag keeps working there too (see
+      <code>D3InteractionMode</code> in d3-interaction.ts). Pan/zoom is
       <a href="https://d3js.org/d3-zoom" style="color: #9fd8e0">d3-zoom</a>, same as
       <code>demo-patchbay-zoom.html</code> — scroll to zoom, drag empty space to pan; dragging a
       jack/plug is claimed by d3-drag instead (see the zoom behavior's <code>.filter()</code> in
@@ -145,6 +161,18 @@
       by its header via a separate d3-drag instance per unit (see <code>makeDraggableUnit()</code>).
       Plugged cables stay glued to a unit as you drag it, including the ones crossing between units.
     </p>
+
+    <div class="mode-toggle" role="radiogroup" aria-label="Interaction mode">
+      <span>Mode:</span>
+      <label
+        ><input type="radio" name="interaction-mode" value="hold" checked /> Hold (press and
+        drag)</label
+      >
+      <label
+        ><input type="radio" name="interaction-mode" value="carry" /> Carry (click to pick up, click
+        to drop)</label
+      >
+    </div>
 
     <div class="viewport-frame" id="zoomFrame">
       <div id="viewport">

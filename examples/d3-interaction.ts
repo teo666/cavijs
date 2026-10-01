@@ -25,17 +25,37 @@ import { Plug } from '../src/component/plug';
  *   up front instead of threaded through every handler.
  * - Mouse and touch are unified by d3-drag's own gesture state machine.
  *
- * What's traded away: d3-drag's gesture model is strictly press-and-hold
- * (mousedown/touchstart → move while held → release), so unlike
- * StandardInteractionController this has no "click-to-carry" mode for
- * mouse/pen (click once, move without holding, click again to drop) — every
- * pointer type here behaves like touch does there. Use
- * StandardInteractionController instead if click-to-carry matters to you.
+ * Two modes (see D3InteractionMode), switchable at any time via `.mode`:
+ * - 'hold' (default): strictly press-and-hold, d3-drag's own gesture model
+ *   (mousedown/touchstart → move while held → release).
+ * - 'carry': hybrid. Press-drag-release still works exactly as in 'hold',
+ *   but a mouse/pen click that releases without moving leaves the cable/plug
+ *   carried by the pointer with no button held, until the next primary
+ *   click drops it — the click-to-carry StandardInteractionController
+ *   always uses for mouse/pen. d3-drag has no notion of this, so the carry
+ *   phase is a few document-level listeners picked up after d3-drag's own
+ *   `end` (see _beginCarry). Touch always stays 'hold', same as there.
  */
 
+export type D3InteractionMode = 'hold' | 'carry';
+
+export interface D3InteractionOptions {
+  mode?: D3InteractionMode;
+}
+
+/** Max pointer travel (screen px) between press and release for a gesture to still count as a click — and so, in 'carry' mode, to turn into a carry instead of finishing on release. */
+const CARRY_CLICK_DISTANCE = 3;
+
 /** What a single drag gesture is acting on, decided once in `.subject()` and threaded through start/drag/end by d3-drag itself. */
-type DragSubject =
-  { kind: 'plug'; plug: Plug } | { kind: 'cable'; jack: Jack; session: CableSession | null };
+type DragSubject = (
+  { kind: 'plug'; plug: Plug } | { kind: 'cable'; jack: Jack; session: CableSession | null }
+) & {
+  /** Client-space pointer position at gesture start, set in `start`. */
+  originX: number;
+  originY: number;
+  /** Whether the pointer has travelled past CARRY_CLICK_DISTANCE since `start`. */
+  moved: boolean;
+};
 
 /**
  * d3-drag normalizes mouse/touch gesture state but still hands back the
@@ -56,9 +76,18 @@ export function clientPointFromSourceEvent(sourceEvent: Event): { x: number; y: 
 }
 
 export class D3InteractionController implements IInteractionController {
+  /** Read at the end of every gesture, so changing it mid-carry lets the current carry finish normally. */
+  public mode: D3InteractionMode;
+
   private _attached = false;
   private _cavi: Cavi | null = null;
   private _behavior = drag<HTMLElement, unknown, DragSubject | null>();
+  /** The gesture currently being carried with no button held ('carry' mode only), if any. */
+  private _carry: DragSubject | null = null;
+
+  constructor(options: D3InteractionOptions = {}) {
+    this.mode = options.mode ?? 'hold';
+  }
 
   public attach(cavi: Cavi): void {
     if (this._attached) return;
@@ -72,6 +101,9 @@ export class D3InteractionController implements IInteractionController {
       // pointerdown that didn't land on a Jack/Plug at all, same gate
       // StandardInteractionController applies per-event.
       .filter((event: MouseEvent | TouchEvent) => {
+        // The click that ends a carry is already swallowed in capture by
+        // _handleCarryFinish — this is just a second line of defense.
+        if (this._carry) return false;
         if (event instanceof MouseEvent && event.button !== 0) return false;
         const el = this._closestCaviElement(event);
         // Only elements of this controller's own world (see Cavi.for).
@@ -84,16 +116,21 @@ export class D3InteractionController implements IInteractionController {
       // the real MouseEvent/TouchEvent lives on its `.sourceEvent`.
       .subject((event: D3DragEvent<HTMLElement, unknown, DragSubject>): DragSubject | null => {
         const el = this._closestCaviElement(event.sourceEvent);
+        const gesture = { originX: 0, originY: 0, moved: false };
         if (el instanceof Plug) {
-          if (!el.isSpread() && el.jack) return { kind: 'cable', jack: el.jack, session: null };
-          return { kind: 'plug', plug: el };
+          if (!el.isSpread() && el.jack) {
+            return { kind: 'cable', jack: el.jack, session: null, ...gesture };
+          }
+          return { kind: 'plug', plug: el, ...gesture };
         }
-        if (el instanceof Jack) return { kind: 'cable', jack: el, session: null };
+        if (el instanceof Jack) return { kind: 'cable', jack: el, session: null, ...gesture };
         return null;
       })
       .on('start', (event: D3DragEvent<HTMLElement, unknown, DragSubject>) => {
         const subject = event.subject;
         const { x, y } = clientPointFromSourceEvent(event.sourceEvent);
+        subject.originX = x;
+        subject.originY = y;
         Jack.setDragActive(true);
         if (subject.kind === 'plug') {
           subject.plug.beginDrag();
@@ -109,20 +146,22 @@ export class D3InteractionController implements IInteractionController {
       .on('drag', (event: D3DragEvent<HTMLElement, unknown, DragSubject>) => {
         const subject = event.subject;
         const { x, y } = clientPointFromSourceEvent(event.sourceEvent);
-        if (subject.kind === 'plug') {
-          subject.plug.updateDragPosition(x, y);
-        } else if (subject.session) {
-          Jack.updateCableSession(subject.session, x, y);
+        const dx = x - subject.originX;
+        const dy = y - subject.originY;
+        if (dx * dx + dy * dy > CARRY_CLICK_DISTANCE * CARRY_CLICK_DISTANCE) {
+          subject.moved = true;
         }
+        this._move(subject, x, y);
       })
       .on('end', (event: D3DragEvent<HTMLElement, unknown, DragSubject>) => {
         const subject = event.subject;
-        if (subject.kind === 'plug') {
-          subject.plug.endDrag();
-        } else if (subject.session) {
-          Jack.finishCableSession(subject.session);
+        // Touch never carries: a finger lifted off the screen has no
+        // position left to follow (same exception as StandardInteractionController).
+        if (this.mode === 'carry' && event.sourceEvent instanceof MouseEvent && !subject.moved) {
+          this._beginCarry(subject);
+          return;
         }
-        Jack.setDragActive(false);
+        this._finish(subject);
       });
 
     select(document.documentElement).call(this._behavior);
@@ -137,11 +176,88 @@ export class D3InteractionController implements IInteractionController {
     // via the .call() above — the same cleanup .call(drag) would need if
     // you wanted to stop reusing this._behavior on a fresh selection.
     select(document.documentElement).on('.drag', null);
+    // A carry outlives d3-drag's own gesture, so the unbind above doesn't
+    // end it — drop it here or the cable would stay stuck to the pointer.
+    const carried = this._carry;
+    if (carried) {
+      this._endCarry();
+      this._cancel(carried);
+    }
     // Same reasoning as StandardInteractionController.detach(): leaving
     // hover state stuck would strand every Jack's hover-spread/full-jack
     // preview in whatever state it was in at the moment of detach.
     Jack.setPointerHoverPosition(null, null);
   }
+
+  private _move(subject: DragSubject, x: number, y: number): void {
+    if (subject.kind === 'plug') {
+      subject.plug.updateDragPosition(x, y);
+    } else if (subject.session) {
+      Jack.updateCableSession(subject.session, x, y);
+    }
+  }
+
+  private _finish(subject: DragSubject): void {
+    if (subject.kind === 'plug') {
+      subject.plug.endDrag();
+    } else if (subject.session) {
+      Jack.finishCableSession(subject.session);
+    }
+    Jack.setDragActive(false);
+  }
+
+  private _cancel(subject: DragSubject): void {
+    if (subject.kind === 'plug') {
+      subject.plug.cancelDrag();
+    } else if (subject.session) {
+      Jack.cancelCableSession(subject.session);
+    }
+    Jack.setDragActive(false);
+  }
+
+  /**
+   * Keeps a gesture d3-drag has already ended alive with no button held:
+   * the cable/plug follows the pointer until the next primary click.
+   * Listens for that click as `mousedown` in capture on the document — not
+   * `pointerdown` — because that's what d3-drag (on documentElement) and
+   * d3-zoom (on its frame) themselves listen to: stopping it here, before
+   * it reaches either, keeps the dropping click from instantly starting a
+   * new cable on the jack it lands on, or a pan on empty space.
+   */
+  private _beginCarry(subject: DragSubject): void {
+    this._carry = subject;
+    document.addEventListener('pointermove', this._handleCarryMove);
+    document.addEventListener('mousedown', this._handleCarryFinish, true);
+    document.addEventListener('pointercancel', this._handleCarryCancel);
+  }
+
+  private _endCarry(): void {
+    this._carry = null;
+    document.removeEventListener('pointermove', this._handleCarryMove);
+    document.removeEventListener('mousedown', this._handleCarryFinish, true);
+    document.removeEventListener('pointercancel', this._handleCarryCancel);
+  }
+
+  private _handleCarryMove = (e: PointerEvent): void => {
+    if (this._carry) this._move(this._carry, e.clientX, e.clientY);
+  };
+
+  private _handleCarryFinish = (e: MouseEvent): void => {
+    if (e.button !== 0) return;
+    const carried = this._carry;
+    if (!carried) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this._endCarry();
+    this._finish(carried);
+  };
+
+  private _handleCarryCancel = (): void => {
+    const carried = this._carry;
+    if (!carried) return;
+    this._endCarry();
+    this._cancel(carried);
+  };
 
   /** Walks the real (shadow-DOM-aware) event path to find the nearest Jack/Plug custom element, if any. */
   private _closestCaviElement(e: Event): Jack | Plug | null {

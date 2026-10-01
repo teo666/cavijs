@@ -6,7 +6,11 @@ import '../src/component/worldwc'; // registers cavi-world, and transitively cav
 import type { CaviInteractionElement } from '../src/component/interactionwc';
 import { Jack } from '../src/component/jack';
 import { Plug } from '../src/component/plug';
-import { D3InteractionController, clientPointFromSourceEvent } from './d3-interaction';
+import {
+  D3InteractionController,
+  clientPointFromSourceEvent,
+  type D3InteractionMode,
+} from './d3-interaction';
 
 /**
  * Swaps <cavi-world>'s default <cavi-interaction> (StandardInteractionController
@@ -20,11 +24,24 @@ import { D3InteractionController, clientPointFromSourceEvent } from './d3-intera
  * and append a fresh <cavi-interaction> with `.controller` set beforehand,
  * exactly the override pattern documented in interactionwc.ts.
  */
-function useD3Interaction(worldEl: CaviWorldElement): void {
+function useD3Interaction(worldEl: CaviWorldElement): D3InteractionController {
   worldEl.querySelector('cavi-interaction')?.remove();
   const el = document.createElement('cavi-interaction') as CaviInteractionElement;
-  el.controller = new D3InteractionController();
+  const controller = new D3InteractionController();
+  el.controller = controller;
   worldEl.appendChild(el);
+  return controller;
+}
+
+/** Wires the page's hold/carry radio group to `controller.mode` — the controller reads it at the end of every gesture, so switching takes effect from the next one. */
+function bindModeToggle(controller: D3InteractionController): void {
+  const inputs = document.querySelectorAll<HTMLInputElement>('input[name="interaction-mode"]');
+  for (const input of inputs) {
+    if (input.checked) controller.mode = input.value as D3InteractionMode;
+    input.addEventListener('change', () => {
+      if (input.checked) controller.mode = input.value as D3InteractionMode;
+    });
+  }
 }
 
 /** True if `event`'s real (shadow-DOM-aware) target path touches a Jack/Plug or a `.jack-unit-handle` — i.e. something d3-drag (D3InteractionController or makeDraggableUnit) already claims, so d3-zoom's own pan/wheel gesture below must not also start for it. */
@@ -95,7 +112,7 @@ function makeDraggableUnit(
 
 async function main(): Promise<void> {
   const worldEl = document.getElementById('panel') as CaviWorldElement;
-  useD3Interaction(worldEl);
+  bindModeToggle(useD3Interaction(worldEl));
 
   // <cavi-world>'s Cavi instance is created asynchronously (after WASM
   // init) — wait for it so the very first zoomIdentity call below isn't
