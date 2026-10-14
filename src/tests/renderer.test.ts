@@ -46,6 +46,10 @@ function makeFakeWorld(scale = 1) {
     getWires: () => [],
     getWireCount: () => 0,
     update: vi.fn(),
+    advance: vi.fn(),
+    getStepRate: () => 60,
+    setMouse: vi.fn(),
+    releaseMouse: vi.fn(),
     getCoordinateTransform: () => ({ scale, translateX: 0, translateY: 0 }),
   } as any;
 }

@@ -40,6 +40,8 @@ export interface CaviStats {
   mouseRadius: number;
   pointerRadius: number;
   responseCoef: number;
+  /** Physics steps per second (World.advance). */
+  stepRate: number;
   /** Last pointer position in world coordinates, null if the renderer doesn't track it. */
   pointer: { x: number; y: number } | null;
   transform: CoordinateTransform;
@@ -132,6 +134,7 @@ export function collectStats(cavi: Cavi): CaviStats {
     mouseRadius: wasm.get_mouse_radius(),
     pointerRadius: wasm.get_pointer_radius(),
     responseCoef: wasm.get_response_coef(),
+    stepRate: world.getStepRate(),
     pointer:
       typeof renderer?.mouseX === 'number' && typeof renderer.mouseY === 'number'
         ? { x: renderer.mouseX, y: renderer.mouseY }

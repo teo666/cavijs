@@ -424,6 +424,7 @@ export class CaviDebugElement extends HTMLElement {
     this._setText('mouseRadius', formatNumber(stats.mouseRadius, 1));
     this._setText('pointerRadius', formatNumber(stats.pointerRadius, 1));
     this._setText('responseCoef', formatNumber(stats.responseCoef, 2));
+    this._setText('stepRate', `${formatNumber(stats.stepRate, 1)} /s`);
     this._setText('buffer', formatBytes(stats.bufferBytes));
 
     this._setText(
@@ -1115,6 +1116,7 @@ const TEMPLATE = `
         <dt>Mouse radius</dt><dd id="mouseRadius">—</dd>
         <dt>Pointer radius</dt><dd id="pointerRadius">—</dd>
         <dt>Response coef.</dt><dd id="responseCoef">—</dd>
+        <dt>Step rate</dt><dd id="stepRate">—</dd>
         <dt>Render buffer</dt><dd id="buffer">—</dd>
       </dl>
     </details>

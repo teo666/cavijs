@@ -38,7 +38,7 @@ src/
      │
      └── renderer.render()
               │  (self-scheduling via requestAnimationFrame)
-              ├── world.update() ──► WasmWorld.update()  (physics step, rebuilds wire_data_buffer)
+              ├── world.advance(elapsed) ──► WasmWorld.update() × N  (fixed-rate physics steps, rebuild wire_data_buffer)
               ├── drawAllWires()
               │     ├── reads WasmWorld.wire_data_ptr()/wire_data_len()
               │     ├── builds a Float32Array VIEW directly into WASM memory (zero-copy)
@@ -63,11 +63,13 @@ src/
 
 ### Render loop ownership
 
-`Renderer.render()` drives the whole loop: it updates physics (`world.update()`), clears the canvas, draws, and re-schedules itself via `requestAnimationFrame`. Callers only need to call `renderer.render()` once to start it.
+`Renderer.render()` drives the whole loop: it advances physics (`world.advance(elapsed)`), clears the canvas, draws, and re-schedules itself via `requestAnimationFrame`. Callers only need to call `renderer.render()` once to start it.
+
+The engine's step has a fixed time delta, so `World.advance` turns the real time elapsed since the previous frame into a fixed number of steps per second (`setStepRate`, default 60) with an accumulator: one step per frame at 60 Hz, one every other frame at 120 Hz, two per frame at 30 Hz. A frame still steps once whenever a wire was added or deleted since the last step, because the render buffer is only rebuilt by a step.
 
 ### Mouse interaction
 
-`Renderer`'s constructor attaches a `mousemove` listener on the container. If a wire endpoint is being dragged (`draggedWire`/`draggedEndpoint` state), it calls `set_wire_start`/`set_wire_end` on the WASM world directly; otherwise it just forwards the pointer position via `set_mouse` for the physics engine's mouse-repulsion behavior.
+While running, each renderer's `PointerTracker` (`src/renderer/pointer.ts`) forwards the pointer position over the drawing surface via `set_mouse`, for the physics engine's mouse-repulsion behavior. The engine applies its mouse to every cable on every step, so when no pointer hovers the surface (it left the surface or the window, or a touch ended) the mouse is parked far out of reach (`World.releaseMouse`) — also at startup, since the engine's mouse otherwise starts at (0, 0). Dragging is handled by the interaction controller, not the renderer.
 
 ### Web Components for connectors
 

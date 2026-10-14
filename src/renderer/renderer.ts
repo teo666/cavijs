@@ -2,8 +2,9 @@ import type { WasmWorld } from 'cavi';
 import type { IRenderer, RendererOptions } from '../core/types';
 import type { World } from '../core/world';
 import { Cavi } from '../core/cavi';
-import { clientToWorld, containerOrigin } from '../core/coords';
+import { containerOrigin } from '../core/coords';
 import { sizeCanvasToHost } from './resize';
+import { PointerTracker } from './pointer';
 
 /**
  * Resolution of the shadow layers relative to the canvas backing store
@@ -31,12 +32,10 @@ export class Renderer implements IRenderer {
   private fpsFrameCount = 0;
   private fps = 0;
   private wasmWorld: WasmWorld;
-  // Last pointer position, in world coordinates. Public: <cavi-controls>
-  // reads them duck-typed off the active renderer (same as SvgRenderer).
-  public mouseX: number = 200;
-  public mouseY: number = 200;
-  /** Whether the last known pointer position is over the drawing surface. */
-  private pointerInside: boolean = false;
+  /** Feeds the engine's mouse from the page's pointer (see PointerTracker). */
+  private pointer: PointerTracker;
+  /** performance.now() of the previous frame, null before the first one — see frame(). */
+  private lastFrameTime: number | null = null;
   private debugDrawNodes: boolean = false;
   private rafId: number | null = null;
   private running: boolean = false;
@@ -97,6 +96,18 @@ export class Renderer implements IRenderer {
 
     this.world = world;
     this.wasmWorld = world.getWasmWorld();
+    this.pointer = new PointerTracker(world, container, () => this.canvas);
+  }
+
+  // Last pointer position, in world coordinates. Public: <cavi-controls>
+  // and <cavi-debug> read them duck-typed off the active renderer (same as
+  // SvgRenderer).
+  public get mouseX(): number {
+    return this.pointer.x;
+  }
+
+  public get mouseY(): number {
+    return this.pointer.y;
   }
 
   public getContainer(): HTMLElement {
@@ -177,7 +188,7 @@ export class Renderer implements IRenderer {
 
   /** Draws the mouse/pointer interaction radii around (mouseX, mouseY), in world coordinates. */
   public drawInteractionRadii(mouseX: number, mouseY: number) {
-    if (!this.pointerInside) return;
+    if (!this.pointer.inside) return;
     const mouseRadius = this.wasmWorld.get_mouse_radius();
     const pointerRadius = this.wasmWorld.get_pointer_radius();
 
@@ -223,33 +234,6 @@ export class Renderer implements IRenderer {
     this.context.strokeText(`mouse: ${mouseRadius.toFixed(1)}`, mouseLabelX, mouseLabelY);
     this.context.fillText(`mouse: ${mouseRadius.toFixed(1)}`, mouseLabelX, mouseLabelY);
   }
-
-  /**
-   * Feeds the physics engine's mouse-repulsion position. Listens on the
-   * document (not the container) so it keeps working over every part of
-   * the surface — including areas outside the container's own box once a
-   * consumer zooms out — and converts through the same container-anchored,
-   * zoom-aware clientToWorld every other pointer position goes through.
-   */
-  private handlePointerMove = (e: PointerEvent): void => {
-    const rect = this.canvas.getBoundingClientRect();
-    this.pointerInside =
-      e.clientX >= rect.left &&
-      e.clientX <= rect.right &&
-      e.clientY >= rect.top &&
-      e.clientY <= rect.bottom;
-    if (!this.pointerInside) return;
-
-    const p = clientToWorld(
-      e.clientX,
-      e.clientY,
-      this.container,
-      this.world.getCoordinateTransform()
-    );
-    this.mouseX = p.x;
-    this.mouseY = p.y;
-    this.wasmWorld.set_mouse(p.x, p.y);
-  };
 
   /**
    * Normalizes any CSS color string (hex, named, rgb(), ...) by painting it
@@ -521,8 +505,14 @@ export class Renderer implements IRenderer {
       this.lastTime = currentTime;
     }
 
-    // Update physics
-    this.world.update();
+    // Step the physics by the real time elapsed since the previous frame
+    // (one step's worth on the first frame, so it has something to draw).
+    const elapsed =
+      this.lastFrameTime === null
+        ? 1000 / this.world.getStepRate()
+        : currentTime - this.lastFrameTime;
+    this.lastFrameTime = currentTime;
+    this.world.advance(elapsed);
 
     // Match the canvas to its host *before* drawing: a resize (which clears
     // the canvas) then happens ahead of this frame's drawing instead of
@@ -555,7 +545,8 @@ export class Renderer implements IRenderer {
   public render() {
     if (this.running) return;
     this.running = true;
-    document.addEventListener('pointermove', this.handlePointerMove);
+    this.lastFrameTime = null;
+    this.pointer.attach();
     this.frame();
   }
 
@@ -572,7 +563,7 @@ export class Renderer implements IRenderer {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
-    document.removeEventListener('pointermove', this.handlePointerMove);
+    this.pointer.detach();
     this.clear();
   }
 }

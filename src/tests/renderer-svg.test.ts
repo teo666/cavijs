@@ -29,6 +29,10 @@ function makeFakeWorld() {
     getWires: () => [],
     getWireCount: () => 0,
     update: vi.fn(),
+    advance: vi.fn(),
+    getStepRate: () => 60,
+    setMouse: vi.fn(),
+    releaseMouse: vi.fn(),
     getCoordinateTransform: () => ({ scale: 2, translateX: 0, translateY: 0 }),
   } as any;
 }
@@ -176,11 +180,11 @@ describe('SvgRenderer', () => {
 
     renderer.render();
     renderer.render();
-    expect(world.update).toHaveBeenCalledTimes(1);
+    expect(world.advance).toHaveBeenCalledTimes(1);
 
     renderer.stop();
     renderer.render();
-    expect(world.update).toHaveBeenCalledTimes(2);
+    expect(world.advance).toHaveBeenCalledTimes(2);
     renderer.stop();
   });
 });

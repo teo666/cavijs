@@ -212,7 +212,9 @@ export class Cavi {
   }
 
   /**
-   * Update the simulation
+   * Runs exactly one physics step — see World.update. The render loop
+   * steps the simulation itself (World.advance); calling this while it runs
+   * adds extra steps.
    */
   public update(): void {
     this.world.update();
@@ -223,6 +225,21 @@ export class Cavi {
    */
   public setMouse(x: number, y: number): void {
     this.world.setMouse(x, y);
+  }
+
+  /** See World.releaseMouse. */
+  public releaseMouse(): void {
+    this.world.releaseMouse();
+  }
+
+  /** See World.setStepRate — physics steps per second, default 60. */
+  public setStepRate(stepsPerSecond: number): void {
+    this.world.setStepRate(stepsPerSecond);
+  }
+
+  /** Physics steps per second run by the render loop. */
+  public getStepRate(): number {
+    return this.world.getStepRate();
   }
 
   /**

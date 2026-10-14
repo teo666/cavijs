@@ -4,6 +4,31 @@ import type { IRenderer } from './types';
 import { type CoordinateTransform, IDENTITY_TRANSFORM } from './coords';
 
 /**
+ * Where the engine's mouse is parked while no pointer hovers the world
+ * (see releaseMouse): far enough that it never reaches a cable, finite so
+ * the engine's distance math stays well-defined.
+ */
+const PARKED_MOUSE = -1e6;
+
+/** Default physics rate of advance(), in steps per second. */
+const DEFAULT_STEP_RATE = 60;
+/**
+ * advance() runs a step as soon as the accumulated time is within this
+ * many ms of a full step, so the natural jitter of frame timestamps (a
+ * 60 Hz frame measuring 16.5ms instead of 16.67ms) doesn't alternate 0 and
+ * 2 steps per frame on a display that matches the step rate.
+ */
+const STEP_TOLERANCE_MS = 2;
+/**
+ * Longest elapsed time one advance() call accounts for: a tab that was in
+ * the background, or a debugger pause, resumes with a huge gap that must
+ * not be replayed as a burst of steps.
+ */
+const MAX_ELAPSED_MS = 100;
+/** Most steps one advance() call runs; anything beyond is dropped (slow device). */
+const MAX_STEPS_PER_ADVANCE = 4;
+
+/**
  * World is the main container for the cavi simulation.
  * It exposes all methods to interact with cables and global parameter configuration.
  */
@@ -12,10 +37,23 @@ export class World {
   private wires: Wire[] = [];
   private _renderer: IRenderer | null = null;
   private _transformProvider: (() => CoordinateTransform) | null = null;
+  private _stepRate: number = DEFAULT_STEP_RATE;
+  /** Simulated time owed by advance(), in ms — may dip slightly below 0 (see STEP_TOLERANCE_MS). */
+  private _accumulatorMs: number = 0;
+  /**
+   * Set when a wire was added or deleted since the last step. The render
+   * buffer (wire_data_ptr) is only rebuilt by a step, and renderers walk it
+   * using the current wire count — so advance() never lets a frame go by
+   * without a step while the two disagree.
+   */
+  private _wiresChanged: boolean = false;
 
   constructor() {
     this.wasmWorld = new WasmWorld();
     this.wasmWorld.set_response_coef(0.0); // Set default response coefficient
+    // The engine's mouse starts at (0, 0) and repels cables on every step:
+    // keep it out of reach until a pointer actually hovers the world.
+    this.releaseMouse();
   }
 
   /**
@@ -42,6 +80,7 @@ export class World {
     this.wasmWorld.add_wire_with_count(x1, y1, x2, y2, nodes, tension, radius, renderType);
     const wire = new Wire(this.wasmWorld, wireIndex);
     this.wires.push(wire);
+    this._wiresChanged = true;
     return wire;
   }
 
@@ -58,6 +97,7 @@ export class World {
       for (let i = index; i < this.wires.length; i++) {
         this.wires[i]._setIndex(i);
       }
+      this._wiresChanged = true;
     }
   }
 
@@ -141,10 +181,58 @@ export class World {
   }
 
   /**
-   * Update the simulation
+   * Runs exactly one physics step (and rebuilds the render buffer). The
+   * engine's step has a fixed time delta, so how fast the simulation runs
+   * depends on how often this is called — renderers call advance() instead,
+   * which turns real elapsed time into a steady number of steps.
    */
   public update(): void {
     this.wasmWorld.update();
+    this._wiresChanged = false;
+  }
+
+  /**
+   * Advances the simulation by `elapsedMs` of real time, at a fixed rate of
+   * getStepRate() steps per second whatever the display's frame rate: a
+   * 120 Hz screen runs a step every other frame, a 30 Hz one two per frame,
+   * so cables fall and swing at the same speed everywhere. Returns how many
+   * steps ran. Gaps longer than MAX_ELAPSED_MS (background tab) are not
+   * replayed, and at most MAX_STEPS_PER_ADVANCE steps run per call.
+   */
+  public advance(elapsedMs: number): number {
+    const stepMs = 1000 / this._stepRate;
+    this._accumulatorMs += Math.min(Math.max(elapsedMs, 0), MAX_ELAPSED_MS);
+
+    let steps = Math.floor((this._accumulatorMs + STEP_TOLERANCE_MS) / stepMs);
+    if (steps === 0 && this._wiresChanged) {
+      // Borrowed from the next frame's time, so the long-run rate holds.
+      steps = 1;
+    }
+    if (steps > MAX_STEPS_PER_ADVANCE) {
+      steps = MAX_STEPS_PER_ADVANCE;
+      this._accumulatorMs = 0;
+    } else {
+      this._accumulatorMs -= steps * stepMs;
+    }
+
+    for (let i = 0; i < steps; i++) this.update();
+    return steps;
+  }
+
+  /**
+   * Sets how many physics steps advance() runs per second of real time.
+   * Default 60. Higher is faster *and* smoother motion; it does not change
+   * the step itself (the engine's time delta is fixed).
+   */
+  public setStepRate(stepsPerSecond: number): void {
+    if (Number.isFinite(stepsPerSecond) && stepsPerSecond > 0) {
+      this._stepRate = stepsPerSecond;
+    }
+  }
+
+  /** Physics steps per second run by advance(). */
+  public getStepRate(): number {
+    return this._stepRate;
   }
 
   /**
@@ -152,6 +240,14 @@ export class World {
    */
   public setMouse(x: number, y: number): void {
     this.wasmWorld.set_mouse(x, y);
+  }
+
+  /**
+   * Moves the engine's mouse out of reach, so it stops repelling cables —
+   * for when no pointer hovers the world (see PointerTracker).
+   */
+  public releaseMouse(): void {
+    this.wasmWorld.set_mouse(PARKED_MOUSE, PARKED_MOUSE);
   }
 
   /**

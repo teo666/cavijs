@@ -38,7 +38,7 @@ src/
      │
      └── renderer.render()
               │  (si auto-pianifica tramite requestAnimationFrame)
-              ├── world.update() ──► WasmWorld.update()  (passo fisico, ricostruisce wire_data_buffer)
+              ├── world.advance(elapsed) ──► WasmWorld.update() × N  (passi fisici a frequenza fissa, ricostruiscono wire_data_buffer)
               ├── drawAllWires()
               │     ├── legge WasmWorld.wire_data_ptr()/wire_data_len()
               │     ├── costruisce una VISTA Float32Array direttamente sulla memoria WASM (copia zero)
@@ -63,11 +63,13 @@ src/
 
 ### Gestione del loop di rendering
 
-`Renderer.render()` guida l'intero loop: aggiorna la fisica (`world.update()`), pulisce il canvas, disegna e si ripianifica tramite `requestAnimationFrame`. Chi lo usa deve solo chiamare `renderer.render()` una volta per avviarlo.
+`Renderer.render()` guida l'intero loop: fa avanzare la fisica (`world.advance(elapsed)`), pulisce il canvas, disegna e si ripianifica tramite `requestAnimationFrame`. Chi lo usa deve solo chiamare `renderer.render()` una volta per avviarlo.
+
+Il passo del motore ha un delta di tempo fisso, quindi `World.advance` trasforma il tempo reale trascorso dal frame precedente in un numero fisso di passi al secondo (`setStepRate`, default 60) con un accumulatore: un passo per frame a 60 Hz, uno ogni due frame a 120 Hz, due per frame a 30 Hz. Un frame fa comunque un passo se dall'ultimo passo è stato aggiunto o eliminato un cavo, perché il buffer di rendering viene ricostruito solo da un passo.
 
 ### Interazione col mouse
 
-Il costruttore di `Renderer` collega un listener `mousemove` sul contenitore. Se un estremo di un cavo viene trascinato (stato `draggedWire`/`draggedEndpoint`), chiama direttamente `set_wire_start`/`set_wire_end` sul world WASM; altrimenti inoltra semplicemente la posizione del puntatore tramite `set_mouse` per il comportamento di repulsione del mouse del motore fisico.
+Mentre è attivo, il `PointerTracker` di ogni renderer (`src/renderer/pointer.ts`) inoltra la posizione del puntatore sopra la superficie di disegno tramite `set_mouse`, per la repulsione del mouse del motore fisico. Il motore applica il mouse a ogni cavo a ogni passo, quindi quando nessun puntatore è sopra la superficie (è uscito dalla superficie o dalla finestra, o un tocco è finito) il mouse viene parcheggiato lontano, fuori portata (`World.releaseMouse`); lo stesso succede all'avvio, perché altrimenti il mouse del motore parte da (0, 0). Il trascinamento è gestito dal controller di interazione, non dal renderer.
 
 ### Web Component per i connettori
 

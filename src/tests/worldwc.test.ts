@@ -36,6 +36,7 @@ vi.mock('../core/cavi', () => {
     setWireShadows = vi.fn();
     setCableDropBehavior = vi.fn();
     setOrphanCleanup = vi.fn();
+    setStepRate = vi.fn();
     setPlugSpreadMode = vi.fn();
     setPlugSpreadRadiusMultiplier = vi.fn();
     setPlugSpreadRecompactDelayMs = vi.fn();
@@ -129,13 +130,14 @@ describe('CaviWorldElement', () => {
     expect(cavi.setWireShadows).toHaveBeenCalledWith(true);
   });
 
-  it('reads cable-drop-behavior/plug-spread-*/orphan-cleanup attributes into Cavi at setup', async () => {
+  it('reads cable-drop-behavior/plug-spread-*/orphan-cleanup/step-rate attributes into Cavi at setup', async () => {
     const world = document.createElement('cavi-world') as CaviWorldElement;
     world.setAttribute('cable-drop-behavior', 'cancel');
     world.setAttribute('plug-spread-mode', 'radial');
     world.setAttribute('plug-spread-radius', '2.5');
     world.setAttribute('plug-spread-timeout', '750');
     world.setAttribute('orphan-cleanup', 'off');
+    world.setAttribute('step-rate', '120');
     document.body.appendChild(world);
     await flushMicrotasks();
 
@@ -145,6 +147,7 @@ describe('CaviWorldElement', () => {
     expect(cavi.setPlugSpreadRadiusMultiplier).toHaveBeenCalledWith(2.5);
     expect(cavi.setPlugSpreadRecompactDelayMs).toHaveBeenCalledWith(750);
     expect(cavi.setOrphanCleanup).toHaveBeenCalledWith(false);
+    expect(cavi.setStepRate).toHaveBeenCalledWith(120);
   });
 
   it('stops the renderer loop on disconnect', async () => {

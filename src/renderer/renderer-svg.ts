@@ -2,7 +2,8 @@ import type { WasmWorld } from 'cavi';
 import type { IRenderer, RendererOptions } from '../core/types';
 import type { World } from '../core/world';
 import { Cavi } from '../core/cavi';
-import { clientToWorld, containerOrigin } from '../core/coords';
+import { containerOrigin } from '../core/coords';
+import { PointerTracker } from './pointer';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -32,12 +33,10 @@ export class SvgRenderer implements IRenderer {
   private fpsFrameCount = 0;
   private fps = 0;
 
-  // Duck-typed members controls.ts reads directly off a renderer instance
-  // (getFPS() guarded with typeof, mouseX/mouseY read unguarded) — last
-  // pointer position, in world coordinates.
-  public mouseX: number = 200;
-  public mouseY: number = 200;
-  private pointerInside: boolean = false;
+  /** Feeds the engine's mouse from the page's pointer (see PointerTracker). */
+  private pointer: PointerTracker;
+  /** performance.now() of the previous frame, null before the first one — see frame(). */
+  private lastFrameTime: number | null = null;
 
   private debugDrawNodes: boolean = false;
   private rafId: number | null = null;
@@ -68,8 +67,19 @@ export class SvgRenderer implements IRenderer {
     this.viewLayer = this.ensureGroup(this.svg, 'viewLayer');
     this.wireLayer = this.ensureGroup(this.viewLayer, 'wireLayer');
     this.debugLayer = this.ensureGroup(this.viewLayer, 'debugLayer');
+    this.pointer = new PointerTracker(world, container, () => this.svg);
 
     this.attachResizeObserver();
+  }
+
+  // Duck-typed members controls.ts and <cavi-debug> read directly off a
+  // renderer instance — last pointer position, in world coordinates.
+  public get mouseX(): number {
+    return this.pointer.x;
+  }
+
+  public get mouseY(): number {
+    return this.pointer.y;
   }
 
   private ensureSvg(): SVGSVGElement {
@@ -141,27 +151,6 @@ export class SvgRenderer implements IRenderer {
   public getDebugDrawNodes(): boolean {
     return this.debugDrawNodes;
   }
-
-  /** Same as Renderer.handlePointerMove: feeds the physics mouse position, in world space. */
-  private handlePointerMove = (e: PointerEvent): void => {
-    const rect = this.svg.getBoundingClientRect();
-    this.pointerInside =
-      e.clientX >= rect.left &&
-      e.clientX <= rect.right &&
-      e.clientY >= rect.top &&
-      e.clientY <= rect.bottom;
-    if (!this.pointerInside) return;
-
-    const p = clientToWorld(
-      e.clientX,
-      e.clientY,
-      this.container,
-      this.world.getCoordinateTransform()
-    );
-    this.mouseX = p.x;
-    this.mouseY = p.y;
-    this.wasmWorld.set_mouse(p.x, p.y);
-  };
 
   /**
    * Maps world coordinates onto the svg wherever it is on screen — same
@@ -310,7 +299,7 @@ export class SvgRenderer implements IRenderer {
 
   /** Draws the mouse/pointer interaction radii around (mouseX, mouseY), in world coordinates. */
   public drawInteractionRadii(mouseX: number, mouseY: number): void {
-    if (!this.pointerInside) return;
+    if (!this.pointer.inside) return;
 
     const mouseRadius = this.wasmWorld.get_mouse_radius();
     const pointerRadius = this.wasmWorld.get_pointer_radius();
@@ -352,7 +341,13 @@ export class SvgRenderer implements IRenderer {
       this.lastTime = currentTime;
     }
 
-    this.world.update();
+    // Same fixed-rate stepping as Renderer.frame.
+    const elapsed =
+      this.lastFrameTime === null
+        ? 1000 / this.world.getStepRate()
+        : currentTime - this.lastFrameTime;
+    this.lastFrameTime = currentTime;
+    this.world.advance(elapsed);
 
     this.applyViewTransform();
     this.drawAllWires();
@@ -376,7 +371,8 @@ export class SvgRenderer implements IRenderer {
     if (this.running) return;
     this.running = true;
     this.attachResizeObserver();
-    document.addEventListener('pointermove', this.handlePointerMove);
+    this.lastFrameTime = null;
+    this.pointer.attach();
     this.frame();
   }
 
@@ -387,7 +383,7 @@ export class SvgRenderer implements IRenderer {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
     }
-    document.removeEventListener('pointermove', this.handlePointerMove);
+    this.pointer.detach();
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.syncPoolSize(0);

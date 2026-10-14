@@ -167,6 +167,10 @@ export class CaviWorldElement extends HTMLElement {
     ) {
       cavi.setCableDropBehavior(cableDropBehavior);
     }
+    const stepRate = this.getAttribute('step-rate');
+    if (stepRate !== null && Number.isFinite(parseFloat(stepRate))) {
+      cavi.setStepRate(parseFloat(stepRate));
+    }
     const orphanCleanup = this.getAttribute('orphan-cleanup');
     if (orphanCleanup === 'on' || orphanCleanup === 'off') {
       cavi.setOrphanCleanup(orphanCleanup === 'on');

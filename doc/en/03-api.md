@@ -19,8 +19,11 @@ setAcceleration(x: number, y: number): void
 getAcceleration(): { x: number, y: number }
 getWireByIndex(index: number): Wire | null
 getWires(): Wire[]
-update(): void
+update(): void                          // one physics step — the render loop already steps
 setMouse(x: number, y: number): void
+releaseMouse(): void
+setStepRate(stepsPerSecond: number): void  // default 60
+getStepRate(): number
 render(): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
@@ -51,8 +54,12 @@ getRenderer(): IRenderer | null
 getWireByIndex(index: number): Wire | null
 getWires(): Wire[]
 getWireCount(): number
-update(): void
+update(): void                          // exactly one physics step
+advance(elapsedMs: number): number      // fixed-rate stepping, returns steps run
+setStepRate(stepsPerSecond: number): void
+getStepRate(): number
 setMouse(x: number, y: number): void
+releaseMouse(): void                    // parks the engine mouse out of reach
 getWireDataPtr(): number
 getWireDataLen(): number
 setMouseRadius(radius: number): void
@@ -140,11 +147,11 @@ stop(): void                  // stops the loop, removes the pointer listener, c
 - Supports both segment (`ctx.lineTo`) and Bezier (`ctx.bezierCurveTo`) rendering, per the `render_type` encoded in the wire data buffer
 - Built-in `requestAnimationFrame` loop with FPS tracking (updated once per second)
 - Draws mouse/pointer interaction radius indicators (dashed circles) at the current mouse position
-- Listens for `pointermove` on the document while running (removed by `stop()`) and feeds the physics mouse position in world coordinates, through the same zoom-aware `clientToWorld` used everywhere else
+- Listens for pointer events on the document while running (removed by `stop()`) and feeds the physics mouse position in world coordinates, through the same zoom-aware `clientToWorld` used everywhere else (`PointerTracker`, `src/renderer/pointer.ts`). Whenever no pointer hovers the surface — it left the surface or the window, or a touch ended — the engine mouse is parked out of reach (`World.releaseMouse`), since the engine applies it to every cable on every step
 - `render()` is idempotent (a second call does not start a second loop) and can be called again after `stop()`
 - HiDPI: the canvas backing store is `devicePixelRatio` times its CSS size (see `sizeCanvasToHost`), and the renderer scales its drawing accordingly
 - `options.surface`: see [Zoom, pan and multiple worlds](./06-zoom-multiworld.md) — the canvas lives on an untransformed element and the renderer applies the registered zoom itself, so cables are never clipped to the container's box
-- Calls `world.update()` internally every frame — callers should **not** also call `Cavi.update()`/`World.update()` per frame if using `Renderer.render()`'s loop
+- Steps the physics with `world.advance(elapsed)` every frame: a fixed `getStepRate()` steps per second (default 60) whatever the display's refresh rate, so cables move at the same speed on 60, 120 or 144 Hz screens. Long gaps (a background tab) are not replayed. Callers should **not** also call `Cavi.update()`/`World.update()` per frame if using `Renderer.render()`'s loop
 - `setDebugDrawNodes(true)` (global option, defaults to `false`) enables a debug overlay that draws the circumference of every node of every wire (read straight from WASM, not by parsing the path buffer) at its real physical position, with radius equal to `Wire.getRadius()` — useful for checking node positions independently of the rendered path (segments/Bezier)
 
 ## `IRenderer` (`src/types.ts`)
