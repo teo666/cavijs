@@ -2,6 +2,7 @@ import { Node } from '../core/node';
 import { Jack } from './jack'; // Ensure Jack is imported if we check types
 import { Cavi } from '../core/cavi';
 import { clientToWorld, IDENTITY_TRANSFORM } from '../core/coords';
+import { emitCaviEvent } from '../core/events';
 
 /**
  * Plug represents a movable terminal of a cable. Can be attached/detached
@@ -288,15 +289,18 @@ export class Plug extends HTMLElement {
    */
   public attach(jack: Jack): void {
     if (this._jack === jack) return;
-    if (this._jack) this._jack.detach(this);
+    this.detach();
     this._jack = jack;
     jack.attach(this);
+    emitCaviEvent(Cavi.for(jack), jack, 'cavi-plug-attach', { plug: this, jack });
   }
 
   public detach(): void {
-    if (this._jack) {
-      this._jack.detach(this);
+    const jack = this._jack;
+    if (jack) {
+      jack.detach(this);
       this._jack = null;
+      emitCaviEvent(Cavi.for(jack), jack, 'cavi-plug-detach', { plug: this, jack });
     }
   }
 

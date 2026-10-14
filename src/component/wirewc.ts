@@ -1,5 +1,6 @@
 import { Cavi } from '../core/cavi';
 import type { Wire } from '../core/wire';
+import { emitCaviEvent } from '../core/events';
 import type { Plug } from './plug';
 import type { Jack } from './jack';
 import './plug';
@@ -72,7 +73,9 @@ export class CaviWireElement extends HTMLElement {
     this._wire = null;
     if (!wire || !this._cavi) return;
     const index = wire.getIndex();
-    if (index >= 0) this._cavi.deleteWire(index);
+    if (index < 0) return;
+    this._cavi.deleteWire(index);
+    emitCaviEvent(this._cavi, this, 'cavi-wire-remove', { wire, element: this, index });
   }
 
   private _setup(cavi: Cavi): void {
@@ -135,6 +138,7 @@ export class CaviWireElement extends HTMLElement {
     const wire = cavi.addWire(x1, y1, x2, y2, nodeCount, tension, radius, renderType);
     wire.setColor(color);
     this._wire = wire;
+    emitCaviEvent(cavi, this, 'cavi-wire-add', { wire, element: this });
 
     for (const { plugEl, nodeIdx, jackId } of validPlugs) {
       const node = wire.getNode(nodeIdx);

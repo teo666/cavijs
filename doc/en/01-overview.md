@@ -41,3 +41,4 @@ See also:
 - [Getting started / running](./04-getting-started.md)
 - [Jack & Plug components](./05-jack-plug.md)
 - [Zoom, pan and multiple worlds](./06-zoom-multiworld.md)
+- [Debugging and events](./07-debug.md)

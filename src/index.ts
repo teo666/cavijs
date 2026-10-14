@@ -3,7 +3,7 @@
  *
  * Main exports for using cavi in the browser. Importing this module also
  * registers every custom element (<cavi-world>, <cavi-jack>, <cavi-wire>,
- * <cavi-plug>, <cavi-interaction>, <cavi-controls>).
+ * <cavi-plug>, <cavi-interaction>, <cavi-controls>, <cavi-debug>).
  */
 
 export { Cavi } from './core/cavi';
@@ -30,6 +30,12 @@ export { CaviWireElement } from './component/wirewc';
 export { CaviWorldElement } from './component/worldwc';
 export { CaviInteractionElement } from './component/interactionwc';
 export { CaviControls } from './component/controls';
+export { CaviDebugElement } from './debug/debugwc';
+export type { CaviDebugMode } from './debug/debugwc';
+export { collectStats } from './debug/stats';
+export type { CaviStats, WireStats } from './debug/stats';
+export { CAVI_EVENT_NAMES } from './core/events';
+export type { CaviEventDetailMap, CaviEventName, CableEndResult } from './core/events';
 export { StandardInteractionController } from './interaction/interaction';
 export type {
   IRenderer,

@@ -3,6 +3,7 @@ import { zoom, zoomIdentity, type D3ZoomEvent } from 'd3-zoom';
 import { drag, type D3DragEvent } from 'd3-drag';
 import type { CaviWorldElement } from '../src/component/worldwc';
 import '../src/component/worldwc'; // registers cavi-world, and transitively cavi-jack/cavi-wire/cavi-plug/cavi-interaction
+import '../src/debug/debugwc'; // registers cavi-debug
 import type { CaviInteractionElement } from '../src/component/interactionwc';
 import { Jack } from '../src/component/jack';
 import { Plug } from '../src/component/plug';

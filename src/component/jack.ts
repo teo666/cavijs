@@ -4,6 +4,7 @@ import type { Node } from '../core/node';
 import type { CaviWireElement } from './wirewc';
 import { Cavi } from '../core/cavi';
 import { clientToWorld, IDENTITY_TRANSFORM, type CoordinateTransform } from '../core/coords';
+import { emitCaviEvent, type CableEndResult } from '../core/events';
 import './wirewc';
 
 /** Node count/distance growth used while dragging a cable out of a Jack. */
@@ -889,6 +890,7 @@ export class Jack extends HTMLElement {
     followNode.fixed = true;
     followPlug.update();
 
+    emitCaviEvent(cavi, this, 'cavi-cable-start', { jack: this, wire });
     return { wireEl, wire, jack: this, originPlug, followPlug, followNode, magnetJack: null };
   }
 
@@ -1028,6 +1030,7 @@ export class Jack extends HTMLElement {
       session.followPlug.update();
       session.followPlug.attach(bestJack);
       session.followPlug.setAttribute('plugged', 'true');
+      Jack._emitCableEnd(session, 'connected', bestJack);
       return;
     }
 
@@ -1036,6 +1039,7 @@ export class Jack extends HTMLElement {
       session.originPlug.detach();
       session.followPlug.detach();
       session.wireEl.remove();
+      Jack._emitCableEnd(session, 'cancel', null);
       return;
     }
 
@@ -1054,12 +1058,23 @@ export class Jack extends HTMLElement {
       // out of view it is deleted, instead of being simulated forever.
       session.wireEl.setAttribute('auto-cleanup', '');
     }
+    Jack._emitCableEnd(session, behavior, null);
   }
 
   /** Abandons an in-progress cable-creation session: free end left dangling. */
   public static cancelCableSession(session: CableSession): void {
     Jack._setSessionMagnetTarget(session, null);
     session.followNode.fixed = false;
+    Jack._emitCableEnd(session, 'abort', null);
+  }
+
+  private static _emitCableEnd(
+    session: CableSession,
+    result: CableEndResult,
+    target: Jack | null
+  ): void {
+    const { jack, wire } = session;
+    emitCaviEvent(Cavi.for(jack), jack, 'cavi-cable-end', { jack, wire, result, target });
   }
 }
 

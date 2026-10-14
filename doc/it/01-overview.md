@@ -41,3 +41,4 @@ Vedi anche:
 - [Guida introduttiva / avvio](./04-getting-started.md)
 - [Componenti Jack & Plug](./05-jack-plug.md)
 - [Zoom, pan e più mondi](./06-zoom-multiworld.md)
+- [Debug ed eventi](./07-debug.md)

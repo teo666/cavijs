@@ -272,6 +272,16 @@ Several `<cavi-world>`s can coexist on one page: every element resolves its own 
 
 Details: [doc/en/06-zoom-multiworld.md](doc/en/06-zoom-multiworld.md).
 
+## Debug overlay and events
+
+Drop `<cavi-debug>` next to (or inside) a world for live stats — FPS, wires, nodes, jacks/plugs, physics and view parameters, a per-wire table — and a log of the events the world emits (`cavi-wire-add`, `cavi-plug-attach`, `cavi-cable-end`, …). `mode="floating"` is a draggable window, `mode="panel"` a panel docked to the right edge; `Alt+Shift+D` toggles it.
+
+```html
+<cavi-debug for="panel" open></cavi-debug>
+```
+
+Details: [doc/en/07-debug.md](doc/en/07-debug.md).
+
 ## Building
 
 ```bash

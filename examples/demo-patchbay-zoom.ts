@@ -2,6 +2,7 @@ import { select } from 'd3-selection';
 import { zoom, zoomIdentity, type D3ZoomEvent } from 'd3-zoom';
 import type { CaviWorldElement } from '../src/component/worldwc';
 import '../src/component/worldwc'; // registers cavi-world, and transitively cavi-jack/cavi-wire/cavi-plug
+import '../src/debug/debugwc'; // registers cavi-debug
 
 /**
  * Validates that cavijs's coordinate-space primitives (Jack's x/y-optional
