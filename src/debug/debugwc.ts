@@ -410,7 +410,7 @@ export class CaviDebugElement extends HTMLElement {
     this._setText('fps', stats.fps === null ? '—' : String(stats.fps));
     this._$('fpsTile').classList.toggle('warn', stats.fps !== null && stats.fps < 50);
     this._setText('wires', String(stats.wires));
-    this._setText('freeEnds', `${stats.freeEnds} free end${stats.freeEnds === 1 ? '' : 's'}`);
+    this._setText('freeEnds', `${stats.freeEnds} free ends · ${stats.orphanWires} orphan`);
     this._setText('nodes', String(stats.nodes));
     this._setText(
       'nodeRange',
@@ -508,6 +508,7 @@ export class CaviDebugElement extends HTMLElement {
       el.disabled = !renderer?.setWireShadows;
       el.checked = cavi.getWireShadows();
     });
+    set('orphanCleanup', (el) => (el.checked = cavi.getOrphanCleanup()));
     set('cableDrop', (el) => (el.value = cavi.getCableDropBehavior()));
     set('spreadMode', (el) => (el.value = cavi.getPlugSpreadMode()));
   }
@@ -641,6 +642,9 @@ export class CaviDebugElement extends HTMLElement {
     });
     this._$('wireShadows').addEventListener('change', (e) => {
       this._cavi?.setWireShadows((e.target as HTMLInputElement).checked);
+    });
+    this._$('orphanCleanup').addEventListener('change', (e) => {
+      this._cavi?.setOrphanCleanup((e.target as HTMLInputElement).checked);
     });
     this._$('cableDrop').addEventListener('change', (e) => {
       const value = (e.target as HTMLSelectElement).value as 'cancel' | 'dangle' | 'detach';
@@ -1130,6 +1134,7 @@ const TEMPLATE = `
       <div class="settings">
         <label>Draw nodes &amp; radii <input type="checkbox" id="debugNodes"></label>
         <label>Wire shadows <input type="checkbox" id="wireShadows"></label>
+        <label title="Delete cables with no fixed end once they leave the view">Orphan cleanup <input type="checkbox" id="orphanCleanup"></label>
         <label>Cable drop
           <select id="cableDrop">
             <option value="detach">detach</option>

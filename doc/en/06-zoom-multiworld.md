@@ -43,7 +43,7 @@ Notes:
 
 - The surface must be positioned; `<cavi-world>` sets `position: relative` on it if it is `static`.
 - Cables are drawn _beneath_ the world content, so jacks and plugs stay on top. The world content must therefore not have an opaque background — put the background on the surface.
-- `auto-cleanup` treats a cable as gone only once it has left both the container and the surface.
+- Orphan cleanup treats a cable as gone only once it has left both the container and the surface. With zero gravity, where a dropped cable just floats where it was left, consider `<cavi-world orphan-cleanup="off">` so panning away never deletes it.
 
 See `examples/demo-patchbay-zoom.html` (canvas) and `examples/demo-patchbay-zoom-svg.html` (SVG).
 

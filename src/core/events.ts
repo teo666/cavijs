@@ -20,8 +20,18 @@ export type CableEndResult = 'connected' | 'dangle' | 'detach' | 'cancel' | 'abo
 export interface CaviEventDetailMap {
   /** A <cavi-wire> created its WASM wire. */
   'cavi-wire-add': { wire: Wire; element: CaviWireElement };
-  /** A <cavi-wire> deleted its WASM wire. `index` is the one it had (wire.getIndex() is -1 by now). */
-  'cavi-wire-remove': { wire: Wire; element: CaviWireElement; index: number };
+  /**
+   * A <cavi-wire> deleted its WASM wire. `index` is the one it had
+   * (wire.getIndex() is -1 by now); `reason` is 'cleanup' for an orphaned
+   * cable deleted once out of view (Cavi.getOrphanCleanup), 'removed' when
+   * the element left the DOM.
+   */
+  'cavi-wire-remove': {
+    wire: Wire;
+    element: CaviWireElement;
+    index: number;
+    reason: 'cleanup' | 'removed';
+  };
   'cavi-plug-attach': { plug: Plug; jack: Jack };
   'cavi-plug-detach': { plug: Plug; jack: Jack };
   /** A new cable started being pulled out of `jack`. */

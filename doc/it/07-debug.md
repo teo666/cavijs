@@ -48,10 +48,10 @@ In quest'ordine:
 
 ### Cosa mostra
 
-- **FPS** (con sparkline), **cavi** e capi liberi, **nodi** (totale e min–max per cavo), **plug collegati/totali**, jack e jack pieni (`max-plugs` raggiunto).
+- **FPS** (con sparkline), **cavi**, capi liberi e cavi orfani, **nodi** (totale e min–max per cavo), **plug collegati/totali**, jack e jack pieni (`max-plugs` raggiunto).
 - **Physics**: gravità, attrito, raggi mouse/pointer, coefficiente di risposta, dimensione del buffer di rendering condiviso con WASM.
 - **View**: posizione del puntatore in coordinate mondo, zoom e pan registrati (`setCoordinateTransformProvider`), dimensione del container.
-- **Settings**: disegno dei nodi, ombre dei cavi, `cable-drop-behavior`, `plug-spread-mode`.
+- **Settings**: disegno dei nodi, ombre dei cavi, pulizia dei cavi orfani, `cable-drop-behavior`, `plug-spread-mode`.
 - **Wires**: per ogni cavo indice, colore, nodi, raggio, lunghezza della polilinea, capi fissi (●) o liberi (○).
 - **Events**: log con orario e dettaglio riassunto. Eventi identici ravvicinati (e i burst di `cavi-resize`/`cavi-transform-change`) vengono uniti in una voce `×N`. Cliccando un contatore si nasconde/mostra quel tipo di evento; _Pause_ sospende la registrazione.
 
@@ -69,17 +69,19 @@ La stessa istantanea usata dal pannello, esportata per usarla altrove (test, tel
 
 Tutti sono `CustomEvent` con `bubbles: true`, inviati sul container del renderer (l'elemento `<cavi-world>`), quindi si possono ascoltare sul mondo o su `document`. I tipi dei `detail` sono in `CaviEventDetailMap`; l'elenco completo è `CAVI_EVENT_NAMES`.
 
-| Evento                  | Quando                                      | `detail`                         |
-| ----------------------- | ------------------------------------------- | -------------------------------- |
-| `caviready`             | il `<cavi-world>` ha creato il suo `Cavi`   | `{ cavi }`                       |
-| `cavi-resize`           | il container ha cambiato dimensione         | `{ width, height }`              |
-| `cavi-transform-change` | `notifyCoordinateTransformChanged()`        | —                                |
-| `cavi-wire-add`         | un `<cavi-wire>` ha creato il suo cavo WASM | `{ wire, element }`              |
-| `cavi-wire-remove`      | un `<cavi-wire>` ha cancellato il suo cavo  | `{ wire, element, index }`       |
-| `cavi-plug-attach`      | un plug si collega a un jack                | `{ plug, jack }`                 |
-| `cavi-plug-detach`      | un plug si stacca da un jack                | `{ plug, jack }`                 |
-| `cavi-cable-start`      | inizia la creazione di un cavo da un jack   | `{ jack, wire }`                 |
-| `cavi-cable-end`        | finisce la creazione di un cavo             | `{ jack, wire, result, target }` |
+| Evento                  | Quando                                      | `detail`                           |
+| ----------------------- | ------------------------------------------- | ---------------------------------- |
+| `caviready`             | il `<cavi-world>` ha creato il suo `Cavi`   | `{ cavi }`                         |
+| `cavi-resize`           | il container ha cambiato dimensione         | `{ width, height }`                |
+| `cavi-transform-change` | `notifyCoordinateTransformChanged()`        | —                                  |
+| `cavi-wire-add`         | un `<cavi-wire>` ha creato il suo cavo WASM | `{ wire, element }`                |
+| `cavi-wire-remove`      | un `<cavi-wire>` ha cancellato il suo cavo  | `{ wire, element, index, reason }` |
+| `cavi-plug-attach`      | un plug si collega a un jack                | `{ plug, jack }`                   |
+| `cavi-plug-detach`      | un plug si stacca da un jack                | `{ plug, jack }`                   |
+| `cavi-cable-start`      | inizia la creazione di un cavo da un jack   | `{ jack, wire }`                   |
+| `cavi-cable-end`        | finisce la creazione di un cavo             | `{ jack, wire, result, target }`   |
+
+`reason` di `cavi-wire-remove`: `cleanup` (un cavo orfano eliminato fuori vista, vedi [cavi orfani](./05-jack-plug.md#eliminazione-dei-cavi-orfani-fuori-vista)) o `removed` (l'elemento è uscito dal DOM).
 
 `result` di `cavi-cable-end`: `connected` (collegato a `target`), `dangle`, `detach`, `cancel` (secondo `cable-drop-behavior`) o `abort` (`cancelCableSession`).
 

@@ -167,6 +167,10 @@ export class CaviWorldElement extends HTMLElement {
     ) {
       cavi.setCableDropBehavior(cableDropBehavior);
     }
+    const orphanCleanup = this.getAttribute('orphan-cleanup');
+    if (orphanCleanup === 'on' || orphanCleanup === 'off') {
+      cavi.setOrphanCleanup(orphanCleanup === 'on');
+    }
     const plugSpreadMode = this.getAttribute('plug-spread-mode');
     if (plugSpreadMode === 'towardOther' || plugSpreadMode === 'radial') {
       cavi.setPlugSpreadMode(plugSpreadMode);

@@ -24,8 +24,8 @@ export class CaviWireElement extends HTMLElement {
   private _cavi: Cavi | null = null;
   private _container: HTMLElement | null = null;
   /**
-   * Consecutive frames this wire's plugs have been found entirely outside
-   * the container — a layout reflow (e.g. a responsive container resizing,
+   * Consecutive frames this orphaned wire's plugs have been found entirely
+   * outside the container — a layout reflow (e.g. a responsive container resizing,
    * see worldwc.ts's ResizeObserver) can leave a jack's DOM position stale
    * for a frame or two before it's re-measured, which would otherwise read
    * as a false "drifted away" positive on a single frame. Cleanup only
@@ -68,14 +68,14 @@ export class CaviWireElement extends HTMLElement {
   }
 
   /** Deletes this element's WASM wire, if it still owns one. Idempotent. */
-  private _releaseWire(): void {
+  private _releaseWire(reason: 'cleanup' | 'removed' = 'removed'): void {
     const wire = this._wire;
     this._wire = null;
     if (!wire || !this._cavi) return;
     const index = wire.getIndex();
     if (index < 0) return;
     this._cavi.deleteWire(index);
-    emitCaviEvent(this._cavi, this, 'cavi-wire-remove', { wire, element: this, index });
+    emitCaviEvent(this._cavi, this, 'cavi-wire-remove', { wire, element: this, index, reason });
   }
 
   private _setup(cavi: Cavi): void {
@@ -185,8 +185,8 @@ export class CaviWireElement extends HTMLElement {
       for (const plug of this._plugs) {
         plug.update();
       }
-      this._cleanupIfOutsideContainer();
-      // _cleanupIfOutsideContainer may have synchronously disconnected this
+      this._cleanupOrphanOutsideView();
+      // _cleanupOrphanOutsideView may have synchronously disconnected this
       // element (via _destroy -> remove()) — don't reschedule if it did.
       if (this.isConnected) {
         this._rafId = requestAnimationFrame(tick);
@@ -203,25 +203,43 @@ export class CaviWireElement extends HTMLElement {
   }
 
   /**
-   * Auto-cleanup entry point (opt-in via the `auto-cleanup` attribute — see
-   * grep for "auto-cleanup" to find every place this feature touches; Jack
-   * sets it on a new cable dropped with the 'detach' behavior). Called
-   * unconditionally once per frame from the update loop above, and reads
-   * the attribute live, so it can be added or removed at any time: a no-op
-   * unless it's set, otherwise once every plug of this cable has drifted
-   * entirely outside both the world container and the renderer's surface
-   * (see RendererOptions.surface — so a cable still visible in a
-   * zoomed-out view is never deleted), the cable is no longer visible or
-   * reachable, so it is deleted — freeing its WASM-side wire, its DOM
-   * (which cascades disconnectedCallback on every child <cavi-plug>), and
-   * this element's own RAF loop.
+   * Whether this cable is orphaned: neither terminal node is fixed — not
+   * plugged into a Jack, not held by a drag, not frozen in place by
+   * freeze-on-drop — so nothing anchors it any more and it moves freely
+   * under physics. Derived live from the physics state, never stored.
+   */
+  public isOrphan(): boolean {
+    const wire = this._wire;
+    if (!wire) return false;
+    const last = wire.getNodeCount() - 1;
+    if (last < 0) return false;
+    return !wire.getNode(0)?.fixed && !wire.getNode(last)?.fixed;
+  }
+
+  /**
+   * Orphan cleanup, called once per frame from the update loop above: an
+   * orphaned cable (see isOrphan) whose plugs have all drifted entirely
+   * outside both the world container and the renderer's surface (see
+   * RendererOptions.surface — so a cable still visible in a zoomed-out view
+   * is never deleted) for OUTSIDE_FRAMES_BEFORE_CLEANUP consecutive frames
+   * is deleted — freeing its WASM-side wire, its DOM (which cascades
+   * disconnectedCallback on every child <cavi-plug>), and this element's
+   * own RAF loop. Applies to every cable however it was created, unless
+   * its world turned it off (Cavi.setOrphanCleanup / <cavi-world
+   * orphan-cleanup="off">) — both the policy and the orphan state are read
+   * live, so plugging a falling cable back in (or toggling the policy)
+   * takes effect on the next frame.
    *
    * Checked via real bounding-box overlap (not the physics node's raw x/y)
    * so it stays correct regardless of where in the DOM a <cavi-wire> lives
-   * relative to the container.
+   * relative to the container. The bounds test runs first: reading a
+   * node's fixed state allocates a temporary WASM copy (see Node.fixed),
+   * so it is only paid for cables that are already out of view.
    */
-  private _cleanupIfOutsideContainer(): void {
-    if (!this.hasAttribute('auto-cleanup') || !this._container || this._plugs.length === 0) {
+  private _cleanupOrphanOutsideView(): void {
+    if (!this._container || this._plugs.length === 0) return;
+    if (this._cavi?.getOrphanCleanup?.() === false) {
+      this._framesOutside = 0;
       return;
     }
 
@@ -233,7 +251,7 @@ export class CaviWireElement extends HTMLElement {
       return bounds.every((b) => !rectsOverlap(r, b));
     });
 
-    if (!allOutside) {
+    if (!allOutside || !this.isOrphan()) {
       this._framesOutside = 0;
       return;
     }
@@ -251,7 +269,7 @@ export class CaviWireElement extends HTMLElement {
    * Wire handles' indices in place (see Wire._setIndex).
    */
   private _destroy(): void {
-    this._releaseWire();
+    this._releaseWire('cleanup');
     // Plugs defer their own detach to a microtask (so a DOM move keeps them
     // plugged — see Plug.disconnectedCallback); a deletion is final, so
     // free the jacks right away.

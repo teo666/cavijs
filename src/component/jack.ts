@@ -1054,9 +1054,8 @@ export class Jack extends HTMLElement {
       if (originNode) originNode.fixed = false;
       session.originPlug.detach();
       session.originPlug.removeAttribute('plugged');
-      // A fully detached cable is attached to nothing: once it has drifted
-      // out of view it is deleted, instead of being simulated forever.
-      session.wireEl.setAttribute('auto-cleanup', '');
+      // Now orphaned: <cavi-wire> deletes it once it has drifted out of
+      // view (Cavi.orphanCleanup), instead of simulating it forever.
     }
     Jack._emitCableEnd(session, behavior, null);
   }

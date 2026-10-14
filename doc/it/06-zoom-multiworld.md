@@ -43,7 +43,7 @@ Note:
 
 - La superficie deve essere posizionata; `<cavi-world>` le imposta `position: relative` se è `static`.
 - I cavi sono disegnati _sotto_ il contenuto del mondo, così jack e plug restano sopra. Il contenuto del mondo quindi non deve avere uno sfondo opaco — metti lo sfondo sulla superficie.
-- `auto-cleanup` considera un cavo sparito solo quando è uscito sia dal container sia dalla superficie.
+- La pulizia dei cavi orfani considera un cavo sparito solo quando è uscito sia dal container sia dalla superficie. Con gravità 0, dove un cavo lasciato resta fermo dove l'hai mollato, valuta `<cavi-world orphan-cleanup="off">`, così fare pan altrove non lo elimina mai.
 
 Vedi `examples/demo-patchbay-zoom.html` (canvas) e `examples/demo-patchbay-zoom-svg.html` (SVG).
 

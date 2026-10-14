@@ -71,8 +71,8 @@ export class Cavi {
    * - 'dangle': the free end is left unfixed (falls/swings under physics)
    *   but the cable stays attached at its origin Jack.
    * - 'detach' (default): both ends are unfixed — the whole cable falls
-   *   away disconnected. It is marked `auto-cleanup`, so it is deleted
-   *   once it has drifted out of view instead of being simulated forever.
+   *   away disconnected. Being orphaned, it is deleted once it has drifted
+   *   out of view (see `orphanCleanup`) instead of being simulated forever.
    * - 'cancel': the in-progress <cavi-wire> is removed outright, as if it
    *   never existed.
    * Only applies to a brand-new cable-creation session — relocating an
@@ -104,6 +104,17 @@ export class Cavi {
    * whenever the pointer re-enters the area before it fires.
    */
   private plugSpreadRecompactDelayMs: number = 500;
+  /**
+   * Whether orphaned cables — no terminal fixed: neither plugged into a
+   * Jack, held by a drag, nor frozen in place (freeze-on-drop) — are
+   * deleted once they have stayed entirely out of view for a moment (see
+   * CaviWireElement._cleanupOrphanOutsideView). Applies to every cable,
+   * however it was created. On by default: under gravity, an orphaned cable
+   * that left the view is gone for good. Turn it off when out of view
+   * doesn't mean lost — e.g. zero gravity with pan/zoom, where a dropped
+   * cable just floats where it was left and the user may pan back to it.
+   */
+  private orphanCleanup: boolean = true;
 
   constructor() {
     this.world = new World();
@@ -315,9 +326,24 @@ export class Cavi {
   }
 
   /**
+   * Sets whether orphaned cables are deleted once out of view — see the
+   * `orphanCleanup` field above.
+   */
+  public setOrphanCleanup(enabled: boolean): void {
+    this.orphanCleanup = enabled;
+  }
+
+  /**
+   * Whether orphaned cables are deleted once out of view. Defaults to true.
+   */
+  public getOrphanCleanup(): boolean {
+    return this.orphanCleanup;
+  }
+
+  /**
    * The container element the renderer was initialized with — the
-   * "world bounds" used by CaviWireElement's auto-cleanup mechanism to
-   * detect when a wire has drifted entirely off-screen.
+   * "world bounds" used by CaviWireElement's orphan cleanup to detect when
+   * a wire has drifted entirely off-screen.
    */
   public getContainer(): HTMLElement | null {
     return this.world.getRenderer()?.getContainer() ?? null;

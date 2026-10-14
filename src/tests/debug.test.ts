@@ -127,6 +127,7 @@ describe('collectStats', () => {
     expect(stats.minNodes).toBe(5);
     expect(stats.maxNodes).toBe(9);
     expect(stats.freeEnds).toBe(3);
+    expect(stats.orphanWires).toBe(1);
     expect(stats.jacks).toBe(1);
     expect(stats.plugs).toBe(2);
     expect(stats.pluggedPlugs).toBe(1);

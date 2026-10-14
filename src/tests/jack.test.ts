@@ -540,8 +540,8 @@ describe('Jack cable session — finish/cancel away from any jack', () => {
     const followNode = wire.getNode(wire.getNodeCount() - 1)!;
     expect(followNode.fixed).toBe(false);
     expect(document.querySelector('cavi-wire')).not.toBeNull(); // not removed, just detached
-    // ...but marked for auto-cleanup, so it doesn't stay simulated forever.
-    expect(session.wireEl.hasAttribute('auto-cleanup')).toBe(true);
+    // ...but orphaned, so orphan cleanup deletes it once out of view.
+    expect(session.wireEl.isOrphan()).toBe(true);
   });
 
   it("'dangle' behavior leaves only the free end unfixed, origin stays attached", () => {
@@ -555,7 +555,7 @@ describe('Jack cable session — finish/cancel away from any jack', () => {
     Jack.finishCableSession(session);
 
     expect(origin.plugCount).toBe(1);
-    expect(session.wireEl.hasAttribute('auto-cleanup')).toBe(false); // still tethered
+    expect(session.wireEl.isOrphan()).toBe(false); // still tethered
     expect(followPlugEl.hasAttribute('plugged')).toBe(false);
     const wire = session.wire as unknown as FakeWire;
     expect(wire.getNode(0)!.fixed).toBe(true);

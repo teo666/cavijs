@@ -26,6 +26,8 @@ export interface CaviStats {
   maxNodes: number;
   /** Wire terminals (first/last node) that are not fixed — dangling cable ends. */
   freeEnds: number;
+  /** Wires with no terminal fixed (see CaviWireElement.isOrphan). */
+  orphanWires: number;
   /** Size of the per-frame render buffer shared with WASM. */
   bufferBytes: number;
   jacks: number;
@@ -68,6 +70,7 @@ export function collectStats(cavi: Cavi): CaviStats {
   let minNodes = Infinity;
   let maxNodes = 0;
   let freeEnds = 0;
+  let orphanWires = 0;
   for (const wire of world.getWires()) {
     const index = wire.getIndex();
     if (index < 0) continue;
@@ -87,6 +90,7 @@ export function collectStats(cavi: Cavi): CaviStats {
     const endFixed = count > 1 ? isNodeFixed(cavi, index, count - 1) : startFixed;
     if (!startFixed) freeEnds++;
     if (count > 1 && !endFixed) freeEnds++;
+    if (!startFixed && !endFixed) orphanWires++;
 
     nodes += count;
     minNodes = Math.min(minNodes, count);
@@ -117,6 +121,7 @@ export function collectStats(cavi: Cavi): CaviStats {
     minNodes: wireList.length ? minNodes : 0,
     maxNodes,
     freeEnds,
+    orphanWires,
     bufferBytes: wasm.wire_data_len() * Float32Array.BYTES_PER_ELEMENT,
     jacks: jacks.length,
     fullJacks: jacks.filter((jack) => !jack.canAcceptMore()).length,

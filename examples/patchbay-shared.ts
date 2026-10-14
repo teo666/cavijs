@@ -14,14 +14,12 @@ export interface Patch {
   type: string;
   /** Demonstrates the freeze-on-drop <cavi-plug> attribute. */
   freezeTo?: boolean;
-  /** Demonstrates the auto-cleanup <cavi-wire> attribute. */
-  autoCleanup?: boolean;
 }
 
 export const PATCHES: Patch[] = [
   { from: 'vco1-out', to: 'vcf-in', color: '#3fc6d8', type: 'audio' },
   { from: 'vcf-out', to: 'vca-in', color: '#3fc6d8', type: 'audio' },
-  { from: 'vca-out', to: 'mix-in1', color: '#e8834a', type: 'audio', autoCleanup: true },
+  { from: 'vca-out', to: 'mix-in1', color: '#e8834a', type: 'audio' },
   { from: 'lfo1-out', to: 'vcf-cv', color: '#d966b3', type: 'cv' },
   { from: 'env-out', to: 'vca-cv', color: '#d966b3', type: 'cv', freezeTo: true },
 ];
@@ -102,7 +100,6 @@ export function materializePatches(panel: HTMLElement): void {
     wire.setAttribute('size', '6');
     wire.setAttribute('color', patch.color);
     wire.setAttribute('type', patch.type);
-    if (patch.autoCleanup) wire.setAttribute('auto-cleanup', '');
 
     const origin = document.createElement('cavi-plug');
     origin.setAttribute('node', '0');

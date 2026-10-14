@@ -48,10 +48,10 @@ In this order:
 
 ### What it shows
 
-- **FPS** (with a sparkline), **wires** and free ends, **nodes** (total and min–max per wire), **plugged/total plugs**, jacks and full jacks (`max-plugs` reached).
+- **FPS** (with a sparkline), **wires**, free ends and orphaned wires, **nodes** (total and min–max per wire), **plugged/total plugs**, jacks and full jacks (`max-plugs` reached).
 - **Physics**: gravity, friction, mouse/pointer radii, response coefficient, size of the render buffer shared with WASM.
 - **View**: pointer position in world coordinates, registered zoom and pan (`setCoordinateTransformProvider`), container size.
-- **Settings**: node drawing, wire shadows, `cable-drop-behavior`, `plug-spread-mode`.
+- **Settings**: node drawing, wire shadows, orphan cleanup, `cable-drop-behavior`, `plug-spread-mode`.
 - **Wires**: per wire its index, color, nodes, radius, polyline length, fixed (●) or free (○) ends.
 - **Events**: log with time and a summarized detail. Identical events close together (and bursts of `cavi-resize`/`cavi-transform-change`) are merged into one `×N` entry. Clicking a counter hides/shows that event type; _Pause_ suspends recording.
 
@@ -69,17 +69,19 @@ The same snapshot the panel uses, exported for use elsewhere (tests, telemetry, 
 
 All are `CustomEvent`s with `bubbles: true`, dispatched on the renderer container (the `<cavi-world>` element), so you can listen on the world or on `document`. `detail` types are in `CaviEventDetailMap`; the full list is `CAVI_EVENT_NAMES`.
 
-| Event                   | When                                        | `detail`                         |
-| ----------------------- | ------------------------------------------- | -------------------------------- |
-| `caviready`             | the `<cavi-world>` created its `Cavi`       | `{ cavi }`                       |
-| `cavi-resize`           | the container changed size                  | `{ width, height }`              |
-| `cavi-transform-change` | `notifyCoordinateTransformChanged()`        | —                                |
-| `cavi-wire-add`         | a `<cavi-wire>` created its WASM wire       | `{ wire, element }`              |
-| `cavi-wire-remove`      | a `<cavi-wire>` deleted its wire            | `{ wire, element, index }`       |
-| `cavi-plug-attach`      | a plug attaches to a jack                   | `{ plug, jack }`                 |
-| `cavi-plug-detach`      | a plug detaches from a jack                 | `{ plug, jack }`                 |
-| `cavi-cable-start`      | a new cable starts being pulled from a jack | `{ jack, wire }`                 |
-| `cavi-cable-end`        | cable creation finished                     | `{ jack, wire, result, target }` |
+| Event                   | When                                        | `detail`                           |
+| ----------------------- | ------------------------------------------- | ---------------------------------- |
+| `caviready`             | the `<cavi-world>` created its `Cavi`       | `{ cavi }`                         |
+| `cavi-resize`           | the container changed size                  | `{ width, height }`                |
+| `cavi-transform-change` | `notifyCoordinateTransformChanged()`        | —                                  |
+| `cavi-wire-add`         | a `<cavi-wire>` created its WASM wire       | `{ wire, element }`                |
+| `cavi-wire-remove`      | a `<cavi-wire>` deleted its wire            | `{ wire, element, index, reason }` |
+| `cavi-plug-attach`      | a plug attaches to a jack                   | `{ plug, jack }`                   |
+| `cavi-plug-detach`      | a plug detaches from a jack                 | `{ plug, jack }`                   |
+| `cavi-cable-start`      | a new cable starts being pulled from a jack | `{ jack, wire }`                   |
+| `cavi-cable-end`        | cable creation finished                     | `{ jack, wire, result, target }`   |
+
+`cavi-wire-remove`'s `reason`: `cleanup` (an orphaned cable deleted once out of view, see [orphan cleanup](./05-jack-plug.md#deleting-orphaned-cables-once-out-of-view-orphan-cleanup)) or `removed` (the element left the DOM).
 
 `cavi-cable-end`'s `result`: `connected` (to `target`), `dangle`, `detach`, `cancel` (per `cable-drop-behavior`) or `abort` (`cancelCableSession`).
 
