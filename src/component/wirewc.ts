@@ -84,6 +84,9 @@ export class CaviWireElement extends HTMLElement {
   private _setup(cavi: Cavi): void {
     // Removed (or already set up) while waiting for 'caviready'.
     if (!this.isConnected || this._wire) return;
+    // Set up again after its world was torn down and rebuilt: start from
+    // the plugs in the markup, not on top of the previous list.
+    this._plugs = [];
     const nodeCount = parseInt(this.getAttribute('length') ?? '10');
     const tension = parseFloat(this.getAttribute('tension') ?? '20');
     const radius = parseFloat(this.getAttribute('size') ?? '5');

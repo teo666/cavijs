@@ -41,6 +41,13 @@ vi.mock('../core/cavi', () => {
     setPlugSpreadRadiusMultiplier = vi.fn();
     setPlugSpreadRecompactDelayMs = vi.fn();
     setCoordinateTransformProvider = vi.fn();
+    destroyed = false;
+    destroy = vi.fn(() => {
+      this.destroyed = true;
+    });
+    isDestroyed() {
+      return this.destroyed;
+    }
   }
   return { Cavi: FakeCavi };
 });
@@ -159,6 +166,42 @@ describe('CaviWorldElement', () => {
     world.remove();
 
     expect(renderer.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('destroys its world once removed, but not when just moved', async () => {
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    document.body.appendChild(world);
+    await flushMicrotasks();
+    const cavi = world.getCavi() as unknown as { destroy: () => void };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    host.appendChild(world); // DOM move: disconnect + connect in the same task
+    await flushMicrotasks();
+    expect(cavi.destroy).not.toHaveBeenCalled();
+
+    world.remove();
+    await flushMicrotasks();
+    expect(cavi.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds a new world, with the same coordinate transform, when inserted again after removal', async () => {
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    const transform = () => ({ scale: 2, translateX: 0, translateY: 0 });
+    world.setCoordinateTransform(transform);
+    document.body.appendChild(world);
+    await flushMicrotasks();
+    const first = world.getCavi();
+
+    world.remove();
+    await flushMicrotasks();
+    document.body.appendChild(world);
+    await flushMicrotasks();
+
+    const second = world.getCavi()!;
+    expect(second).not.toBe(first);
+    expect(second.setCoordinateTransformProvider).toHaveBeenCalledWith(transform);
+    expect(world.querySelectorAll('canvas').length).toBe(1);
   });
 
   it('resumes the render loop when reconnected after a DOM move', async () => {

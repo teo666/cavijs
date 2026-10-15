@@ -45,8 +45,12 @@ export class CaviWorldElement extends HTMLElement {
   /** Whether _canvas was created here (and is therefore ours to remove). */
   private _ownsCanvas: boolean = false;
   private _surface: HTMLElement | null = null;
-  /** A provider passed to setCoordinateTransform before this world was ready — applied at setup. */
-  private _pendingTransform: (() => CoordinateTransform) | null = null;
+  /**
+   * The provider passed to setCoordinateTransform — applied at setup, so it
+   * survives both a call made before the world was ready and the world
+   * being rebuilt after this element was removed and inserted again.
+   */
+  private _transformProvider: (() => CoordinateTransform) | null = null;
 
   /**
    * Keeps the canvas backing store sized to this element (or its surface)
@@ -65,6 +69,9 @@ export class CaviWorldElement extends HTMLElement {
   public canvas: HTMLCanvasElement | null = null;
 
   connectedCallback(): void {
+    // Removed earlier (not just moved) and torn down: start over.
+    if (this._cavi?.isDestroyed?.()) this._cavi = null;
+
     if (this._cavi) {
       // Reconnected after a DOM move: disconnectedCallback stopped the
       // render loop and the resize watcher — resume both instead of
@@ -148,10 +155,7 @@ export class CaviWorldElement extends HTMLElement {
       surface: this._surface ?? undefined,
     });
     cavi.setRenderer(renderer);
-    if (this._pendingTransform) {
-      cavi.setCoordinateTransformProvider(this._pendingTransform);
-      this._pendingTransform = null;
-    }
+    if (this._transformProvider) cavi.setCoordinateTransformProvider(this._transformProvider);
     cavi.setAcceleration(
       parseFloat(this.getAttribute('gravity-x') ?? '0'),
       parseFloat(this.getAttribute('gravity-y') ?? '5')
@@ -213,18 +217,23 @@ export class CaviWorldElement extends HTMLElement {
     renderer.render();
   }
 
+  /**
+   * Stops drawing right away, and — unless this was just a DOM move
+   * (reconnected within the same task; see connectedCallback's reconnect
+   * branch) — tears the world down one microtask later: frees the WASM
+   * world (Cavi.destroy) and removes the canvas created here (a canvas the
+   * page provided is never removed). Inserting the element again later
+   * starts a brand new world.
+   */
   disconnectedCallback(): void {
     this.resizeController.detach();
     this._cavi?.getRenderer()?.stop();
-    // A surface canvas we created lives outside this element, so it isn't
-    // removed along with it — drop it too unless this was just a DOM move
-    // (reconnected within the same task; see connectedCallback's reconnect
-    // branch). A canvas the page provided is never removed.
-    if (this._surface && this._ownsCanvas) {
-      queueMicrotask(() => {
-        if (!this.isConnected) this._canvas?.remove();
-      });
-    }
+    queueMicrotask(() => {
+      if (this.isConnected) return;
+      if (this._ownsCanvas) this._canvas?.remove();
+      this._canvas = null;
+      this._cavi?.destroy?.();
+    });
   }
 
   public getCavi(): Cavi | null {
@@ -236,11 +245,11 @@ export class CaviWorldElement extends HTMLElement {
    * there for why cavijs requires this to be registered explicitly rather
    * than auto-detecting a pan/zoom transform itself. If called before this
    * element's Cavi instance exists, the provider is kept and applied as
-   * soon as it does.
+   * soon as it does (and again if the world is rebuilt).
    */
   public setCoordinateTransform(fn: (() => CoordinateTransform) | null): void {
-    if (this._cavi) this._cavi.setCoordinateTransformProvider(fn);
-    else this._pendingTransform = fn;
+    this._transformProvider = fn;
+    this._cavi?.setCoordinateTransformProvider(fn);
   }
 
   /** Ergonomic passthrough to Cavi.notifyCoordinateTransformChanged (optional — see there). */

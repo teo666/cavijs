@@ -10,7 +10,9 @@ Main facade class — the recommended entry point.
 static initWasm(): Promise<void>          // loads the WASM module (sets Cavi.wasm)
 init(): Promise<void>
 getWorld(): World
-setRenderer(renderer: IRenderer): void
+setRenderer(renderer: IRenderer | null): void  // stops and unregisters the previous one
+destroy(): void                         // tears the simulation down for good (see below)
+isDestroyed(): boolean
 getRenderer(): IRenderer | null
 addWire(x1, y1, x2, y2, nodes, tension, radius, type): Wire
 deleteWire(index: number): void
@@ -53,7 +55,9 @@ deleteWire(index: number): void
 clearAllWires(): void
 setAcceleration(x: number, y: number): void
 getAcceleration(): { x: number, y: number }
-setRenderer(renderer: IRenderer): void
+setRenderer(renderer: IRenderer | null): void  // stops the previous one
+destroy(): void
+isDestroyed(): boolean
 getRenderer(): IRenderer | null
 getWireByIndex(index: number): Wire | null
 getWires(): Wire[]
@@ -94,7 +98,7 @@ TypeScript counterpart of a WASM wire. Adds a `meta: WireMeta` dictionary that l
 ```typescript
 addNode(x: number, y: number, fixed?: boolean): void
 addNodeAt(index: number, x: number, y: number, fixed?: boolean): void
-removeNode(index: number): void
+removeNode(index: number): boolean        // false if it would leave fewer than 2 nodes
 getNodeCount(): number
 setNodeCount(count: number): void
 getNode(index: number): Node | null
@@ -122,7 +126,13 @@ wire.setMetaData('pattern', 'dashed');
 
 A `Wire` constructed without `(world, wireIndex)` args is "detached" — all its methods that talk to WASM become no-ops / return defaults, which is what happens if you `new Wire()` directly instead of via `World.addWire`.
 
-`setNodeCount(count)` resizes the wire at runtime: it rebuilds the entire node vector, preserving the position and `fixed` state of the two terminal nodes and evenly redistributing intermediate nodes between them (any state on previously-existing intermediate nodes is lost). Used by [`Jack`](./05-jack-plug.md) to grow a cable while it's being dragged out of a socket — since the last node's index changes after a resize, anything holding a reference to the terminal node (e.g. a `Plug`) must rebind via `wire.getNode(wire.getNodeCount() - 1)`.
+`setNodeCount(count)` resizes the wire at runtime: it rebuilds the entire node vector, preserving the position and `fixed` state of the two terminal nodes and evenly redistributing intermediate nodes between them (any state on previously-existing intermediate nodes is lost).
+
+`getNode(index)` returns one handle per node, and the handle follows its node when nodes are inserted or removed before it through this `Wire` (`addNodeAt`, `removeNode`, `setNodeCount`): a `Plug` bound to the terminal stays on the terminal when [`Jack`](./05-jack-plug.md) grows a cable by inserting nodes, or when nodes are added from code. The handle of a removed node (or of an intermediate node dropped by `setNodeCount`) is invalidated: its methods then do nothing. Node edits made directly on the `WasmWorld` (`getWasmWorld()`) bypass this bookkeeping.
+
+### Tearing a world down
+
+`Cavi.destroy()` stops the renderer, frees the WASM world, unregisters the renderer container from `Cavi.for`, and clears `Cavi.shared` if it points at this instance. Every `Wire` and `Node` handle of the world is invalidated, so elements still holding one clean up without touching freed memory. The instance must not be used afterwards (`isDestroyed()` tells). `<cavi-world>` does this by itself when it is removed from the page — not when it is just moved — and builds a new world if it is inserted again later, keeping the coordinate transform registered with `setCoordinateTransform`.
 
 ## `Node` (`src/node.ts`)
 

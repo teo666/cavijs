@@ -10,7 +10,9 @@ Classe facade principale — il punto di ingresso consigliato.
 static initWasm(): Promise<void>          // carica il modulo WASM (imposta Cavi.wasm)
 init(): Promise<void>
 getWorld(): World
-setRenderer(renderer: IRenderer): void
+setRenderer(renderer: IRenderer | null): void  // ferma e deregistra il precedente
+destroy(): void                         // smonta la simulazione per sempre (vedi sotto)
+isDestroyed(): boolean
 getRenderer(): IRenderer | null
 addWire(x1, y1, x2, y2, nodes, tension, radius, type): Wire
 deleteWire(index: number): void
@@ -53,7 +55,9 @@ deleteWire(index: number): void
 clearAllWires(): void
 setAcceleration(x: number, y: number): void
 getAcceleration(): { x: number, y: number }
-setRenderer(renderer: IRenderer): void
+setRenderer(renderer: IRenderer | null): void  // ferma il precedente
+destroy(): void
+isDestroyed(): boolean
 getRenderer(): IRenderer | null
 getWireByIndex(index: number): Wire | null
 getWires(): Wire[]
@@ -94,7 +98,7 @@ Controparte TypeScript di un cavo WASM. Aggiunge un dizionario `meta: WireMeta` 
 ```typescript
 addNode(x: number, y: number, fixed?: boolean): void
 addNodeAt(index: number, x: number, y: number, fixed?: boolean): void
-removeNode(index: number): void
+removeNode(index: number): boolean        // false se lascerebbe meno di 2 nodi
 getNodeCount(): number
 setNodeCount(count: number): void
 getNode(index: number): Node | null
@@ -122,7 +126,13 @@ wire.setMetaData('pattern', 'dashed');
 
 Un `Wire` costruito senza argomenti `(world, wireIndex)` è "scollegato" — tutti i suoi metodi che comunicano con WASM diventano no-op / ritornano valori di default, ciò che accade se si fa `new Wire()` direttamente invece che tramite `World.addWire`.
 
-`setNodeCount(count)` ridimensiona il cavo a runtime: ricostruisce l'intero vettore di nodi, preservando posizione e stato `fixed` dei due nodi terminali e ridistribuendo linearmente i nodi intermedi tra di essi (lo stato di eventuali nodi intermedi preesistenti viene perso). Usato da [`Jack`](./05-jack-plug.md) per far crescere il cavo mentre lo si trascina fuori da una presa — dato che l'indice dell'ultimo nodo cambia dopo il resize, chi tiene un riferimento al nodo terminale (es. un `Plug`) deve ri-agganciarsi con `wire.getNode(wire.getNodeCount() - 1)`.
+`setNodeCount(count)` ridimensiona il cavo a runtime: ricostruisce l'intero vettore di nodi, preservando posizione e stato `fixed` dei due nodi terminali e ridistribuendo linearmente i nodi intermedi tra di essi (lo stato di eventuali nodi intermedi preesistenti viene perso).
+
+`getNode(index)` restituisce un solo handle per nodo, e l'handle segue il suo nodo quando vengono inseriti o tolti nodi prima di lui tramite questo `Wire` (`addNodeAt`, `removeNode`, `setNodeCount`): un `Plug` legato al terminale resta sul terminale quando [`Jack`](./05-jack-plug.md) allunga un cavo inserendo nodi, o quando si aggiungono nodi da codice. L'handle di un nodo rimosso (o di un nodo intermedio scartato da `setNodeCount`) viene invalidato: i suoi metodi non fanno più niente. Le modifiche ai nodi fatte direttamente sul `WasmWorld` (`getWasmWorld()`) aggirano questo meccanismo.
+
+### Smontare un mondo
+
+`Cavi.destroy()` ferma il renderer, libera il mondo WASM, toglie il container del renderer da `Cavi.for` e azzera `Cavi.shared` se punta a questa istanza. Tutti gli handle `Wire` e `Node` del mondo vengono invalidati, così gli elementi che ne tengono ancora uno fanno pulizia senza toccare memoria liberata. L'istanza non va più usata (lo dice `isDestroyed()`). `<cavi-world>` lo fa da solo quando viene rimosso dalla pagina (non quando viene solo spostato) e, se viene inserito di nuovo più tardi, crea un mondo nuovo mantenendo la trasformazione di coordinate registrata con `setCoordinateTransform`.
 
 ## `Node` (`src/node.ts`)
 

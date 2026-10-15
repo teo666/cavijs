@@ -144,13 +144,38 @@ export class Cavi {
   }
 
   /**
-   * Set the renderer
+   * Set the renderer — null for none. Registers its container for
+   * Cavi.for, and unregisters (and stops) the previous renderer's.
    */
   public setRenderer(value: IRenderer | null): void {
-    if (value) {
-      this.world.setRenderer(value);
-      Cavi._byContainer.set(value.getContainer(), this);
-    }
+    const previous = this.world.getRenderer();
+    if (previous && previous !== value) this._unregisterContainer(previous);
+    this.world.setRenderer(value);
+    if (value) Cavi._byContainer.set(value.getContainer(), this);
+  }
+
+  /**
+   * Tears this simulation down for good (see World.destroy): stops the
+   * renderer, frees the WASM world, unregisters the container from
+   * Cavi.for, and clears Cavi.shared if it points here — so elements no
+   * longer find a dead world. <cavi-world> calls it when it is removed from
+   * the page (not when it is just moved). Idempotent.
+   */
+  public destroy(): void {
+    const renderer = this.world.getRenderer();
+    if (renderer) this._unregisterContainer(renderer);
+    this.world.destroy();
+    if (Cavi.shared === this) Cavi.shared = null;
+  }
+
+  /** Whether destroy() was called. */
+  public isDestroyed(): boolean {
+    return this.world.isDestroyed();
+  }
+
+  private _unregisterContainer(renderer: IRenderer): void {
+    const container = renderer.getContainer();
+    if (Cavi._byContainer.get(container) === this) Cavi._byContainer.delete(container);
   }
 
   /**

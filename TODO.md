@@ -2,7 +2,7 @@
 
 Miglioramenti ancora aperti dopo l'analisi del codice. Già fatti: mouse fantasma, fisica a passo fisso,
 un ciclo di frame per mondo, jack che seguono il layout, jack rimosso che rilascia i plug,
-interpolazione tra i passi fisici; in `cavi`: cavo tenuto (`pointer_radius`), sospensione dei cavi
+interpolazione tra i passi fisici, handle dei nodi stabili, `Cavi.destroy()`; in `cavi`: cavo tenuto (`pointer_radius`), sospensione dei cavi
 fermi, lancio al rilascio, distanza tra i nodi separata dal raggio, `intersect` vero, README.
 
 ## Rilascio di `cavi` (bloccante per `main`)
@@ -16,19 +16,10 @@ fermi, lancio al rilascio, distanza tra i nodi separata dal raggio, `intersect` 
 
 ## Correttezza
 
-- [ ] **I plug sono legati a un indice di nodo fisso** (`Node`, `src/core/node.ts`). `addNodeAt`,
-      `removeNode` e `setNodeCount` non aggiornano i `Node` già creati: il plug finisce su un nodo
-      intermedio, o su (0,0) se il cavo si accorcia. Succede con il pulsante "Add node" di
-      `<cavi-controls>`. `Wire` dovrebbe tenere traccia dei `Node` che crea e spostarne l'indice, come fa
-      `World` con i cavi.
-- [ ] **Un `<cavi-wire>` rimosso e reinserito più tardi si rompe** (`src/component/wirewc.ts`): `_plugs`
-      non viene svuotato e i plug si duplicano; per i cavi creati trascinando, `length` resta 4 mentre il
-      `node` del plug libero cresce, quindi al nuovo setup il plug viene scartato; `plugged` non viene tolto
-      da `Plug.detach()`.
-- [ ] **Nessuno smontaggio del mondo**: aggiungere `Cavi.destroy()` che fermi il renderer, liberi il
-      `WasmWorld` (`free()`), tolga il container dalla mappa di `Cavi.for` e azzeri `Cavi.shared` se punta
-      lì. `World.setRenderer` dovrebbe fermare il renderer precedente (con due loop la fisica raddoppia),
-      e `setRenderer(null)` oggi non fa niente.
+- [ ] **Un cavo creato trascinando non sopravvive a una rimozione e reinserimento** del suo
+      `<cavi-wire>` (o del mondo): `length` resta 4 mentre il `node` del plug libero cresce, quindi al nuovo
+      setup il plug viene scartato; e il plug d'origine non ha un attributo `jack`, quindi non si ricollega.
+      Basterebbe aggiornare `length` insieme a `node` e scrivere `jack="id"` sui plug collegati.
 - [ ] **`getWasmWorld()` è pubblico**: chi aggiunge o toglie cavi direttamente sul WASM fa divergere la
       lista JS da quella del motore, e i colori finiscono sui cavi sbagliati. Aggiungere un controllo in
       `addWire` e un `Wire.delete()` / `deleteWire(wire)` per non dover passare indici.

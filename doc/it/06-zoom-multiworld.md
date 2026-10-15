@@ -77,7 +77,7 @@ Ogni Jack, Plug, Wire e controller di interazione risolve l'istanza `Cavi` a cui
 - il `<cavi-interaction>` di ogni mondo gestisce solo gli eventi sui propri elementi;
 - `caviready` viene emesso sul `<cavi-world>` stesso (e risale fino a `document`), e `Cavi.whenReady(el, fn)` aspetta il mondo dell'elemento.
 
-`Cavi.shared` esiste ancora — punta all'ultimo mondo inizializzato ed è il ripiego per gli elementi fuori da qualunque container registrato (pagine a mondo singolo con setup manuale, test).
+`Cavi.shared` esiste ancora — punta all'ultimo mondo inizializzato ed è il ripiego per gli elementi fuori da qualunque container registrato (pagine a mondo singolo con setup manuale, test). Un `<cavi-world>` rimosso dalla pagina smonta il suo mondo (vedi [Smontare un mondo](./03-api.md#smontare-un-mondo)), e questo azzera anche `Cavi.shared` se puntava lì.
 
 ## Usare cavijs come libreria
 

@@ -43,6 +43,8 @@ export class World {
   private _accumulatorMs: number = 0;
   /** See addFrameTask. */
   private _frameTasks = new Set<FrameTask>();
+  /** See destroy. */
+  private _destroyed: boolean = false;
 
   constructor() {
     this.wasmWorld = new WasmWorld();
@@ -123,10 +125,37 @@ export class World {
   }
 
   /**
-   * Set the renderer class that will be used to render wires
+   * Set the renderer that draws this world — null for none. A previous,
+   * different renderer is stopped first: two render loops would both step
+   * the physics, running it at twice the speed.
    */
-  public setRenderer(renderer: IRenderer): void {
+  public setRenderer(renderer: IRenderer | null): void {
+    if (this._renderer && this._renderer !== renderer) this._renderer.stop();
     this._renderer = renderer;
+  }
+
+  /**
+   * Tears this world down for good: stops its renderer, drops its frame
+   * tasks, invalidates every Wire handle (and through them every Node
+   * handle, which then turn into no-ops instead of touching freed memory),
+   * and frees the WASM world. WASM memory never shrinks, but what is freed
+   * is reused by the next world. Idempotent; the world must not be used
+   * afterwards. Usually called through Cavi.destroy.
+   */
+  public destroy(): void {
+    if (this._destroyed) return;
+    this._destroyed = true;
+    this._renderer?.stop();
+    this._renderer = null;
+    this._frameTasks.clear();
+    for (const wire of this.wires) wire._setIndex(-1);
+    this.wires = [];
+    this.wasmWorld.free();
+  }
+
+  /** Whether destroy() was called. */
+  public isDestroyed(): boolean {
+    return this._destroyed;
   }
 
   /**

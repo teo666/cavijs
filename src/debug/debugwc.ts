@@ -311,6 +311,11 @@ export class CaviDebugElement extends HTMLElement {
 
   private _onWorldEvent = (e: Event): void => {
     this._record(e.type, (e as CustomEvent).detail);
+    // The watched world was removed and inserted again: a new Cavi.
+    if (e.type === 'caviready' && e.target === this._eventTarget) {
+      const cavi = (e as CustomEvent<{ cavi?: Cavi }>).detail?.cavi;
+      if (cavi && cavi !== this._cavi) this._bind(cavi);
+    }
   };
 
   // ---------------------------------------------------------------------
@@ -392,6 +397,12 @@ export class CaviDebugElement extends HTMLElement {
   private _refresh(): void {
     const cavi = this._cavi;
     if (!cavi || !this.open) return;
+    if (cavi.isDestroyed?.()) {
+      // Removed from the page: wait for a new caviready (see _onWorldEvent).
+      this._stopTimer();
+      this._setText('world', 'world removed');
+      return;
+    }
     let stats: CaviStats;
     try {
       stats = collectStats(cavi);

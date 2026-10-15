@@ -77,7 +77,7 @@ Every Jack, Plug, Wire and interaction controller resolves the `Cavi` instance i
 - each world's `<cavi-interaction>` only handles pointer events on its own elements;
 - `caviready` is dispatched on the `<cavi-world>` itself (and bubbles to `document`), and `Cavi.whenReady(el, fn)` waits for the element's own world.
 
-`Cavi.shared` still exists — it points at the most recently initialized world and is the fallback for elements that live outside any registered container (single-world pages with a manual setup, tests).
+`Cavi.shared` still exists — it points at the most recently initialized world and is the fallback for elements that live outside any registered container (single-world pages with a manual setup, tests). A `<cavi-world>` removed from the page destroys its world (see [Tearing a world down](./03-api.md#tearing-a-world-down)), which also clears `Cavi.shared` if it pointed there.
 
 ## Using cavijs as a library
 
