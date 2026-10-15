@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Fake } from './fake';
+import type { Wire } from '../core/wire';
 import { Jack, type CableSession } from '../component/jack';
 import { Cavi } from '../core/cavi';
 import type { FrameTask } from '../core/frame';
@@ -84,7 +86,10 @@ function makePositionedJack(
  * interpolate discarded intermediates) to drive Jack's cable-creation
  * session without needing a real WASM module in jsdom.
  */
-class FakeWire {
+class FakeWire implements Fake<
+  Wire,
+  'getNode' | 'getIndex' | 'getNodeCount' | 'setNodeCount' | 'addNodeAt' | 'setColor'
+> {
   private nodes: Node[];
 
   constructor(x1: number, y1: number, x2: number, y2: number, count: number) {
@@ -110,8 +115,8 @@ class FakeWire {
   }
 
   setNodeCount(count: number): void {
-    const first = this.nodes[0];
-    const last = this.nodes[this.nodes.length - 1];
+    const first = this.nodes[0]!;
+    const last = this.nodes[this.nodes.length - 1]!;
     const next: Node[] = [];
     for (let i = 0; i < count; i++) {
       const t = count === 1 ? 0 : i / (count - 1);
@@ -129,14 +134,25 @@ class FakeWire {
   }
 
   /** Mirrors WasmWire::add_node_at's real semantics: a plain Vec::insert — every other node is left untouched. */
-  addNodeAt(index: number, x: number, y: number, fixed: boolean): void {
+  addNodeAt(index: number, x: number, y: number, fixed = false): void {
     this.nodes.splice(index, 0, new Node(x, y, fixed));
   }
 
   setColor(): void {}
 }
 
-class FakeCavi {
+class FakeCavi implements Fake<
+  Cavi,
+  | 'getCableDropBehavior'
+  | 'getPlugSpreadMode'
+  | 'getPlugSpreadRadiusMultiplier'
+  | 'getPlugSpreadRecompactDelayMs'
+  | 'getCoordinateTransform'
+  | 'addWire'
+  | 'getContainer'
+  | 'deleteWire'
+  | 'getWorld'
+> {
   public lastWire: FakeWire | null = null;
   // Overridable per-test — defaults match Cavi's own defaults.
   public getCableDropBehavior = (): 'cancel' | 'dangle' | 'detach' => 'detach';
@@ -405,8 +421,8 @@ describe('Jack.createCable', () => {
     expect(jack.plugCount).toBe(1);
     const plugs = session.wireEl.querySelectorAll('cavi-plug');
     expect(plugs.length).toBe(2);
-    expect(plugs[0].hasAttribute('plugged')).toBe(true);
-    expect(plugs[1].hasAttribute('plugged')).toBe(false);
+    expect(plugs[0]!.hasAttribute('plugged')).toBe(true);
+    expect(plugs[1]!.hasAttribute('plugged')).toBe(false);
 
     expect(wire.getNode(0)!.x).toBe(50);
     expect(wire.getNode(0)!.y).toBe(60);
@@ -1181,7 +1197,7 @@ describe('Jack coordinate space under zoom/pan', () => {
       expect(jack.isSpread()).toBe(true);
       expect(setSpreadPosition).toHaveBeenCalledTimes(1);
 
-      const [x, y] = setSpreadPosition.mock.calls[0];
+      const [x, y] = setSpreadPosition.mock.calls[0]!;
       jack.remove();
       return { x, y };
     };
@@ -1263,7 +1279,7 @@ describe('Jack keyboard support: plugs, isDragActive, holdSpread', () => {
   it('lists the plugs plugged into a jack', () => {
     const { target } = pluggedTarget();
     expect(target.plugs).toHaveLength(1);
-    expect(target.plugs[0].jack).toBe(target);
+    expect(target.plugs[0]!.jack).toBe(target);
     expect(makeJack().plugs).toEqual([]);
   });
 

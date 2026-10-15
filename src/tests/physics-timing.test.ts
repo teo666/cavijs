@@ -91,7 +91,7 @@ describe('World.advance — fixed step rate', () => {
     expect(new Set(physicsY).size).toBe(5);
     expect(new Set(drawnY).size).toBe(8);
     // ...always between the last two physics states, never ahead of them.
-    for (let i = 1; i < 8; i++) expect(drawnY[i]).toBeLessThanOrEqual(physicsY[i] + 1e-3);
+    for (let i = 1; i < 8; i++) expect(drawnY[i]).toBeLessThanOrEqual(physicsY[i]! + 1e-3);
   });
 
   it('exposes the engine step parameters, with the defaults of the old hardcoded values', () => {

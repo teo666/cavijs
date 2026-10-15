@@ -226,7 +226,7 @@ export class Jack extends HTMLElement {
     });
   }
 
-  attributeChangedCallback(name: string, oldValue: string, newValue: string) {
+  attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
     if (name === 'color') {
       this.render();
     }
@@ -498,7 +498,7 @@ export class Jack extends HTMLElement {
       angles = Jack._resolveAngularCollisions(
         angles,
         this._hoverRadius(),
-        plugs[0]?.getBoundingClientRect().width / 2 || this._hoverRadius() / 4
+        (plugs[0]?.getBoundingClientRect().width ?? 0) / 2 || this._hoverRadius() / 4
       );
     }
 
@@ -515,7 +515,7 @@ export class Jack extends HTMLElement {
       (cavi?.getPlugSpreadRadiusMultiplier?.() ?? 1.8);
 
     plugs.forEach((plug, i) => {
-      const angle = angles[i];
+      const angle = angles[i]!;
       plug.setSpreadPosition(
         center.x + radius * Math.cos(angle),
         center.y + radius * Math.sin(angle)
@@ -549,8 +549,9 @@ export class Jack extends HTMLElement {
     const minGap = 2 * Math.asin(ratio);
     if (minGap <= 0) return angles;
 
-    const order = angles.map((_, i) => i).sort((a, b) => angles[a] - angles[b]);
-    const sorted = order.map((i) => angles[i]);
+    // Plain indices of `angles`/`sorted` below, never out of range.
+    const order = angles.map((_, i) => i).sort((a, b) => angles[a]! - angles[b]!);
+    const sorted = order.map((i) => angles[i]!);
 
     // A handful of relaxation passes is enough to settle any reasonable
     // number of cables on one jack without needing a full solver.
@@ -558,12 +559,12 @@ export class Jack extends HTMLElement {
       let moved = false;
       for (let i = 0; i < sorted.length; i++) {
         const j = (i + 1) % sorted.length;
-        let gap = sorted[j] - sorted[i];
+        let gap = sorted[j]! - sorted[i]!;
         if (j === 0) gap += 2 * Math.PI;
         if (gap < minGap) {
           const push = (minGap - gap) / 2;
-          sorted[i] -= push;
-          sorted[j] += push;
+          sorted[i]! -= push;
+          sorted[j]! += push;
           moved = true;
         }
       }
@@ -572,7 +573,7 @@ export class Jack extends HTMLElement {
 
     const result: number[] = Array.from({ length: angles.length }, () => 0);
     order.forEach((originalIndex, sortedIndex) => {
-      result[originalIndex] = sorted[sortedIndex];
+      result[originalIndex] = sorted[sortedIndex]!;
     });
     return result;
   }

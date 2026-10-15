@@ -104,7 +104,7 @@ describe('jack="id"', () => {
 
     const cable = makeCable(b.container, 'j1');
 
-    expect(plugsOf(cable)[0].jack).toBe(jackB);
+    expect(plugsOf(cable)[0]!.jack).toBe(jackB);
     expect(jackA.plugCount).toBe(0);
   });
 
@@ -116,18 +116,18 @@ describe('jack="id"', () => {
 
     const cable = makeCable(container, 'deep');
 
-    expect(plugsOf(cable)[0].jack).toBe(jack);
+    expect(plugsOf(cable)[0]!.jack).toBe(jack);
   });
 
   it('plugs in a jack inserted after its cable, on the next frame', () => {
     const { cavi, container } = makeWorld();
     const cable = makeCable(container, 'late');
-    expect(plugsOf(cable)[0].jack).toBeNull();
+    expect(plugsOf(cable)[0]!.jack).toBeNull();
 
     const jack = makeJack(container, 'late', { x: '40', y: '60' });
     cavi.getWorld().runFrameTasks();
 
-    expect(plugsOf(cable)[0].jack).toBe(jack);
+    expect(plugsOf(cable)[0]!.jack).toBe(jack);
     const wire = cable.getWire()!;
     expect([wire.getNodeX(0), wire.getNodeY(0)]).toEqual([40, 60]);
     expect(wire.getNode(0)!.fixed).toBe(true);
@@ -142,7 +142,7 @@ describe('jack="id"', () => {
     const second = makeCable(container, 'one');
 
     expect(jack.plugCount).toBe(1);
-    expect(plugsOf(second)[0].jack).toBeNull();
+    expect(plugsOf(second)[0]!.jack).toBeNull();
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('already full'));
   });
 });

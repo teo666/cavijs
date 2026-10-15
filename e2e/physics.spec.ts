@@ -51,7 +51,7 @@ function measureOneSecond(page: Page) {
       .getCavi()
       .getWorld();
     world.setSleepEnabled(false);
-    const wire = world.getWires()[0];
+    const wire = world.getWires()[0]!;
     const last = wire.getNodeCount() - 1;
     wire.getNode(last).fixed = false; // let it swing
     const middle = wire.getNode(Math.floor(last / 2));

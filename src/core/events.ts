@@ -13,7 +13,7 @@ export type CableEndResult = 'connected' | 'dangle' | 'detach' | 'cancel' | 'abo
  * to (the <cavi-world> element, for a declarative setup) — so a page can
  * listen on its world element, or on document for every world at once.
  *
- * The layout/lifecycle events (`caviready`, `cavi-resize`,
+ * The layout/lifecycle events (`caviready`, `cavierror`, `cavi-resize`,
  * `cavi-transform-change`) predate this map and are dispatched by
  * worldwc.ts/resize.ts/Cavi directly — see CAVI_EVENT_NAMES for the full list.
  */
@@ -45,6 +45,7 @@ export type CaviEventName = keyof CaviEventDetailMap;
 /** Every event name cavijs dispatches, in rough lifecycle order. */
 export const CAVI_EVENT_NAMES: readonly string[] = [
   'caviready',
+  'cavierror',
   'cavi-resize',
   'cavi-transform-change',
   'cavi-wire-add',

@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Fake } from './fake';
+import type { Wire } from '../core/wire';
 import { Jack } from '../component/jack';
 import { Plug } from '../component/plug';
 import { Node } from '../core/node';
@@ -58,7 +60,10 @@ function makePlug(x: number, y: number, type = 'audio'): { plug: Plug; node: Nod
   return { plug: el, node };
 }
 
-class FakeWire {
+class FakeWire implements Fake<
+  Wire,
+  'getNode' | 'getIndex' | 'getNodeCount' | 'addNodeAt' | 'setColor'
+> {
   private nodes: Node[];
   constructor(x1: number, y1: number, x2: number, y2: number, count: number) {
     this.nodes = [];
@@ -79,13 +84,22 @@ class FakeWire {
   getNodeCount(): number {
     return this.nodes.length;
   }
-  addNodeAt(index: number, x: number, y: number, fixed: boolean): void {
+  addNodeAt(index: number, x: number, y: number, fixed = false): void {
     this.nodes.splice(index, 0, new Node(x, y, fixed));
   }
   setColor(): void {}
 }
 
-class FakeCavi {
+class FakeCavi implements Fake<
+  Cavi,
+  | 'getCableDropBehavior'
+  | 'getPlugSpreadMode'
+  | 'getPlugSpreadRadiusMultiplier'
+  | 'getPlugSpreadRecompactDelayMs'
+  | 'addWire'
+  | 'getContainer'
+  | 'deleteWire'
+> {
   public getCableDropBehavior = (): 'cancel' | 'dangle' | 'detach' => 'detach';
   public getPlugSpreadMode = (): 'towardOther' | 'radial' => 'towardOther';
   public getPlugSpreadRadiusMultiplier = (): number => 1.8;

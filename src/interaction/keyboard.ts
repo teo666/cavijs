@@ -92,10 +92,10 @@ export class KeyboardInteractionController implements IInteractionController {
    */
   private _idleTab(el: Jack | Plug, e: KeyboardEvent): boolean {
     if (el instanceof Jack) {
-      const plugs = el.plugs;
-      if (e.shiftKey || plugs.length === 0) return false;
+      const first = el.plugs[0];
+      if (e.shiftKey || !first) return false;
       e.preventDefault();
-      plugs[0].focus();
+      first.focus();
       return true;
     }
     const jack = el.jack;
@@ -104,12 +104,13 @@ export class KeyboardInteractionController implements IInteractionController {
     const i = plugs.indexOf(el);
     if (e.shiftKey) {
       e.preventDefault();
-      (i > 0 ? plugs[i - 1] : jack).focus();
+      (plugs[i - 1] ?? jack).focus();
       return true;
     }
-    if (i >= 0 && i < plugs.length - 1) {
+    const after = i >= 0 ? plugs[i + 1] : undefined;
+    if (after) {
       e.preventDefault();
-      plugs[i + 1].focus();
+      after.focus();
       return true;
     }
     // Past the jack's last plug: back on the jack, and the browser's own
@@ -189,7 +190,7 @@ export class KeyboardInteractionController implements IInteractionController {
       dir > 0
         ? (list.find((j) => !ref || isBefore(ref, j)) ?? list[0])
         : ([...list].reverse().find((j) => !ref || isBefore(j, ref)) ?? list[list.length - 1]);
-    next.focus(); // _handleFocusIn moves the free end there
+    next?.focus(); // _handleFocusIn moves the free end there
   }
 
   private _handleFocusIn = (e: FocusEvent): void => {
@@ -205,8 +206,9 @@ export class KeyboardInteractionController implements IInteractionController {
     }
     // Shift+Tab onto a jack with plugs: its last plug, as Tab would have
     // gone jack, plugs, next jack.
-    if (backTab && el instanceof Jack && el.plugs.length > 0) {
-      el.plugs[el.plugs.length - 1].focus();
+    const last = backTab && el instanceof Jack ? el.plugs.at(-1) : undefined;
+    if (last) {
+      last.focus();
       return;
     }
     this._setSpreadJack(el instanceof Plug ? el.jack : null);

@@ -66,7 +66,7 @@ test.describe('sleeping', () => {
     const later = await positions();
 
     const drift = Math.max(
-      ...asleep.map(([x, y], i) => Math.hypot(later[i][0] - x, later[i][1] - y))
+      ...asleep.map(([x, y], i) => Math.hypot(later[i]![0]! - x!, later[i]![1]! - y!))
     );
     test
       .info()
@@ -98,7 +98,8 @@ test.describe('sleeping', () => {
         return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
       });
     });
-    const mid = { x: (ends[0].x + ends[1].x) / 2, y: (ends[0].y + ends[1].y) / 2 };
+    const [a, b] = ends as [{ x: number; y: number }, { x: number; y: number }];
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     await page.mouse.move(mid.x - 80, mid.y + 40);
     await moveTo(page, { x: mid.x + 80, y: mid.y + 40 }, 20);
 

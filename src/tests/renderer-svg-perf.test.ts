@@ -107,6 +107,55 @@ describe('SvgRenderer — writes only what changed', () => {
   });
 });
 
+describe('SvgRenderer — the path it draws', () => {
+  /** What SvgRenderer draws for a still cable of 5 nodes from (0, 0) to (100, 0). */
+  function draw(renderType: number) {
+    const world = new World();
+    world.setAcceleration(0, 0);
+    const wire = world.addWire(0, 0, 100, 0, 5, 25, 4, renderType);
+    wire.setColor('#abcdef');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const renderer = new SvgRenderer(container, world);
+    world.setRenderer(renderer);
+    renderer.render();
+    const path = container.querySelector('#wireLayer path')!;
+    const drawn = {
+      d: path.getAttribute('d')!,
+      stroke: path.getAttribute('stroke'),
+      width: path.getAttribute('stroke-width'),
+    };
+    renderer.stop();
+    return drawn;
+  }
+
+  const num = String.raw`-?\d+(?:\.\d+)?(?:e-?\d+)?`;
+
+  it('draws a segments cable as one line per node, through every node', () => {
+    const { d } = draw(0);
+    expect(d).toMatch(new RegExp(`^M ${num} ${num}(?: L ${num} ${num}){4}$`));
+    const xs = [...d.matchAll(new RegExp(`[ML] (${num}) ${num}`, 'g'))].map((m) => Number(m[1]));
+    expect(xs[0]).toBeCloseTo(0);
+    expect(xs.at(-1)).toBeCloseTo(100);
+  });
+
+  it('draws a bezier cable with cubic curves only, ending on the last node', () => {
+    const { d } = draw(1);
+    expect(d).toMatch(/^M /);
+    expect(d).toContain(' C ');
+    expect(d).not.toContain(' L ');
+    const last = d.trim().split(/[ ,]+/).slice(-2).map(Number);
+    expect(last[0]).toBeCloseTo(100);
+    expect(last[1]).toBeCloseTo(0);
+  });
+
+  it('strokes with the cable color and twice its radius', () => {
+    const { stroke, width } = draw(0);
+    expect(stroke).toBe('#abcdef');
+    expect(width).toBe('8');
+  });
+});
+
 describe('World.getWiresView', () => {
   it('is the live list, while getWires() is a copy', () => {
     const world = new World();

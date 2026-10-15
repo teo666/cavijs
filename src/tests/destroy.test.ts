@@ -86,7 +86,7 @@ describe('Cavi.destroy', () => {
       ['3', ''],
     ]) {
       const plug = document.createElement('cavi-plug');
-      plug.setAttribute('node', node);
+      plug.setAttribute('node', node!);
       if (jackId) plug.setAttribute('jack', jackId);
       wireEl.appendChild(plug);
     }

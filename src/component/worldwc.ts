@@ -122,7 +122,16 @@ export class CaviWorldElement extends HTMLElement {
     this.resizeController.attach(this, canvas, surface ?? undefined);
 
     if (!wasmInit) wasmInit = Cavi.initWasm();
-    wasmInit.then(() => this._setup());
+    const attempt = wasmInit;
+    attempt.then(
+      () => this._setup(),
+      (error: unknown) => {
+        // Forget the failed load, so a world connected later tries again.
+        if (wasmInit === attempt) wasmInit = null;
+        console.error('<cavi-world>: the cavi WASM module failed to load.', error);
+        this.dispatchEvent(new CustomEvent('cavierror', { detail: { error }, bubbles: true }));
+      }
+    );
   }
 
   /** The <canvas> named by the `canvas` attribute, if any. */

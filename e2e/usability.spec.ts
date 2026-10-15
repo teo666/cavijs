@@ -93,7 +93,7 @@ test.describe('live attributes', () => {
         radius: wire.getRadius(),
         color: wire.getColor(),
         renderType: wire.getRenderType(),
-        lastPlugNode: plugs[1].getAttribute('node'),
+        lastPlugNode: plugs[1]!.getAttribute('node'),
         stillPlugged: plugs.map((p) => p.jack?.id ?? null),
       };
     });

@@ -21,6 +21,8 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}/cavijs/`,
     channel: process.env.PW_CHANNEL ?? 'chrome',
     viewport: { width: 1280, height: 900 },
+    // In CI, a failed test keeps its trace (uploaded by .github/workflows/ci.yml).
+    trace: process.env.CI ? 'retain-on-failure' : 'off',
   },
   webServer: {
     command: `pnpm exec vite --port ${PORT} --strictPort`,

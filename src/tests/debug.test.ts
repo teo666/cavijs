@@ -138,7 +138,7 @@ describe('collectStats', () => {
       startFixed: true,
       endFixed: false,
     });
-    expect(stats.wireList[0].length).toBeGreaterThan(0);
+    expect(stats.wireList[0]!.length).toBeGreaterThan(0);
     expect(stats.bufferBytes % 4).toBe(0);
   });
 });

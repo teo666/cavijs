@@ -25,6 +25,10 @@ test.describe('standard controller (demo-jack-plug: click to pick up, click to d
   });
 
   test('a cable dropped in empty space falls away and is deleted', async ({ page }) => {
+    // Stronger gravity: what is tested is the cleanup, not the fall. At the
+    // demo's gravity the fall alone took long enough to time out once, with
+    // many tests sharing the machine.
+    await page.locator('cavi-world').evaluate((w) => w.setAttribute('gravity-y', '40'));
     const before = await wireCount(page);
     const removed = page.evaluate(
       () =>

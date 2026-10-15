@@ -249,9 +249,9 @@ export class Renderer implements IRenderer {
 
     for (let wireIdx = 0; wireIdx < wireCount; wireIdx++) {
       offset++; // node count — unused here
-      const radius = wireData[offset++];
-      const renderType = wireData[offset++];
-      const pathLength = wireData[offset++];
+      const radius = wireData[offset++]!;
+      const renderType = wireData[offset++]!;
+      const pathLength = wireData[offset++]!;
 
       if (pathLength < 2) {
         offset += pathLength;
@@ -261,7 +261,7 @@ export class Renderer implements IRenderer {
       ctx.beginPath();
 
       // Start at first point
-      ctx.moveTo(wireData[offset], wireData[offset + 1]);
+      ctx.moveTo(wireData[offset]!, wireData[offset + 1]!);
 
       offset += 2;
 
@@ -269,19 +269,19 @@ export class Renderer implements IRenderer {
       if (renderType === 0) {
         // Render as segments
         while (offset < targetOffset) {
-          const x = wireData[offset++];
-          const y = wireData[offset++];
+          const x = wireData[offset++]!;
+          const y = wireData[offset++]!;
           ctx.lineTo(x, y);
         }
       } else {
         // Render as Bezier curves
         while (offset < targetOffset) {
-          const cp1x = wireData[offset++];
-          const cp1y = wireData[offset++];
-          const cp2x = wireData[offset++];
-          const cp2y = wireData[offset++];
-          const x = wireData[offset++];
-          const y = wireData[offset++];
+          const cp1x = wireData[offset++]!;
+          const cp1y = wireData[offset++]!;
+          const cp2x = wireData[offset++]!;
+          const cp2y = wireData[offset++]!;
+          const x = wireData[offset++]!;
+          const y = wireData[offset++]!;
 
           ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
         }

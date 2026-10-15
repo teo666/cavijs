@@ -58,7 +58,7 @@ export function wireCount(page: Page): Promise<number> {
 export function lastCableJacks(page: Page): Promise<(string | null)[]> {
   return page.evaluate(() => {
     const wires = document.querySelectorAll('cavi-wire');
-    const last = wires[wires.length - 1];
+    const last = wires[wires.length - 1]!;
     return [...last.querySelectorAll('cavi-plug')]
       .map((p) => (p as unknown as { jack: { id: string } | null }).jack?.id ?? null)
       .sort();

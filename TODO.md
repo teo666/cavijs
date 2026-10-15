@@ -16,15 +16,18 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
   `<cavi-world>` (documentati in `03-api`), tastiera ed Escape, codice duplicato e morto rimosso, modello
   della trasformazione di coordinate documentato, log del debug che distingue i plug, tastiera come
   controller separato (`KeyboardInteractionController`, più controller per `<cavi-interaction>`) che sposta
-  anche i plug già collegati, con Tab che si ferma solo sui jack compatibili.
+  anche i plug già collegati, con Tab che si ferma solo sui jack compatibili, un cavo mai con i due capi
+  nello stesso jack, `<cavi-controls>` spostato negli esempi, documentazione allineata al codice, file
+  inutili rimossi, `tsconfig` più severo, test su path SVG, `sizeCanvasToHost`, errore di caricamento del
+  WASM (`cavierror`) e touch, finti oggetti dei test controllati sulle classi vere, workflow di CI.
 - **`cavi`:** `step()` separato da `build_render_data(alpha)`, parametri del passo configurabili, cavi che
   partono dritti, cavo tenuto (`pointer_radius`), sospensione, lancio al rilascio, distanza tra i nodi
-  separata dal raggio, `intersect` vero, README.
+  separata dal raggio, `intersect` vero, README, panic leggibili in console (`set_panic_hook` usato).
 
 ## Ordine consigliato
 
-1. Le due verifiche a occhio qui sotto, poi il rilascio di `cavi`: sblocca il merge su `main` e la CI.
-2. La CI, appena la dipendenza torna su una versione pubblicata.
+1. Le due verifiche a occhio qui sotto, poi il rilascio di `cavi`: sblocca il merge su `main`.
+2. Far girare la CI una prima volta (vedi "Manutenzione").
 3. "Packaging", solo se vuoi pubblicare cavijs su npm.
 4. Il resto quando capita.
 
@@ -69,9 +72,9 @@ Tutto fatto.
 - [ ] La libreria non è pubblicabile: `private: true` in `package.json`, nessuno script
       `prepublishOnly`/`prepare` che costruisca `dist-lib`.
 - [ ] Inizializzazione del WASM non configurabile: non si può passare l'URL del `.wasm` (CDN, CSP,
-      bundler diversi da Vite), e se il caricamento fallisce ogni `<cavi-world>` resta bloccato senza
-      errori e senza riprovare (`worldwc.ts`, promessa senza `.catch`). Documentare il setup per i bundler.
-- [ ] Importare la libreria registra tutti i custom element, compresi `<cavi-debug>` e `<cavi-controls>`.
+      bundler diversi da Vite). Documentare il setup per i bundler. (Un caricamento fallito ora dà un
+      errore e l'evento `cavierror`, e il `<cavi-world>` successivo riprova.)
+- [ ] Importare la libreria registra tutti i custom element, compreso `<cavi-debug>`.
       Proteggere ogni `customElements.define` con `customElements.get`, aggiungere `sideEffects` in
       `package.json` e separare i punti d'ingresso (`cavijs`, `cavijs/elements`, `cavijs/debug`).
 
@@ -79,28 +82,16 @@ Tutto fatto.
 
 - [ ] Il controller d3 dell'esempio (`examples/d3-interaction.ts`) non ha ancora Escape. La tastiera ce l'ha
       già: l'esempio gli affianca `KeyboardInteractionController`.
+- [ ] Col touch non si sposta un plug già collegato: senza hover i plug di un jack non si aprono a
+      ventaglio, quindi una pressione su un jack con cavi crea sempre un cavo nuovo. Servirebbe un gesto per
+      aprirli (per esempio una pressione lunga sul jack) in `StandardInteractionController`.
 
 ## Manutenzione
 
-- [ ] Test end-to-end "a cable dropped in empty space falls away and is deleted": fallito una volta (timeout
-      a 30 s) su molte esecuzioni, non riprodotto. Ipotesi: con il carico di molti test in parallelo Chrome
-      scende sotto i 10 frame al secondo, il passo fisico perde tempo (`MAX_ELAPSED_MS`) e il cavo cade
-      troppo piano. Se ricapita, guardare il trace (`npx playwright test --trace on`).
-- [ ] La CI non esegue test (unitari ed end-to-end), lint, controllo del formato né `build:lib`, e non gira
-      sulle PR. Su questo branch fallirebbe comunque finché la dipendenza punta a `../cavi/pkg`. Per gli
-      end-to-end in CI: Chrome è già presente sui runner Ubuntu di GitHub (`channel: 'chrome'`).
-- [ ] `<cavi-controls>` è codice vecchio: indici dei cavi 0..2 e canvas 1000×600 scritti a mano,
-      `alert`/`confirm`, `setCavi` chiamato più volte avvia nuovi timer, non regge uno spostamento nel DOM,
-      ignora i mondi multipli. Sostituirlo con `<cavi-debug>` o spostarlo negli esempi.
-- [ ] Test mancanti: disegno dei path SVG (unitario; negli end-to-end è coperto solo "disegna qualcosa"),
-      `sizeCanvasToHost`, errore di caricamento del WASM, interazione touch. I finti oggetti dei test non sono controllati rispetto alle classi vere
-      (`satisfies Pick<Cavi, ...>`), e alcuni test accedono a membri privati.
-- [ ] Documentazione con percorsi vecchi: `02-architecture`, `03-api`, `04-getting-started` e
-      `05-jack-plug` citano `src/main.ts`, `src/cavi.ts`, `src/jack.ts` e altri file che non esistono più
-      (18 occorrenze); `03-api` non documenta `SvgRenderer` né `<cavi-debug>`. Il README presenta ancora
-      Socket e Jack come "future implementation".
-- [ ] File inutili nel repository: 12 screenshot `shot-*.png` (2,1 MB) nella radice, `examples/style2.css`,
-      `examples/typescript.svg`, il blocco commentato in `examples/main.ts`.
-- [ ] `tsconfig`: attivare `noUnusedLocals`, `noUnusedParameters`, `noUncheckedIndexedAccess`; togliere
-      `vite/client` dai tipi della build della libreria.
-- [ ] `cavi`: la funzione `set_panic_hook` non è usata (warning a ogni build).
+- [ ] La CI (`.github/workflows/ci.yml`: lint, formato, test unitari, build, `build:lib`, end-to-end, su
+      push a `main` e sulle PR) è scritta ma non ha ancora girato. Finché `package.json` punta a
+      `link:../cavi/pkg` compila anche `teo666/cavi`: impostare la variabile di repository `CAVI_REF`
+      (oggi `render-interpolation`) e, se `cavi` è privato, il segreto `CAVI_TOKEN`. Il workflow delle
+      Pages (`deploy-pages.yml`) invece fallisce finché la dipendenza non torna su npm.
+- [ ] Alcuni test unitari leggono o scrivono membri privati (`_spread`, `_applySpreadPositions`, ...):
+      funzionano, ma si rompono a ogni rinomina interna.

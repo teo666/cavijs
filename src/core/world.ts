@@ -15,7 +15,11 @@ const PARKED_MOUSE = -1e6;
  * Colors given to new wires that get none of their own, in creation order
  * (see addWire).
  */
-export const DEFAULT_WIRE_COLORS: readonly string[] = ['#00ff88', '#ff00ff', '#ffaa00'];
+export const DEFAULT_WIRE_COLORS: readonly [string, ...string[]] = [
+  '#00ff88',
+  '#ff00ff',
+  '#ffaa00',
+];
 
 /** Default physics rate of advance(), in steps per second. */
 const DEFAULT_STEP_RATE = 60;
@@ -109,7 +113,7 @@ export class World {
     // A default color of its own, fixed at creation: picked by position at
     // draw time instead, every later wire changed color when one was deleted.
     // Callers with a color of their own (<cavi-wire>) just overwrite it.
-    wire.setColor(DEFAULT_WIRE_COLORS[this._wiresCreated++ % DEFAULT_WIRE_COLORS.length]);
+    wire.setColor(DEFAULT_WIRE_COLORS[this._wiresCreated++ % DEFAULT_WIRE_COLORS.length]!);
     this.wires.push(wire);
     return wire;
   }
@@ -127,9 +131,9 @@ export class World {
       const [removed] = this.wires.splice(index, 1);
       // Invalidate the deleted handle and shift every later one down in
       // place, so references held elsewhere stay valid (see Wire._setIndex).
-      removed._setIndex(-1);
+      removed!._setIndex(-1);
       for (let i = index; i < this.wires.length; i++) {
-        this.wires[i]._setIndex(i);
+        this.wires[i]!._setIndex(i);
       }
     }
   }
@@ -220,10 +224,7 @@ export class World {
    * Get a wire by its index
    */
   public getWireByIndex(index: number): Wire | null {
-    if (index >= 0 && index < this.wires.length) {
-      return this.wires[index];
-    }
-    return null;
+    return this.wires[index] ?? null;
   }
 
   /**

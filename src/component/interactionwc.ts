@@ -48,7 +48,7 @@ export class CaviInteractionElement extends HTMLElement {
   }
 
   /** The first controller; setting it replaces the whole list with just that one. */
-  public get controller(): IInteractionController {
+  public get controller(): IInteractionController | undefined {
     return this.controllers[0];
   }
 

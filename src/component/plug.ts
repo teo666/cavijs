@@ -48,7 +48,7 @@ export class Plug extends HTMLElement {
     return ['plugged', 'magnet-class', 'freeze-on-drop'];
   }
 
-  attributeChangedCallback(name: string, oldValue: string, newValue: string) {
+  attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
     if (name === 'plugged') {
       this.render();
     }

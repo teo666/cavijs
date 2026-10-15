@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Fake } from './fake';
+import type { Wire } from '../core/wire';
 import { Cavi } from '../core/cavi';
 import { Node } from '../core/node';
 import type { Jack } from '../component/jack';
@@ -63,7 +65,18 @@ class FakeWireStore {
 }
 
 /** Minimal stand-in for the WASM-backed Wire, enough to drive CaviWireElement's setup. */
-class FakeWire {
+class FakeWire implements Fake<
+  Wire,
+  | 'getNode'
+  | 'getNodeCount'
+  | 'getNodeX'
+  | 'getNodeY'
+  | 'getIndex'
+  | '_setIndex'
+  | 'addNodeAt'
+  | 'setColor'
+  | 'getColor'
+> {
   private store: FakeWireStore;
   private index: number;
 
@@ -98,7 +111,7 @@ class FakeWire {
   }
 
   /** Mirrors WasmWire::add_node_at — a plain insert that leaves every other node untouched. */
-  addNodeAt(nodeIndex: number, x: number, y: number, fixed: boolean): void {
+  addNodeAt(nodeIndex: number, x: number, y: number, fixed = false): void {
     this.store.addNodeAt(this.index, nodeIndex, new Node(x, y, fixed));
   }
 
@@ -114,7 +127,15 @@ class FakeWire {
 }
 
 /** Minimal stand-in for Cavi, enough to drive CaviWireElement's setup + orphan cleanup. */
-class FakeCavi {
+class FakeCavi implements Fake<
+  Cavi,
+  | 'addWire'
+  | 'deleteWire'
+  | 'getWireByIndex'
+  | 'getContainer'
+  | 'getWorld'
+  | 'getCoordinateTransform'
+> {
   public deletedIndices: number[] = [];
   /** Stand-in for World's frame tasks (see runCleanupCheck). */
   public frameTasks = new Set<FrameTask>();
@@ -140,13 +161,15 @@ class FakeCavi {
    * obtained before this call (e.g. cached by a CaviWireElement) keeps
    * pointing at the right data.
    */
-  deleteWire(index: number): void {
+  deleteWire(wire: Wire | number): void {
+    // wirewc deletes by index; a handle works too, as on the real Cavi.
+    const index = typeof wire === 'number' ? wire : this.wires.indexOf(wire as unknown as FakeWire);
     this.deletedIndices.push(index);
     this.store.deleteWire(index);
     const [removed] = this.wires.splice(index, 1);
     removed?._setIndex(-1);
     for (let i = index; i < this.wires.length; i++) {
-      this.wires[i]._setIndex(i);
+      this.wires[i]!._setIndex(i);
     }
   }
 

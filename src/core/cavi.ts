@@ -105,7 +105,6 @@ export class Cavi {
   }
 
   private world: World;
-  private wasm: InitOutput | null = null;
   /**
    * What happens to a brand-new cable (created by clicking an
    * empty/exposed Jack — see Jack.createCable/finishCableSession) when

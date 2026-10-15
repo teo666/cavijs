@@ -69,17 +69,18 @@ La stessa istantanea usata dal pannello, esportata per usarla altrove (test, tel
 
 Tutti sono `CustomEvent` con `bubbles: true`, inviati sul container del renderer (l'elemento `<cavi-world>`), quindi si possono ascoltare sul mondo o su `document`. I tipi dei `detail` sono in `CaviEventDetailMap`; l'elenco completo è `CAVI_EVENT_NAMES`.
 
-| Evento                  | Quando                                      | `detail`                           |
-| ----------------------- | ------------------------------------------- | ---------------------------------- |
-| `caviready`             | il `<cavi-world>` ha creato il suo `Cavi`   | `{ cavi }`                         |
-| `cavi-resize`           | il container ha cambiato dimensione         | `{ width, height }`                |
-| `cavi-transform-change` | `notifyCoordinateTransformChanged()`        | —                                  |
-| `cavi-wire-add`         | un `<cavi-wire>` ha creato il suo cavo WASM | `{ wire, element }`                |
-| `cavi-wire-remove`      | un `<cavi-wire>` ha cancellato il suo cavo  | `{ wire, element, index, reason }` |
-| `cavi-plug-attach`      | un plug si collega a un jack                | `{ plug, jack }`                   |
-| `cavi-plug-detach`      | un plug si stacca da un jack                | `{ plug, jack }`                   |
-| `cavi-cable-start`      | inizia la creazione di un cavo da un jack   | `{ jack, wire }`                   |
-| `cavi-cable-end`        | finisce la creazione di un cavo             | `{ jack, wire, result, target }`   |
+| Evento                  | Quando                                                                               | `detail`                           |
+| ----------------------- | ------------------------------------------------------------------------------------ | ---------------------------------- |
+| `caviready`             | il `<cavi-world>` ha creato il suo `Cavi`                                            | `{ cavi }`                         |
+| `cavierror`             | il modulo WASM non si è caricato (anche nel log; il prossimo `<cavi-world>` riprova) | `{ error }`                        |
+| `cavi-resize`           | il container ha cambiato dimensione                                                  | `{ width, height }`                |
+| `cavi-transform-change` | `notifyCoordinateTransformChanged()`                                                 | —                                  |
+| `cavi-wire-add`         | un `<cavi-wire>` ha creato il suo cavo WASM                                          | `{ wire, element }`                |
+| `cavi-wire-remove`      | un `<cavi-wire>` ha cancellato il suo cavo                                           | `{ wire, element, index, reason }` |
+| `cavi-plug-attach`      | un plug si collega a un jack                                                         | `{ plug, jack }`                   |
+| `cavi-plug-detach`      | un plug si stacca da un jack                                                         | `{ plug, jack }`                   |
+| `cavi-cable-start`      | inizia la creazione di un cavo da un jack                                            | `{ jack, wire }`                   |
+| `cavi-cable-end`        | finisce la creazione di un cavo                                                      | `{ jack, wire, result, target }`   |
 
 `reason` di `cavi-wire-remove`: `cleanup` (un cavo orfano eliminato fuori vista, vedi [cavi orfani](./05-jack-plug.md#eliminazione-dei-cavi-orfani-fuori-vista)) o `removed` (l'elemento è uscito dal DOM).
 

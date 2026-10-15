@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Cavi as RealCavi } from '../core/cavi';
+import type { Fake } from './fake';
 
 /**
  * jsdom implements no ResizeObserver, and <cavi-world> creates one on
@@ -18,7 +20,25 @@ beforeEach(() => {
 });
 
 vi.mock('../core/cavi', () => {
-  class FakeCavi {
+  class FakeCavi implements Fake<
+    RealCavi,
+    | 'getRenderer'
+    | 'setRenderer'
+    | 'getWorld'
+    | 'setAcceleration'
+    | 'setDebugDrawNodes'
+    | 'setWireShadows'
+    | 'setCableDropBehavior'
+    | 'setOrphanCleanup'
+    | 'setSleepEnabled'
+    | 'setStepRate'
+    | 'setPlugSpreadMode'
+    | 'setPlugSpreadRadiusMultiplier'
+    | 'setPlugSpreadRecompactDelayMs'
+    | 'setCoordinateTransformProvider'
+    | 'destroy'
+    | 'isDestroyed'
+  > {
     static shared: unknown = null;
     static initWasm = vi.fn(() => Promise.resolve());
     private renderer: unknown = null;
