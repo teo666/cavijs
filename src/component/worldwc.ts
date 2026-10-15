@@ -171,6 +171,8 @@ export class CaviWorldElement extends HTMLElement {
     if (stepRate !== null && Number.isFinite(parseFloat(stepRate))) {
       cavi.setStepRate(parseFloat(stepRate));
     }
+    const sleep = this.getAttribute('sleep');
+    if (sleep === 'on' || sleep === 'off') cavi.setSleepEnabled(sleep === 'on');
     const orphanCleanup = this.getAttribute('orphan-cleanup');
     if (orphanCleanup === 'on' || orphanCleanup === 'off') {
       cavi.setOrphanCleanup(orphanCleanup === 'on');

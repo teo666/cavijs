@@ -14,6 +14,8 @@ export interface WireStats {
   /** Whether the first/last node is fixed (plugged into a jack, or held). */
   startFixed: boolean;
   endFixed: boolean;
+  /** Put to sleep by the engine (see World.setSleepEnabled). */
+  asleep: boolean;
 }
 
 /** A snapshot of one Cavi world, as shown by <cavi-debug>. */
@@ -28,6 +30,11 @@ export interface CaviStats {
   freeEnds: number;
   /** Wires with no terminal fixed (see CaviWireElement.isOrphan). */
   orphanWires: number;
+  /** Wires the engine put to sleep, and whether sleeping is on. */
+  sleepingWires: number;
+  sleepEnabled: boolean;
+  /** Index of the wire held by a drag, null if none (see World.holdWire). */
+  heldWire: number | null;
   /** Size of the per-frame render buffer shared with WASM. */
   bufferBytes: number;
   jacks: number;
@@ -110,6 +117,7 @@ export function collectStats(cavi: Cavi): CaviStats {
       color: wire.getColor(),
       startFixed,
       endFixed,
+      asleep: wasm.is_wire_sleeping(index),
     });
   }
 
@@ -129,6 +137,9 @@ export function collectStats(cavi: Cavi): CaviStats {
     maxNodes,
     freeEnds,
     orphanWires,
+    sleepingWires: wasm.sleeping_wire_count(),
+    sleepEnabled: wasm.get_sleep_enabled(),
+    heldWire: wasm.get_held_wire() ?? null,
     bufferBytes: wasm.wire_data_len() * Float32Array.BYTES_PER_ELEMENT,
     jacks: jacks.length,
     fullJacks: jacks.filter((jack) => !jack.canAcceptMore()).length,

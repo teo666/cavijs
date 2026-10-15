@@ -242,6 +242,15 @@ export class Cavi {
     return this.world.getStepRate();
   }
 
+  /** See World.setSleepEnabled — sleeping of still cables, on by default. */
+  public setSleepEnabled(enabled: boolean): void {
+    this.world.setSleepEnabled(enabled);
+  }
+
+  public getSleepEnabled(): boolean {
+    return this.world.getSleepEnabled();
+  }
+
   /** See World.setTimeStep — simulated time per engine sub-step, default 0.3. */
   public setTimeStep(timeStep: number): void {
     this.world.setTimeStep(timeStep);

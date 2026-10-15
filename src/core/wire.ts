@@ -141,12 +141,35 @@ export class Wire {
   }
 
   /**
-   * Change the radius of the wire
+   * Change the radius (thickness) of the wire. Does not change the distance
+   * between its nodes — see setLinkDistance.
    */
   public setRadius(radius: number): void {
     if (this.world && this.wireIndex >= 0) {
       this.world.set_wire_radius(this.wireIndex, radius);
     }
+  }
+
+  /**
+   * Rest distance between neighbouring nodes (the `tension` given at
+   * creation): shorter makes a tauter cable for the same node count.
+   */
+  public setLinkDistance(distance: number): void {
+    if (this.world && this.wireIndex >= 0) {
+      this.world.set_wire_link_distance(this.wireIndex, distance);
+    }
+  }
+
+  public getLinkDistance(): number {
+    if (this.world && this.wireIndex >= 0) {
+      return this.world.get_wire_link_distance(this.wireIndex);
+    }
+    return 0;
+  }
+
+  /** Whether the engine put this wire to sleep (see World.setSleepEnabled). */
+  public isSleeping(): boolean {
+    return this.world && this.wireIndex >= 0 ? this.world.is_wire_sleeping(this.wireIndex) : false;
   }
 
   /**

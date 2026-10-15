@@ -27,6 +27,7 @@ getStepRate(): number
 setTimeStep(timeStep: number): void     // simulated time per engine sub-step, default 0.3
 setSubsteps(substeps: number): void     // engine sub-steps per step, default 2 (changes speed too)
 setConstraintIterations(iterations: number): void  // link relaxation passes per sub-step, default 1 (stiffness only)
+setSleepEnabled(enabled: boolean): void  // see World.setSleepEnabled
 render(): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
@@ -66,6 +67,14 @@ getStepRate(): number
 setTimeStep(timeStep: number): void     // simulated time per engine sub-step, default 0.3
 setSubsteps(substeps: number): void     // engine sub-steps per step, default 2 (changes speed too)
 setConstraintIterations(iterations: number): void  // link relaxation passes per sub-step, default 1 (stiffness only)
+holdWire(wire: Wire): void              // the wire being dragged: the mouse leaves it alone
+releaseHeldWire(wire?: Wire): void       // only if `wire` is the held one, when given
+getHeldWire(): Wire | null
+setPointerRadius(radius: number): void   // the held point's reach on the other wires, default 20
+setSleepEnabled(enabled: boolean): void  // sleeping of still wires, default true
+setSleepThreshold(threshold: number): void  // default 0.01
+setSleepSteps(steps: number): void       // default 30
+getSleepingWireCount(): number
 setMouse(x: number, y: number): void
 releaseMouse(): void                    // parks the engine mouse out of reach
 getWireDataPtr(): number
@@ -96,6 +105,9 @@ setColor(color: string): void
 getColor(): string | undefined
 setRadius(radius: number): void
 getRadius(): number
+setLinkDistance(distance: number): void  // rest distance between nodes (setRadius no longer changes it)
+getLinkDistance(): number
+isSleeping(): boolean
 getIndex(): number
 ```
 

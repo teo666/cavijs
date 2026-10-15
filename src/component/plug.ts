@@ -3,6 +3,7 @@ import { Jack } from './jack'; // Ensure Jack is imported if we check types
 import { Cavi } from '../core/cavi';
 import { clientToWorld, IDENTITY_TRANSFORM } from '../core/coords';
 import { emitCaviEvent } from '../core/events';
+import type { CaviWireElement } from './wirewc';
 
 /**
  * Plug represents a movable terminal of a cable. Can be attached/detached
@@ -219,6 +220,7 @@ export class Plug extends HTMLElement {
     this.removeAttribute('plugged');
     this._node.fixed = true;
     this.style.zIndex = '1000';
+    this._setHeld(true);
   }
 
   /**
@@ -275,6 +277,7 @@ export class Plug extends HTMLElement {
   public endDrag(): void {
     if (!this._node) return;
     this._dragging = false;
+    this._setHeld(false);
     this.style.zIndex = '';
     const bestJack = Jack.findSnapTarget(this, this._type);
     this._setMagnetTarget(null);
@@ -289,9 +292,23 @@ export class Plug extends HTMLElement {
   public cancelDrag(): void {
     if (!this._node) return;
     this._dragging = false;
+    this._setHeld(false);
     this.style.zIndex = '';
     this._setMagnetTarget(null);
     this._settleDrag(null);
+  }
+
+  /**
+   * Tells this Plug's world that its cable is held — or no longer held —
+   * by the drag (see World.holdWire), so the mouse sitting on this Plug
+   * doesn't push the cable's own nodes away from it.
+   */
+  private _setHeld(held: boolean): void {
+    const wire = (this.closest('cavi-wire') as CaviWireElement | null)?.getWire?.();
+    const world = Cavi.for(this)?.getWorld?.();
+    if (!wire || !world) return;
+    if (held) world.holdWire?.(wire);
+    else world.releaseHeldWire?.(wire);
   }
 
   /**

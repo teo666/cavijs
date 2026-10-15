@@ -410,7 +410,10 @@ export class CaviDebugElement extends HTMLElement {
     this._setText('fps', stats.fps === null ? '—' : String(stats.fps));
     this._$('fpsTile').classList.toggle('warn', stats.fps !== null && stats.fps < 50);
     this._setText('wires', String(stats.wires));
-    this._setText('freeEnds', `${stats.freeEnds} free ends · ${stats.orphanWires} orphan`);
+    this._setText(
+      'freeEnds',
+      `${stats.freeEnds} free ends · ${stats.orphanWires} orphan · ${stats.sleepingWires} asleep`
+    );
     this._setText('nodes', String(stats.nodes));
     this._setText(
       'nodeRange',
@@ -427,6 +430,7 @@ export class CaviDebugElement extends HTMLElement {
     this._setText('stepRate', `${formatNumber(stats.stepRate, 1)} /s`);
     this._setText('substeps', `${stats.substeps} × ${formatNumber(stats.timeStep, 3)}`);
     this._setText('constraintIterations', String(stats.constraintIterations));
+    this._setText('heldWire', stats.heldWire === null ? '—' : `#${stats.heldWire}`);
     this._setText('buffer', formatBytes(stats.bufferBytes));
 
     this._setText(
@@ -454,7 +458,7 @@ export class CaviDebugElement extends HTMLElement {
       .slice(0, MAX_WIRE_ROWS)
       .map(
         (w) =>
-          `<tr><td>${w.index}</td><td><span class="swatch" style="background:${esc(w.color ?? 'transparent')}"></span></td><td>${w.nodes}</td><td>${formatNumber(w.radius, 1)}</td><td>${Math.round(w.length)}</td><td class="ends" title="start ${w.startFixed ? 'fixed' : 'free'}, end ${w.endFixed ? 'fixed' : 'free'}">${w.startFixed ? '●' : '○'}${w.endFixed ? '●' : '○'}</td></tr>`
+          `<tr${w.asleep ? ' class="asleep" title="asleep"' : ''}><td>${w.index}</td><td><span class="swatch" style="background:${esc(w.color ?? 'transparent')}"></span></td><td>${w.nodes}</td><td>${formatNumber(w.radius, 1)}</td><td>${Math.round(w.length)}</td><td class="ends" title="start ${w.startFixed ? 'fixed' : 'free'}, end ${w.endFixed ? 'fixed' : 'free'}">${w.startFixed ? '●' : '○'}${w.endFixed ? '●' : '○'}</td></tr>`
       );
     if (stats.wireList.length > MAX_WIRE_ROWS) {
       rows.push(
@@ -512,6 +516,7 @@ export class CaviDebugElement extends HTMLElement {
       el.checked = cavi.getWireShadows();
     });
     set('orphanCleanup', (el) => (el.checked = cavi.getOrphanCleanup()));
+    set('sleepEnabled', (el) => (el.checked = cavi.getSleepEnabled()));
     set('cableDrop', (el) => (el.value = cavi.getCableDropBehavior()));
     set('spreadMode', (el) => (el.value = cavi.getPlugSpreadMode()));
   }
@@ -645,6 +650,9 @@ export class CaviDebugElement extends HTMLElement {
     });
     this._$('wireShadows').addEventListener('change', (e) => {
       this._cavi?.setWireShadows((e.target as HTMLInputElement).checked);
+    });
+    this._$('sleepEnabled').addEventListener('change', (e) => {
+      this._cavi?.setSleepEnabled((e.target as HTMLInputElement).checked);
     });
     this._$('orphanCleanup').addEventListener('change', (e) => {
       this._cavi?.setOrphanCleanup((e.target as HTMLInputElement).checked);
@@ -979,6 +987,7 @@ const TEMPLATE = `
   td { text-align: right; padding: 2px 4px; font-variant-numeric: tabular-nums; }
   th:first-child, td:first-child { text-align: left; }
   tbody tr:nth-child(odd) { background: rgba(255, 255, 255, 0.02); }
+  tbody tr.asleep { opacity: 0.45; }
   td.more { text-align: center; color: var(--cavi-debug-muted); font-family: var(--cavi-debug-font); }
   .swatch { display: inline-block; width: 18px; height: 6px; border-radius: 3px; vertical-align: middle; border: 1px solid rgba(255,255,255,0.15); }
   .ends { letter-spacing: 1px; color: var(--cavi-debug-accent); }
@@ -1116,7 +1125,7 @@ const TEMPLATE = `
         <dt>Gravity</dt><dd id="gravity">—</dd>
         <dt>Friction</dt><dd id="friction">—</dd>
         <dt>Mouse radius</dt><dd id="mouseRadius">—</dd>
-        <dt>Pointer radius</dt><dd id="pointerRadius">—</dd>
+        <dt>Pointer radius (held)</dt><dd id="pointerRadius">—</dd>
         <dt>Response coef.</dt><dd id="responseCoef">—</dd>
         <dt>Step rate</dt><dd id="stepRate">—</dd>
         <dt>Sub-steps × dt</dt><dd id="substeps">—</dd>
@@ -1129,6 +1138,7 @@ const TEMPLATE = `
       <summary>View</summary>
       <dl>
         <dt>Pointer (world)</dt><dd id="pointer">—</dd>
+        <dt>Held wire</dt><dd id="heldWire">—</dd>
         <dt>Zoom</dt><dd id="zoom">—</dd>
         <dt>Pan</dt><dd id="pan">—</dd>
         <dt>Container</dt><dd id="container">—</dd>
@@ -1141,6 +1151,7 @@ const TEMPLATE = `
         <label>Draw nodes &amp; radii <input type="checkbox" id="debugNodes"></label>
         <label>Wire shadows <input type="checkbox" id="wireShadows"></label>
         <label title="Delete cables with no fixed end once they leave the view">Orphan cleanup <input type="checkbox" id="orphanCleanup"></label>
+        <label title="Stop simulating cables that are standing still">Sleep still cables <input type="checkbox" id="sleepEnabled"></label>
         <label>Cable drop
           <select id="cableDrop">
             <option value="detach">detach</option>

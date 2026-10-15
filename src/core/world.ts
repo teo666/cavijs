@@ -219,6 +219,83 @@ export class World {
   }
 
   /**
+   * Marks `wire` as held by the user — one of its ends is being dragged,
+   * or it is being pulled out of a jack. While held, the mouse (which sits
+   * on the dragged end) no longer pushes that wire's own nodes away, and
+   * pushes the other wires within the pointer radius (setPointerRadius)
+   * instead of the mouse radius. See WasmWorld.set_held_wire.
+   */
+  public holdWire(wire: Wire): void {
+    const index = wire.getIndex();
+    if (index >= 0) this.wasmWorld.set_held_wire(index);
+  }
+
+  /**
+   * Ends a hold. With `wire`, only if that is the held wire — so the end of
+   * one gesture never releases another gesture's wire.
+   */
+  public releaseHeldWire(wire?: Wire): void {
+    const held = this.wasmWorld.get_held_wire();
+    if (held === undefined) return;
+    if (wire && wire.getIndex() !== held) return;
+    this.wasmWorld.release_held_wire();
+  }
+
+  /** The wire currently held, if any. */
+  public getHeldWire(): Wire | null {
+    const held = this.wasmWorld.get_held_wire();
+    return held === undefined ? null : (this.wires[held] ?? null);
+  }
+
+  /** Radius within which the held point pushes the other wires (default 20) — see holdWire. */
+  public setPointerRadius(radius: number): void {
+    this.wasmWorld.set_pointer_radius(radius);
+  }
+
+  public getPointerRadius(): number {
+    return this.wasmWorld.get_pointer_radius();
+  }
+
+  /**
+   * Whether still wires are put to sleep (default true): a wire whose nodes
+   * all moved less than getSleepThreshold() in each of getSleepSteps()
+   * steps in a row is skipped by the simulation until something can move
+   * it again — the mouse coming near, a node moved, fixed or released, a
+   * changed parameter. Saves CPU with many cables at rest. See
+   * WasmWorld.set_sleep_enabled.
+   */
+  public setSleepEnabled(enabled: boolean): void {
+    this.wasmWorld.set_sleep_enabled(enabled);
+  }
+
+  public getSleepEnabled(): boolean {
+    return this.wasmWorld.get_sleep_enabled();
+  }
+
+  /** Largest movement of a node in a step that still counts as still (default 0.01). */
+  public setSleepThreshold(threshold: number): void {
+    this.wasmWorld.set_sleep_threshold(threshold);
+  }
+
+  public getSleepThreshold(): number {
+    return this.wasmWorld.get_sleep_threshold();
+  }
+
+  /** Still steps in a row before a wire sleeps (default 30, half a second at 60 steps/s). */
+  public setSleepSteps(steps: number): void {
+    this.wasmWorld.set_sleep_steps(Math.max(1, Math.round(steps)));
+  }
+
+  public getSleepSteps(): number {
+    return this.wasmWorld.get_sleep_steps();
+  }
+
+  /** How many wires are asleep right now. */
+  public getSleepingWireCount(): number {
+    return this.wasmWorld.sleeping_wire_count();
+  }
+
+  /**
    * Simulated time covered by one engine sub-step (default 0.3). Together
    * with setStepRate and setSubsteps it sets how fast the simulation runs;
    * larger values are faster but less stable.

@@ -27,6 +27,7 @@ getStepRate(): number
 setTimeStep(timeStep: number): void     // tempo simulato per sotto-passo del motore, default 0.3
 setSubsteps(substeps: number): void     // sotto-passi del motore per passo, default 2 (cambia anche la velocità)
 setConstraintIterations(iterations: number): void  // passate di rilassamento dei vincoli per sotto-passo, default 1 (solo rigidità)
+setSleepEnabled(enabled: boolean): void  // vedi World.setSleepEnabled
 render(): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
@@ -66,6 +67,14 @@ getStepRate(): number
 setTimeStep(timeStep: number): void     // tempo simulato per sotto-passo del motore, default 0.3
 setSubsteps(substeps: number): void     // sotto-passi del motore per passo, default 2 (cambia anche la velocità)
 setConstraintIterations(iterations: number): void  // passate di rilassamento dei vincoli per sotto-passo, default 1 (solo rigidità)
+holdWire(wire: Wire): void              // il cavo trascinato: il mouse non lo respinge
+releaseHeldWire(wire?: Wire): void       // solo se `wire` è quello tenuto, quando indicato
+getHeldWire(): Wire | null
+setPointerRadius(radius: number): void   // portata del punto tenuto sugli altri cavi, default 20
+setSleepEnabled(enabled: boolean): void  // sospensione dei cavi fermi, default true
+setSleepThreshold(threshold: number): void  // default 0.01
+setSleepSteps(steps: number): void       // default 30
+getSleepingWireCount(): number
 setMouse(x: number, y: number): void
 releaseMouse(): void                    // parcheggia il mouse del motore fuori portata
 getWireDataPtr(): number
@@ -96,6 +105,9 @@ setColor(color: string): void
 getColor(): string | undefined
 setRadius(radius: number): void
 getRadius(): number
+setLinkDistance(distance: number): void  // distanza a riposo tra i nodi (setRadius non la cambia più)
+getLinkDistance(): number
+isSleeping(): boolean
 getIndex(): number
 ```
 

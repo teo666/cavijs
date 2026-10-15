@@ -885,6 +885,8 @@ export class Jack extends HTMLElement {
     followNode.fixed = true;
     followPlug.update();
 
+    // Held while it is being pulled: see World.holdWire.
+    cavi.getWorld?.().holdWire?.(wire);
     emitCaviEvent(cavi, this, 'cavi-cable-start', { jack: this, wire });
     return { wireEl, wire, jack: this, originPlug, followPlug, followNode, magnetJack: null };
   }
@@ -1014,6 +1016,7 @@ export class Jack extends HTMLElement {
    * removes the in-progress <cavi-wire> outright.
    */
   public static finishCableSession(session: CableSession): void {
+    Jack._releaseSessionHold(session);
     const bestJack = Jack.findSnapTarget(session.followPlug, session.jack.type, session.jack);
     Jack._setSessionMagnetTarget(session, null);
 
@@ -1057,9 +1060,14 @@ export class Jack extends HTMLElement {
 
   /** Abandons an in-progress cable-creation session: free end left dangling. */
   public static cancelCableSession(session: CableSession): void {
+    Jack._releaseSessionHold(session);
     Jack._setSessionMagnetTarget(session, null);
     session.followNode.fixed = false;
     Jack._emitCableEnd(session, 'abort', null);
+  }
+
+  private static _releaseSessionHold(session: CableSession): void {
+    Cavi.for(session.jack)?.getWorld?.().releaseHeldWire?.(session.wire);
   }
 
   private static _emitCableEnd(
