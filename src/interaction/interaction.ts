@@ -3,6 +3,11 @@ import { Jack } from '../component/jack';
 import { Plug } from '../component/plug';
 import type { IInteractionController } from '../core/types';
 
+/** How long (ms) a touch press on a Jack with Plugs is held still before its fan opens. */
+export const LONG_PRESS_MS = 400;
+/** How far (viewport px) the finger may wander during that press before it counts as a drag instead. */
+export const LONG_PRESS_SLOP = 8;
+
 /**
  * The standard pointer/mouse/touch interaction: everything Jack/Plug used
  * to handle internally (drag an existing Plug, create a cable from a Jack,
@@ -23,6 +28,13 @@ import type { IInteractionController } from '../core/types';
  * to the Jack, same as clicking the Jack itself; a spread-out Plug is
  * clicked directly since it now occupies its own screen position.
  *
+ * Touch has no hover, so a long press (LONG_PRESS_MS, the finger held
+ * still within LONG_PRESS_SLOP) on a Jack that already has Plugs opens its
+ * fan instead (Jack.holdSpread) and keeps it open: the next press on one of
+ * those spread-out Plugs drags it, and any other press closes the fan (and
+ * still does what it would have done). A touch press on such a Jack that
+ * moves before then starts a new cable as usual; a short tap does nothing.
+ *
  * Pointer only: the keyboard is KeyboardInteractionController's
  * (src/interaction/keyboard.ts), which <cavi-interaction> attaches next to
  * this one.
@@ -35,6 +47,10 @@ import type { IInteractionController } from '../core/types';
 export class StandardInteractionController implements IInteractionController {
   private _attached: boolean = false;
   private _cavi: Cavi | null = null;
+  /** The Jack whose fan a touch long press opened, held until the next press. */
+  private _heldSpread: Jack | null = null;
+  /** Gives up the touch press waiting to become a long press or a drag, if any. */
+  private _cancelPendingPress: (() => void) | null = null;
 
   public attach(cavi: Cavi): void {
     if (this._attached) return;
@@ -49,6 +65,8 @@ export class StandardInteractionController implements IInteractionController {
     this._attached = false;
     document.removeEventListener('pointerdown', this._handlePointerDown);
     document.removeEventListener('pointermove', this._handleHoverMove);
+    this._cancelPendingPress?.();
+    this._setHeldSpread(null);
     // Leaving hover state stuck would strand this world's hover-spread/
     // full-jack preview in whatever state it was in at the moment of detach.
     Jack.setPointerHoverPosition(null, null, this._cavi);
@@ -64,11 +82,19 @@ export class StandardInteractionController implements IInteractionController {
   }
 
   private _handleHoverMove = (e: PointerEvent): void => {
+    // A finger only "hovers" while it drags something (for the full-jack
+    // preview): otherwise it would fan out whatever jack it rests on, and
+    // leave it open once lifted.
+    if (e.pointerType === 'touch' && !Jack.isDragActive(this._cavi)) return;
     // Only this world's jacks: each world's controller feeds its own.
     Jack.setPointerHoverPosition(e.clientX, e.clientY, this._cavi);
   };
 
   private _handlePointerDown = (e: PointerEvent): void => {
+    // Any press closes a fan held open by a long press. If it lands on one
+    // of that fan's plugs, the plug is still spread out (the fan only
+    // recompacts after a delay), so it is picked up below.
+    this._setHeldSpread(null);
     if (e.button !== 0) return;
     const el = this._closestCaviElement(e);
     if (!el) return;
@@ -83,7 +109,7 @@ export class StandardInteractionController implements IInteractionController {
       // start a new cable from that Jack physically lands here instead.
       // Forward it verbatim rather than silently swallowing it.
       if (!el.isSpread() && el.jack) {
-        this._startCableCreation(el.jack, e);
+        this._pressJack(el.jack, e);
         return;
       }
       this._startPlugDrag(el, e);
@@ -91,9 +117,67 @@ export class StandardInteractionController implements IInteractionController {
     }
 
     if (el instanceof Jack) {
-      this._startCableCreation(el, e);
+      this._pressJack(el, e);
     }
   };
+
+  /**
+   * A press on a Jack: a new cable, except for a touch press on a Jack that
+   * already has Plugs, which waits to see whether it becomes a long press.
+   */
+  private _pressJack(jack: Jack, e: PointerEvent): void {
+    if (e.pointerType === 'touch' && jack.plugCount > 0) {
+      this._awaitLongPress(jack, e);
+      return;
+    }
+    this._startCableCreation(jack, e);
+  }
+
+  /**
+   * Waits on a touch press on `jack`: held still for LONG_PRESS_MS, it
+   * opens the jack's fan (and keeps it open, see _setHeldSpread); moved
+   * further than LONG_PRESS_SLOP first, it starts a new cable from the jack
+   * as any other press would; lifted first, it does nothing.
+   */
+  private _awaitLongPress(jack: Jack, e: PointerEvent): void {
+    e.preventDefault();
+    this._cancelPendingPress?.();
+    const pointerId = e.pointerId;
+
+    const onMove = (ev: PointerEvent): void => {
+      if (ev.pointerId !== pointerId) return;
+      if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) <= LONG_PRESS_SLOP) return;
+      cleanup();
+      this._startCableCreation(jack, e, ev.clientX, ev.clientY);
+    };
+    const onEnd = (ev: PointerEvent): void => {
+      if (ev.pointerId === pointerId) cleanup();
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      this._setHeldSpread(jack);
+    }, LONG_PRESS_MS);
+    const cleanup = (): void => {
+      clearTimeout(timer);
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onEnd);
+      document.removeEventListener('pointercancel', onEnd);
+      this._cancelPendingPress = null;
+    };
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onEnd);
+    document.addEventListener('pointercancel', onEnd);
+    this._cancelPendingPress = cleanup;
+  }
+
+  /** Keeps `jack`'s fan open (Jack.holdSpread), letting go of the one held before. */
+  private _setHeldSpread(jack: Jack | null): void {
+    if (this._heldSpread === jack) return;
+    this._heldSpread?.holdSpread(false);
+    this._heldSpread = jack;
+    jack?.holdSpread(true);
+  }
 
   /** Relocates an existing Plug, entirely through Plug's public API. */
   private _startPlugDrag(plug: Plug, e: PointerEvent): void {
@@ -109,8 +193,12 @@ export class StandardInteractionController implements IInteractionController {
     });
   }
 
-  /** Creates a new cable from a Jack, entirely through Jack's public session API. */
-  private _startCableCreation(jack: Jack, e: PointerEvent): void {
+  /**
+   * Creates a new cable from a Jack, entirely through Jack's public session
+   * API. `atX`/`atY`: where the pointer is now, when the gesture starts later
+   * than its pointerdown `e` (a touch press that waited, see _awaitLongPress).
+   */
+  private _startCableCreation(jack: Jack, e: PointerEvent, atX = e.clientX, atY = e.clientY): void {
     const session = jack.createCable(e.clientX, e.clientY);
     if (!session) return;
     this._runGesture(jack, e, {
@@ -120,6 +208,7 @@ export class StandardInteractionController implements IInteractionController {
       // Escape: the cable never existed — not an orphan left to fall away.
       abort: () => Jack.discardCableSession(session),
     });
+    if (atX !== e.clientX || atY !== e.clientY) Jack.updateCableSession(session, atX, atY);
   }
 
   /**
@@ -142,6 +231,8 @@ export class StandardInteractionController implements IInteractionController {
     const end = (handler: () => void): void => {
       cleanup();
       handler();
+      // A lifted finger no longer points anywhere (see _handleHoverMove).
+      if (!clickToCarry) Jack.setPointerHoverPosition(null, null, cavi);
       Jack.setDragActive(false, cavi);
     };
     const onMove = (ev: PointerEvent): void => {

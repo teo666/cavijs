@@ -19,7 +19,8 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
   anche i plug già collegati, con Tab che si ferma solo sui jack compatibili, un cavo mai con i due capi
   nello stesso jack, `<cavi-controls>` spostato negli esempi, documentazione allineata al codice, file
   inutili rimossi, `tsconfig` più severo, test su path SVG, `sizeCanvasToHost`, errore di caricamento del
-  WASM (`cavierror`) e touch, finti oggetti dei test controllati sulle classi vere, workflow di CI.
+  WASM (`cavierror`) e touch, plug già collegati spostabili col touch (pressione lunga sul jack che apre il
+  ventaglio), finti oggetti dei test controllati sulle classi vere, workflow di CI.
 - **`cavi`:** `step()` separato da `build_render_data(alpha)`, parametri del passo configurabili, cavi che
   partono dritti, cavo tenuto (`pointer_radius`), sospensione, lancio al rilascio, distanza tra i nodi
   separata dal raggio, `intersect` vero, README, panic leggibili in console (`set_panic_hook` usato).
@@ -82,9 +83,6 @@ Tutto fatto.
 
 - [ ] Il controller d3 dell'esempio (`examples/d3-interaction.ts`) non ha ancora Escape. La tastiera ce l'ha
       già: l'esempio gli affianca `KeyboardInteractionController`.
-- [ ] Col touch non si sposta un plug già collegato: senza hover i plug di un jack non si aprono a
-      ventaglio, quindi una pressione su un jack con cavi crea sempre un cavo nuovo. Servirebbe un gesto per
-      aprirli (per esempio una pressione lunga sul jack) in `StandardInteractionController`.
 
 ## Manutenzione
 
