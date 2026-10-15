@@ -162,13 +162,21 @@ export class Plug extends HTMLElement {
    * direction.
    */
   public getOtherEndCenter(): { x: number; y: number } | null {
+    const other = this.getOtherEnd();
+    if (!other) return null;
+    const rect = other.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }
+
+  /**
+   * The Plug at the other end of this Plug's cable (the sibling
+   * <cavi-plug> inside the same <cavi-wire>), or null if there is none.
+   */
+  public getOtherEnd(): Plug | null {
     const wireEl = this.parentElement;
     if (!wireEl) return null;
     for (const child of wireEl.children) {
-      if (child !== this && child instanceof Plug) {
-        const rect = child.getBoundingClientRect();
-        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      }
+      if (child !== this && child instanceof Plug) return child;
     }
     return null;
   }

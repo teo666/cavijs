@@ -40,17 +40,17 @@ A custom element (`cavi-jack`) with Shadow DOM.
 
 **Manipulation API**
 
-| Method                                                               | Description                                                                                          |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `canAccept(type: string) -> boolean`                                 | Returns true if `type` equals the jack's own `type`, or either is empty: an empty type is a wildcard |
-| `canAcceptMore() -> boolean`                                         | Returns true if the jack hasn't reached `max-plugs`                                                  |
-| `attach(plug: Plug)` / `detach(plug: Plug)`                          | Registers/removes an attached plug (updates `plugCount`)                                             |
-| `plugCount`                                                          | Number of currently attached plugs                                                                   |
-| `getCenter() -> { x, y }`                                            | Center point in viewport coordinates (`getBoundingClientRect`)                                       |
-| `type` (getter)                                                      | The jack's current `type`                                                                            |
-| `setMagnetActive(active: boolean)`                                   | Toggles the `magnet-class` class on the host, used for the magnet preview during drag                |
-| `Jack.registry` (static)                                             | Read-only set of every `<cavi-jack>` currently connected to the document                             |
-| `Jack.findSnapTarget(plug, type, exclude?) -> Jack \| null` (static) | Finds the nearest compatible jack within snap range, optionally excluding one                        |
+| Method                                                               | Description                                                                                                                                 |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `canAccept(type: string) -> boolean`                                 | Returns true if `type` equals the jack's own `type`, or either is empty: an empty type is a wildcard                                        |
+| `canAcceptMore() -> boolean`                                         | Returns true if the jack hasn't reached `max-plugs`                                                                                         |
+| `attach(plug: Plug)` / `detach(plug: Plug)`                          | Registers/removes an attached plug (updates `plugCount`)                                                                                    |
+| `plugCount`                                                          | Number of currently attached plugs                                                                                                          |
+| `getCenter() -> { x, y }`                                            | Center point in viewport coordinates (`getBoundingClientRect`)                                                                              |
+| `type` (getter)                                                      | The jack's current `type`                                                                                                                   |
+| `setMagnetActive(active: boolean)`                                   | Toggles the `magnet-class` class on the host, used for the magnet preview during drag                                                       |
+| `Jack.registry` (static)                                             | Read-only set of every `<cavi-jack>` currently connected to the document                                                                    |
+| `Jack.findSnapTarget(plug, type, exclude?) -> Jack \| null` (static) | Finds the nearest compatible jack within snap range, optionally excluding one; never the jack holding the other end of the plug's own cable |
 
 **API for driving cable creation** (used by `StandardInteractionController`, but callable from any custom controller)
 
@@ -138,6 +138,7 @@ A custom element (`cavi-plug`) with Shadow DOM.
 **Implementation notes**
 
 - Jack lookup goes through `Jack.findSnapTarget()` (which internally scans the static `Jack.registry`), not a DOM query.
+- A plug never snaps into the jack holding the other end of its own cable (`plug.getOtherEnd()`): a cable with both ends in one jack connects nothing. The keyboard skips that jack too. A cable declared that way in the markup is still connected.
 - `z-index`: plug uses `20`, jack uses `10`, matching the "jack under plug" requirement from the spec — relevant to the occlusion described below.
 - `touch-action: none` is set on the plug's shadow-DOM host to prevent the browser from hijacking scroll during a touch drag, when driven by a Pointer-Events-based controller.
 
@@ -187,7 +188,7 @@ Jacks are focusable (`tabindex="0"`, `role="button"`, an `aria-label` from their
 
 - **Tab** visits each jack and then the plugs plugged into it, before the next jack; **Shift+Tab** goes the same way back. The jack of a focused plug fans its plugs out (`Jack.holdSpread`), so it is visible which cable the focus is on.
 - **Space or Enter** on a jack starts a new cable from it; on a plug, picks the plug up (`plug.beginDrag()`).
-- While carrying, **Tab** (Shift+Tab backwards) only stops on the jacks that can take what is carried: the right type (`canAccept`) and room left (`canAcceptMore`), checked again on every press, plus the jack it came from. The free end moves onto the focused jack. Space or Enter plugs it in there (`Jack.finishCableSession`, or `plug.endDragAt(jack)`). On the jack it came from, it puts the plug back, or removes the new cable.
+- While carrying, **Tab** (Shift+Tab backwards) only stops on the jacks that can take what is carried: the right type (`canAccept`) and room left (`canAcceptMore`), checked again on every press, plus the jack it came from, never the jack holding the cable's other end. The free end moves onto the focused jack. Space or Enter plugs it in there (`Jack.finishCableSession`, or `plug.endDragAt(jack)`). On the jack it came from, it puts the plug back, or removes the new cable.
 - **Escape** cancels: a new cable is removed, a plug goes back into its jack, and the focus returns to where the gesture started.
 - A pointer press anywhere cancels a keyboard gesture first, so a keyboard gesture never runs alongside a pointer one. Space/Enter does nothing while a pointer gesture is in progress in that world (`Jack.isDragActive`).
 - **`detach()`** removes its listeners and cancels a gesture in progress.

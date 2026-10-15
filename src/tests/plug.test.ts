@@ -446,3 +446,23 @@ describe('Plug accessibility', () => {
     expect(el.getAttribute('aria-label')).toBe('Out L');
   });
 });
+
+describe("a cable's two ends never share a jack", () => {
+  it('a dragged plug does not snap into the jack holding its other end', () => {
+    const near = makeJack('near', 100, 100, { type: 'audio' });
+    const wire = document.createElement('div');
+    document.body.appendChild(wire);
+    const { plug: a } = makePlug(100, 100, 'audio');
+    const { plug: b } = makePlug(102, 100, 'audio');
+    wire.append(a, b);
+    a.attach(near);
+    expect(b.getOtherEnd()).toBe(a);
+
+    drag(b, 102, 100);
+    expect(b.jack).toBeNull();
+
+    const other = makeJack('other', 104, 100, { type: 'audio' });
+    drag(b, 102, 100);
+    expect(b.jack).toBe(other);
+  });
+});

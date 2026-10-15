@@ -127,14 +127,10 @@ test.describe('moving a plug', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('a jack that fills up during the gesture is no longer visited', async ({ page }) => {
-    // A scsi plug from jack6: jack5 and jack7 (empty, max 1) can take it.
+  test("skips the jack holding the cable's other end", async ({ page }) => {
+    // A scsi plug from jack6: wire2's other end is in jack5, so only jack7.
     await plug(page, 'wire2', 1).focus();
     await page.keyboard.press(' ');
-    expect(await walk(page, 'Tab', 3)).toEqual(['jack7', 'jack5', 'jack6']);
-
-    // jack5 already holds wire2's other end: with max-plugs="1" it is full.
-    await page.locator('#jack5').evaluate((j) => j.setAttribute('max-plugs', '1'));
     expect(await walk(page, 'Tab', 3)).toEqual(['jack7', 'jack6', 'jack7']);
     await page.keyboard.press('Escape');
     expect(await cableJacks(page, 'wire2')).toEqual(['jack5', 'jack6']);
@@ -161,6 +157,18 @@ test.describe('new cable', () => {
     await page.keyboard.press(' ');
     // jack1 is full; the others are midi or scsi.
     expect(await walk(page, 'Tab', 3)).toEqual(['jack2', 'jack4', 'jack2']);
+    await page.keyboard.press('Escape');
+  });
+
+  test('a jack that fills up during the gesture is no longer visited', async ({ page }) => {
+    // A new scsi cable from jack6: jack5 and jack7 (empty, max 1) can take it.
+    await page.locator('#jack6').focus();
+    await page.keyboard.press(' ');
+    expect(await walk(page, 'Tab', 3)).toEqual(['jack7', 'jack5', 'jack6']);
+
+    // jack5 already holds wire2's other end: with max-plugs="1" it is full.
+    await page.locator('#jack5').evaluate((j) => j.setAttribute('max-plugs', '1'));
+    expect(await walk(page, 'Tab', 3)).toEqual(['jack7', 'jack6', 'jack7']);
     await page.keyboard.press('Escape');
   });
 

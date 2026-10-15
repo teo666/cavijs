@@ -869,7 +869,9 @@ export class Jack extends HTMLElement {
 
   /**
    * Finds the nearest Jack compatible with `type` and with room for another
-   * Plug, within snapping distance of `plug`'s current on-screen position.
+   * Plug, within snapping distance of `plug`'s current on-screen position —
+   * never the Jack holding the other end of `plug`'s own cable: a cable
+   * with both ends in one jack connects nothing.
    * Pass `exclude` to skip a particular Jack (e.g. the one a cable is being
    * dragged out of, which should never snap to itself). Shared by both a
    * Plug's own drag-to-jack magnet effect and this class's cable-creation
@@ -891,11 +893,14 @@ export class Jack extends HTMLElement {
     // page, a cable must never snap to a jack of another simulation.
     const world = Cavi.for(plug);
 
+    const otherEndJack = plug.getOtherEnd?.()?.jack ?? null;
+
     let bestJack: Jack | null = null;
     let bestDist = CABLE_SNAP_DISTANCE;
 
     for (const jack of Jack.registry) {
       if (exclude && jack === exclude) continue;
+      if (otherEndJack && jack === otherEndJack) continue;
       if ((jack._world ?? Cavi.for(jack)) !== world) continue;
       if (!jack.canAcceptMore()) continue;
       if (!jack.canAccept(type)) continue;

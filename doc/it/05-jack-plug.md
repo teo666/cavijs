@@ -40,17 +40,17 @@ Un custom element (`cavi-jack`) con Shadow DOM.
 
 **API di manipolazione**
 
-| Metodo                                                                | Descrizione                                                                                               |
-| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `canAccept(type: string) -> boolean`                                  | Ritorna true se `type` è uguale al `type` del jack, o se uno dei due è vuoto: un tipo vuoto fa da jolly   |
-| `canAcceptMore() -> boolean`                                          | Ritorna true se il jack non ha raggiunto `max-plugs`                                                      |
-| `attach(plug: Plug)` / `detach(plug: Plug)`                           | Registra/rimuove un plug collegato (aggiorna `plugCount`)                                                 |
-| `plugCount`                                                           | Numero di plug attualmente collegati                                                                      |
-| `getCenter() -> { x, y }`                                             | Punto centrale in coordinate viewport (`getBoundingClientRect`)                                           |
-| `type` (getter)                                                       | Il `type` corrente del jack                                                                               |
-| `setMagnetActive(active: boolean)`                                    | Attiva/disattiva la classe `magnet-class` sull'host, usata per l'anteprima calamita durante il drag       |
-| `Jack.registry` (statico)                                             | Insieme di sola lettura di tutti i `<cavi-jack>` attualmente connessi al documento                        |
-| `Jack.findSnapTarget(plug, type, exclude?) -> Jack \| null` (statico) | Trova lo jack compatibile più vicino entro la soglia di aggancio (`20px`), opzionalmente escludendone uno |
+| Metodo                                                                | Descrizione                                                                                                                                                     |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `canAccept(type: string) -> boolean`                                  | Ritorna true se `type` è uguale al `type` del jack, o se uno dei due è vuoto: un tipo vuoto fa da jolly                                                         |
+| `canAcceptMore() -> boolean`                                          | Ritorna true se il jack non ha raggiunto `max-plugs`                                                                                                            |
+| `attach(plug: Plug)` / `detach(plug: Plug)`                           | Registra/rimuove un plug collegato (aggiorna `plugCount`)                                                                                                       |
+| `plugCount`                                                           | Numero di plug attualmente collegati                                                                                                                            |
+| `getCenter() -> { x, y }`                                             | Punto centrale in coordinate viewport (`getBoundingClientRect`)                                                                                                 |
+| `type` (getter)                                                       | Il `type` corrente del jack                                                                                                                                     |
+| `setMagnetActive(active: boolean)`                                    | Attiva/disattiva la classe `magnet-class` sull'host, usata per l'anteprima calamita durante il drag                                                             |
+| `Jack.registry` (statico)                                             | Insieme di sola lettura di tutti i `<cavi-jack>` attualmente connessi al documento                                                                              |
+| `Jack.findSnapTarget(plug, type, exclude?) -> Jack \| null` (statico) | Trova lo jack compatibile più vicino entro la soglia di aggancio (`20px`), opzionalmente escludendone uno; mai il jack che tiene l'altro capo del cavo del plug |
 
 **API per pilotare la creazione di un nuovo cavo** (usata da `StandardInteractionController`, ma richiamabile da qualunque controller custom)
 
@@ -138,6 +138,7 @@ Un custom element (`cavi-plug`) con Shadow DOM.
 **Note implementative**
 
 - La ricerca dei jack avviene tramite `Jack.findSnapTarget()` (che internamente scorre il registro statico `Jack.registry`), non tramite query DOM.
+- Un plug non si aggancia mai al jack che tiene l'altro capo del suo stesso cavo (`plug.getOtherEnd()`): un cavo con entrambi i capi nello stesso jack non collega niente. Anche la tastiera salta quel jack. Un cavo dichiarato così nel markup viene comunque collegato.
 - `z-index`: plug usa `20`, jack usa `10`, coerentemente col requisito "jack sotto plug" della spec — rilevante per l'occlusione descritta sotto.
 - `touch-action: none` è impostato nello shadow DOM del plug per evitare che il browser intercetti lo scroll durante il trascinamento touch, quando pilotato da un controller basato su Pointer Events.
 
@@ -187,7 +188,7 @@ I jack sono raggiungibili con il focus (`tabindex="0"`, `role="button"`, un `ari
 
 - **Tab** passa da ogni jack e poi dai plug collegati a quel jack, prima del jack successivo; **Maiusc+Tab** fa lo stesso giro al contrario. Il jack di un plug con il focus apre a ventaglio i suoi plug (`Jack.holdSpread`), così si vede su quale cavo è il focus.
 - **Spazio o Invio** su un jack avvia un cavo nuovo; su un plug, lo prende (`plug.beginDrag()`).
-- Mentre porti qualcosa, **Tab** (Maiusc+Tab all'indietro) si ferma solo sui jack che lo possono ospitare: tipo giusto (`canAccept`) e posto libero (`canAcceptMore`), controllati di nuovo a ogni pressione, più il jack da cui è partito. Il capo libero si sposta sul jack con il focus. Spazio o Invio lo collega lì (`Jack.finishCableSession`, o `plug.endDragAt(jack)`). Sul jack di partenza, rimette a posto il plug, o rimuove il cavo nuovo.
+- Mentre porti qualcosa, **Tab** (Maiusc+Tab all'indietro) si ferma solo sui jack che lo possono ospitare: tipo giusto (`canAccept`) e posto libero (`canAcceptMore`), controllati di nuovo a ogni pressione, più il jack da cui è partito, mai quello che tiene l'altro capo del cavo. Il capo libero si sposta sul jack con il focus. Spazio o Invio lo collega lì (`Jack.finishCableSession`, o `plug.endDragAt(jack)`). Sul jack di partenza, rimette a posto il plug, o rimuove il cavo nuovo.
 - **Esc** annulla: un cavo nuovo viene rimosso, un plug torna nel suo jack, e il focus torna dove il gesto era partito.
 - Una pressione del puntatore, ovunque, annulla prima il gesto da tastiera, così un gesto da tastiera non convive mai con uno del puntatore. Spazio/Invio non fa niente mentre in quel mondo è in corso un gesto del puntatore (`Jack.isDragActive`).
 - **`detach()`** rimuove i suoi listener e annulla un gesto in corso.

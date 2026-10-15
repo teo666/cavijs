@@ -14,7 +14,8 @@ import type { IInteractionController } from '../core/types';
  *   focused plug fans its plugs out, so it is visible which one it is.
  * - Space or Enter on a jack starts a new cable; on a plug, picks it up.
  * - While carrying, Tab only stops on the jacks that can take what is
- *   carried (right type, room left), and moves the free end there; Space
+ *   carried (right type, room left, not the jack holding the cable's
+ *   other end), and moves the free end there; Space
  *   or Enter plugs it in. On the jack it came from, Space/Enter puts it
  *   back (a new cable: removes it).
  * - Escape cancels: a new cable is removed, a plug goes back where it was.
@@ -173,6 +174,8 @@ export class KeyboardInteractionController implements IInteractionController {
     if (!carry) return false;
     // Where it came from is always offered, to put it back.
     if (jack === carry.origin) return true;
+    // Never both ends of one cable in the same jack (see Jack.findSnapTarget).
+    if (carry.kind === 'plug' && jack === carry.plug.getOtherEnd()?.jack) return false;
     const type = carry.kind === 'plug' ? carry.plug.type : carry.session.jack.type;
     return jack.canAccept(type) && jack.canAcceptMore();
   }
