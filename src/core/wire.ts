@@ -225,6 +225,17 @@ export class Wire {
     return 0;
   }
 
+  /** How the wire is drawn: 0 = straight segments, 1 = bezier curve. */
+  public setRenderType(renderType: number): void {
+    if (this.world && this.wireIndex >= 0) {
+      this.world.set_wire_render_type(this.wireIndex, renderType);
+    }
+  }
+
+  public getRenderType(): number {
+    return this.world && this.wireIndex >= 0 ? this.world.get_wire_render_type(this.wireIndex) : 1;
+  }
+
   /** Whether the engine put this wire to sleep (see World.setSleepEnabled). */
   public isSleeping(): boolean {
     return this.world && this.wireIndex >= 0 ? this.world.is_wire_sleeping(this.wireIndex) : false;

@@ -3,7 +3,7 @@ import type { Wire } from '../core/wire';
 import type { Node } from '../core/node';
 import type { CaviWireElement } from './wirewc';
 import { Cavi } from '../core/cavi';
-import { clientToWorld, IDENTITY_TRANSFORM, type CoordinateTransform } from '../core/coords';
+import { IDENTITY_TRANSFORM, type CoordinateTransform } from '../core/coords';
 import { emitCaviEvent, type CableEndResult } from '../core/events';
 import type { FrameTask } from '../core/frame';
 import './wirewc';
@@ -182,6 +182,17 @@ export class Jack extends HTMLElement {
 
   connectedCallback() {
     Jack._registry.add(this);
+    // Reachable from the keyboard (see StandardInteractionController:
+    // Enter/Space starts a cable, Tab carries it to another jack). An
+    // author's own tabindex, role or label wins.
+    if (!this.hasAttribute('tabindex')) this.tabIndex = 0;
+    if (!this.hasAttribute('role')) this.setAttribute('role', 'button');
+    if (!this.hasAttribute('aria-label')) {
+      this.setAttribute(
+        'aria-label',
+        [this.type || null, 'jack', this.id || null].filter(Boolean).join(' ')
+      );
+    }
     this.render();
     this.updatePosition();
     // <cavi-world>'s Cavi instance is created asynchronously (after WASM
@@ -588,53 +599,14 @@ export class Jack extends HTMLElement {
     return this._clientToLocal(c.x, c.y);
   }
 
-  /**
-   * The element world coordinate (0, 0) is anchored on: the renderer's own
-   * container (<cavi-world>) of the world `el` belongs to (see Cavi.for),
-   * never an individual element's `offsetParent`.
-   *
-   * Anchoring on `offsetParent` — as this class and Plug used to — silently
-   * splits the coordinate space the moment the page nests any
-   * `position: relative` wrapper between <cavi-world> and its jacks (a
-   * CSS-Grid panel, a draggable module box, a card, ...): that wrapper
-   * becomes the *jacks'* offsetParent, while a <cavi-plug> (child of a
-   * `display: contents` <cavi-wire> hanging directly off <cavi-world>) and
-   * the canvas keep resolving against the container. Every jack in such a
-   * wrapper then reports a position short by the wrapper's own offset, and
-   * its cables render visibly detached from it. One shared anchor removes
-   * the whole class of bug — and the CSS contortions consumers otherwise
-   * need to keep every wrapper unpositioned.
-   */
-  private static _worldContainerOf(el: Element): HTMLElement {
-    return Cavi.for(el)?.getContainer?.() ?? document.body;
-  }
-
-  /** The registered screen<->world transform of `el`'s world, or identity if none/no Cavi. */
-  private static _worldTransformOf(el: Element): CoordinateTransform {
-    return Cavi.for(el)?.getCoordinateTransform?.() ?? IDENTITY_TRANSFORM;
-  }
-
+  /** The registered screen<->world transform of this Jack's world, or identity if none. */
   private _worldTransform(): CoordinateTransform {
-    return Jack._worldTransformOf(this);
+    return Cavi.for(this)?.getCoordinateTransform?.() ?? IDENTITY_TRANSFORM;
   }
 
-  /**
-   * Converts a raw viewport point (e.g. PointerEvent.clientX/clientY) into
-   * the container-relative world space of `el`'s world — used everywhere a
-   * session/drag needs to place a node under the live cursor (createCable,
-   * updateCableSession, ...), and by getWorldPosition() for a measured
-   * element center.
-   */
-  private static _clientToLocalOf(
-    el: Element,
-    clientX: number,
-    clientY: number
-  ): { x: number; y: number } {
-    return clientToWorld(clientX, clientY, Jack._worldContainerOf(el), Jack._worldTransformOf(el));
-  }
-
+  /** A viewport point in this Jack's world coordinates — see Cavi.clientToWorldOf. */
   private _clientToLocal(clientX: number, clientY: number): { x: number; y: number } {
-    return Jack._clientToLocalOf(this, clientX, clientY);
+    return Cavi.clientToWorldOf(this, clientX, clientY);
   }
 
   private updatePosition() {
@@ -748,6 +720,11 @@ export class Jack extends HTMLElement {
                 ${explicitPosition ? 'transform: translate(-50%, -50%); /* Centered on coordinates */' : ''}
                 cursor: crosshair; /* Hints that dragging from here creates a cable */
                 touch-action: none; /* Prevent the browser from scrolling while dragging on touch */
+                outline: none;
+                border-radius: 50%;
+            }
+            :host(:focus-visible) {
+                box-shadow: 0 0 0 3px #4fc3f7;
             }
             .base {
                 position: absolute;
@@ -879,7 +856,7 @@ export class Jack extends HTMLElement {
     // threshold silently shrinks the snap ring to a fraction of a jack when
     // zoomed in, and grows it over several neighboring jacks when zoomed
     // out — the snap stops matching what the user sees.
-    const center = Jack._clientToLocalOf(
+    const center = Cavi.clientToWorldOf(
       plug,
       rect.left + rect.width / 2,
       rect.top + rect.height / 2
@@ -950,7 +927,7 @@ export class Jack extends HTMLElement {
     // a <cavi-plug> is `position: absolute` with left/top in world
     // coordinates, so it must resolve against the container's padding box
     // (the same origin the canvas and every conversion use — see
-    // _worldContainerOf). Next to the Jack, any positioned or transformed
+    // Cavi.clientToWorldOf). Next to the Jack, any positioned or transformed
     // wrapper in between (a CSS-Grid panel, a module box dragged with
     // `transform`, ...) would become the plugs' containing block instead,
     // and the plugs would render offset by that wrapper's own position.
@@ -1033,19 +1010,22 @@ export class Jack extends HTMLElement {
     return wire.getNode(count - 1)!;
   }
 
-  /**
-   * Toggles the magnet-highlight pairing (candidate Jack + the session's
-   * follow Plug) for an in-progress cable-creation session, mirroring
-   * Plug's own private _setMagnetTarget but keyed off session state instead
-   * of an instance field, since a Jack doesn't own any particular
-   * cable-creation session the way a Plug owns its own drag.
-   */
+  /** The magnet highlight of a cable-creation session (see switchMagnet). */
   private static _setSessionMagnetTarget(session: CableSession, jack: Jack | null): void {
-    if (jack === session.magnetJack) return;
-    session.magnetJack?.setMagnetActive(false);
-    jack?.setMagnetActive(true);
-    session.magnetJack = jack;
-    session.followPlug.setMagnetActive(jack !== null);
+    session.magnetJack = Jack.switchMagnet(session.magnetJack, jack, session.followPlug);
+  }
+
+  /**
+   * Moves the magnet highlight of a dragged `plug` from the Jack it was
+   * over (`from`) to the one it is over now (`to`, null for none) — shared
+   * by a Plug's own drag and a cable-creation session. Returns `to`.
+   */
+  public static switchMagnet(from: Jack | null, to: Jack | null, plug: Plug): Jack | null {
+    if (to === from) return to;
+    from?.setMagnetActive(false);
+    to?.setMagnetActive(true);
+    plug.setMagnetActive(to !== null);
+    return to;
   }
 
   /**
@@ -1153,6 +1133,20 @@ export class Jack extends HTMLElement {
       // view (Cavi.orphanCleanup), instead of simulating it forever.
     }
     Jack._emitCableEnd(session, behavior, null);
+  }
+
+  /**
+   * Discards an in-progress cable-creation session as if it never
+   * happened: the new <cavi-wire> is removed (e.g. Escape). Emits
+   * `cavi-cable-end` with result 'cancel'.
+   */
+  public static discardCableSession(session: CableSession): void {
+    Jack._releaseSessionHold(session);
+    Jack._setSessionMagnetTarget(session, null);
+    session.originPlug.detach();
+    session.followPlug.detach();
+    session.wireEl.remove();
+    Jack._emitCableEnd(session, 'cancel', null);
   }
 
   /** Abandons an in-progress cable-creation session: free end left dangling. */

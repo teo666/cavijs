@@ -39,15 +39,6 @@ export class Renderer implements IRenderer {
   private debugDrawNodes: boolean = false;
   private rafId: number | null = null;
   private running: boolean = false;
-  /**
-   * Memoized wire-color -> highlight-color lookups (see lightenColor) — this
-   * runs every frame for every wire, so a color string is only ever
-   * normalized/mixed once, not re-parsed on every draw call.
-   */
-  private highlightColorCache = new Map<string, string>();
-  /** Offscreen 1x1 canvas reused to normalize arbitrary CSS color strings (hex/named/rgb/...) into RGB, for lightenColor. */
-  private colorProbeCanvas: HTMLCanvasElement | null = null;
-  private colorProbeContext: CanvasRenderingContext2D | null = null;
   /** See setWireShadows. */
   private wireShadows: boolean = false;
   /** Offscreen layers of the shadow pass, created on first use (see drawWireShadows). */
@@ -236,46 +227,6 @@ export class Renderer implements IRenderer {
   }
 
   /**
-   * Normalizes any CSS color string (hex, named, rgb(), ...) by painting it
-   * into a reused 1x1 offscreen canvas and reading the resulting pixel back,
-   * then mixes it toward white by `amount` (0-1) and returns an `rgba(...)`
-   * string with `alpha` baked in — used to derive a cable's highlight color
-   * from its own base color (see drawAllWires). Memoized in
-   * highlightColorCache, keyed by the exact (color, amount, alpha) request,
-   * since this would otherwise re-parse/re-paint on every frame for every
-   * wire.
-   */
-  private lightenColor(color: string, amount: number, alpha: number): string {
-    const cacheKey = `${color}|${amount}|${alpha}`;
-    const cached = this.highlightColorCache.get(cacheKey);
-    if (cached) return cached;
-
-    if (!this.colorProbeCanvas) {
-      this.colorProbeCanvas = document.createElement('canvas');
-      this.colorProbeCanvas.width = 1;
-      this.colorProbeCanvas.height = 1;
-      this.colorProbeContext = this.colorProbeCanvas.getContext('2d');
-    }
-    const probe = this.colorProbeContext;
-    let result: string;
-    if (!probe) {
-      // Extremely unlikely (2D context unavailable) — fall back to a
-      // neutral light gray rather than crashing the render loop.
-      result = `rgba(255, 255, 255, ${alpha})`;
-    } else {
-      probe.clearRect(0, 0, 1, 1);
-      probe.fillStyle = color;
-      probe.fillRect(0, 0, 1, 1);
-      const [r, g, b] = probe.getImageData(0, 0, 1, 1).data;
-      const mix = (channel: number) => Math.round(channel + (255 - channel) * amount);
-      result = `rgba(${mix(r)}, ${mix(g)}, ${mix(b)}, ${alpha})`;
-    }
-
-    this.highlightColorCache.set(cacheKey, result);
-    return result;
-  }
-
-  /**
    * Builds each wire's path into `ctx` straight from WASM memory (zero
    * copy), calling `visit` once per drawable wire with its path ready to
    * stroke. Shared by the shadow pass and the base color pass, so both
@@ -434,7 +385,6 @@ export class Renderer implements IRenderer {
     ctx.lineJoin = 'round';
 
     this.traceWires(ctx, (wireIdx, radius) => {
-      // Get wire instance to access metadata
       // Every wire gets a color at creation (World.addWire); the fallback
       // only covers one explicitly cleared.
       const wireColor = wires[wireIdx]?.getColor() || DEFAULT_WIRE_COLORS[0];
@@ -442,20 +392,6 @@ export class Renderer implements IRenderer {
       ctx.lineWidth = radius * 2;
       ctx.strokeStyle = wireColor;
       ctx.stroke();
-
-      // // Highlight pass, on the same path already built above: a thin,
-      // // lighter centerline streak to fake a rounded/glossy tube — cheap
-      // // approximation vs. a true perpendicular-offset highlight, which
-      // // the 2D canvas API doesn't give you for free.
-      // // A small ctx.filter blur softens its edge into the base color
-      // // beneath instead of reading as a hard-edged second stroke — much
-      // // cheaper than a true cross-section gradient, which would need the
-      // // path re-built as an offset polygon per curve segment.
-      // ctx.filter = `blur(${radius * 0.35}px)`;
-      // ctx.lineWidth = radius * 0.7;
-      // ctx.strokeStyle = this.lightenColor(wireColor, 0.45, 0.5);
-      // ctx.stroke();
-      // ctx.filter = 'none';
     });
   }
 

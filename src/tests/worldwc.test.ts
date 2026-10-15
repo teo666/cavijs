@@ -36,6 +36,7 @@ vi.mock('../core/cavi', () => {
     setWireShadows = vi.fn();
     setCableDropBehavior = vi.fn();
     setOrphanCleanup = vi.fn();
+    setSleepEnabled = vi.fn();
     setStepRate = vi.fn();
     setPlugSpreadMode = vi.fn();
     setPlugSpreadRadiusMultiplier = vi.fn();
@@ -137,6 +138,21 @@ describe('CaviWorldElement', () => {
     expect(cavi.setAcceleration).toHaveBeenCalledWith(3, 12);
     expect(cavi.setDebugDrawNodes).toHaveBeenCalledWith(true);
     expect(cavi.setWireShadows).toHaveBeenCalledWith(true);
+  });
+
+  it('applies settings attributes changed after setup, and restores the default when removed', async () => {
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    document.body.appendChild(world);
+    await flushMicrotasks();
+    const cavi = world.getCavi()!;
+
+    world.setAttribute('step-rate', '90');
+    world.setAttribute('gravity-y', '-2');
+    expect(cavi.setStepRate).toHaveBeenLastCalledWith(90);
+    expect(cavi.setAcceleration).toHaveBeenLastCalledWith(0, -2);
+
+    world.removeAttribute('step-rate');
+    expect(cavi.setStepRate).toHaveBeenLastCalledWith(60);
   });
 
   it('reads cable-drop-behavior/plug-spread-*/orphan-cleanup/step-rate attributes into Cavi at setup', async () => {

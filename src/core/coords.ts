@@ -9,11 +9,16 @@
  * engine, regardless of any CSS transform the consumer applies for zoom/pan.
  */
 export interface CoordinateTransform {
-  /** Uniform zoom factor. 1 = no zoom. */
+  /** Uniform zoom factor. 1 = no zoom. The only part cavijs itself uses. */
   scale: number;
-  /** Pan offset, in screen px. */
+  /**
+   * Pan offset, in screen px — carried along (d3-zoom and the like report
+   * one) but not needed by cavijs: every conversion it makes measures the
+   * container's on-screen position (clientToWorld/containerOrigin), which
+   * already includes any pan. Used only by screenToWorld/worldToScreen.
+   */
   translateX: number;
-  /** Pan offset, in screen px. */
+  /** Pan offset, in screen px — see translateX. */
   translateY: number;
 }
 
@@ -23,7 +28,13 @@ export const IDENTITY_TRANSFORM: Readonly<CoordinateTransform> = {
   translateY: 0,
 };
 
-/** Converts a screen-space point (already relative to the untransformed container origin) into world space. */
+/**
+ * Converts a screen-space point, relative to the *untransformed* container
+ * origin, into world space using the transform's own pan — a helper for
+ * code that works in that frame (e.g. a d3-zoom event's coordinates).
+ * cavijs itself uses clientToWorld, which takes viewport coordinates and
+ * reads the pan off the container's on-screen position instead.
+ */
 export function screenToWorld(
   x: number,
   y: number,
@@ -35,7 +46,7 @@ export function screenToWorld(
   };
 }
 
-/** Converts a world-space point into screen space (already relative to the untransformed container origin). */
+/** Inverse of screenToWorld: a world point into screen space relative to the untransformed container origin. */
 export function worldToScreen(
   x: number,
   y: number,

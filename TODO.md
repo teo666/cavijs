@@ -12,7 +12,9 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
   jack già aperto, tipo vuoto come jolly, `World` che rifiuta modifiche fatte direttamente sul WASM,
   `Wire.delete()`, mondi multipli isolati (anche negli shadow root), suite end-to-end Playwright,
   `SvgRenderer` che scrive nel DOM solo ciò che cambia (da 420–620 modifiche al secondo a zero con i cavi
-  fermi), `World.getWiresView()` senza copia per i renderer.
+  fermi), `World.getWiresView()` senza copia per i renderer, attributi live di `<cavi-wire>` e
+  `<cavi-world>` (documentati in `03-api`), tastiera ed Escape, codice duplicato e morto rimosso, modello
+  della trasformazione di coordinate documentato, log del debug che distingue i plug.
 - **`cavi`:** `step()` separato da `build_render_data(alpha)`, parametri del passo configurabili, cavi che
   partono dritti, cavo tenuto (`pointer_radius`), sospensione, lancio al rilascio, distanza tra i nodi
   separata dal raggio, `intersect` vero, README.
@@ -73,26 +75,17 @@ Tutto fatto.
 
 ## API e usabilità
 
-- [ ] Gli attributi di `<cavi-wire>` (`color`, `tension`, `size`, `type`) sono letti solo all'avvio: manca
-      `attributeChangedCallback`. `renderType` in camelCase non può mai corrispondere (l'HTML lo porta in
-      minuscolo): rinominarlo `render-type`. Anche gli attributi di `<cavi-world>` sono letti una volta sola.
-- [ ] Documentare gli attributi di `<cavi-world>` (`gravity-x/y`, `step-rate`, `orphan-cleanup`, `sleep`,
-      `cable-drop-behavior`, `plug-spread-*`, `debug-nodes`, `wire-shadows`, `surface`, `canvas`,
-      `no-interaction`): oggi non
-      sono descritti da nessuna parte.
-- [ ] Accessibilità: jack e plug non sono raggiungibili da tastiera; manca Escape per annullare la modalità
-      "carry" (oggi annullare un cavo vuol dire crearne uno orfano).
-- [ ] `translateX`/`translateY` della `CoordinateTransform` sono ignorati internamente (conta solo
-      `scale` più il rettangolo del container), mentre `screenToWorld`/`worldToScreen` esportati li usano:
-      due modelli diversi. Documentare o togliere i campi.
-- [ ] Codice morto e duplicato: `lightenColor` e la cache dei colori in `renderer.ts`; Plug, Jack e il
-      controller ripetono la conversione delle coordinate, il magnete e la gestione dei gesti.
-- [ ] `<cavi-debug>`: il log unisce in "×N" eventi identici anche se riguardano plug diversi, perché un
-      plug senza id viene mostrato solo come `<cavi-plug>`. Aggiungere al dettaglio il cavo o l'indice del
-      nodo.
+- [ ] Il controller d3 dell'esempio (`examples/d3-interaction.ts`) non ha ancora Escape né la tastiera, che
+      ora ha `StandardInteractionController`.
+- [ ] Da tastiera si creano cavi nuovi, ma non si sposta un capo già collegato: servirebbe un modo per
+      scegliere un plug di un jack (per esempio con le frecce) e trascinarlo.
 
 ## Manutenzione
 
+- [ ] Test end-to-end "a cable dropped in empty space falls away and is deleted": fallito una volta (timeout
+      a 30 s) su molte esecuzioni, non riprodotto. Ipotesi: con il carico di molti test in parallelo Chrome
+      scende sotto i 10 frame al secondo, il passo fisico perde tempo (`MAX_ELAPSED_MS`) e il cavo cade
+      troppo piano. Se ricapita, guardare il trace (`npx playwright test --trace on`).
 - [ ] La CI non esegue test (unitari ed end-to-end), lint, controllo del formato né `build:lib`, e non gira
       sulle PR. Su questo branch fallirebbe comunque finché la dipendenza punta a `../cavi/pkg`. Per gli
       end-to-end in CI: Chrome è già presente sui runner Ubuntu di GitHub (`channel: 'chrome'`).

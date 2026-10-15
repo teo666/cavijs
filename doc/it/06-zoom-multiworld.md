@@ -10,6 +10,8 @@ worldEl.setCoordinateTransform(() => ({ scale: t.k, translateX: t.x, translateY:
 
 (`Cavi.setCoordinateTransformProvider` in un setup manuale.) Ogni posizione del puntatore e ogni jack posizionato via CSS viene riconvertito in coordinate del mondo attraverso di esso (`clientToWorld` in `src/core/coords.ts`), così la fisica non vede mai valori scalati dallo zoom. Il provider viene letto ad ogni frame, e anche i jack posizionati via CSS vengono rimisurati ad ogni frame, quindi dopo un passo di zoom/pan non serve chiamare altro. `notifyCoordinateTransformChanged()` invia ancora `cavi-transform-change` sul mondo, per il codice della pagina che vuole reagire. Si può chiamare `setCoordinateTransform` anche prima che il mondo sia pronto: il provider viene applicato appena lo è.
 
+Di `CoordinateTransform` cavijs usa solo `scale`: ogni conversione misura la posizione del container sullo schermo, che include già il pan, quindi `translateX`/`translateY` possono valere qualunque cosa (restano per il tuo codice, e li usano gli helper `screenToWorld`/`worldToScreen`, che lavorano rispetto all'origine non trasformata del container).
+
 ### La superficie di disegno (`surface`)
 
 Di default il canvas (o l'svg) vive dentro il container del mondo e viene scalato via CSS insieme a lui. Questo ha due difetti:

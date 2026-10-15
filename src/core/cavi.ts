@@ -3,7 +3,7 @@ import initSync, { type InitOutput } from 'cavi';
 import type { IRenderer } from './types';
 import { Wire } from './wire';
 import { World } from './world';
-import type { CoordinateTransform } from './coords';
+import { type CoordinateTransform, IDENTITY_TRANSFORM, clientToWorld } from './coords';
 
 /**
  * Cavi is the main class that provides a simple interface to use cavi in the browser.
@@ -68,6 +68,30 @@ export class Cavi {
       fn(cavi);
     };
     target.addEventListener('caviready', onReady);
+  }
+
+  /**
+   * Converts a viewport point (e.g. PointerEvent.clientX/clientY) into the
+   * world coordinates of `el`'s world — the one conversion every Jack and
+   * Plug position goes through.
+   *
+   * Anchored on the world's renderer container (<cavi-world>), never on an
+   * element's own `offsetParent`: any `position: relative` wrapper between
+   * the world and its jacks (a CSS-Grid panel, a draggable module box, a
+   * card...) would otherwise become the jacks' offsetParent while plugs and
+   * the canvas keep resolving against the container, and every jack in it
+   * would report a position short by the wrapper's own offset. Outside any
+   * world (tests, manual setups without a renderer): document.body and the
+   * identity transform.
+   */
+  static clientToWorldOf(el: Element, clientX: number, clientY: number): { x: number; y: number } {
+    const cavi = Cavi.for(el);
+    return clientToWorld(
+      clientX,
+      clientY,
+      cavi?.getContainer?.() ?? document.body,
+      cavi?.getCoordinateTransform?.() ?? IDENTITY_TRANSFORM
+    );
   }
 
   /** The nearest <cavi-world> enclosing `el` (itself included), crossing shadow roots. */

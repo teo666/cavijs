@@ -153,6 +153,17 @@ describe('describeDetail', () => {
     );
     expect(describeDetail(undefined)).toBe('');
   });
+
+  it('tells plugs without an id apart by their cable and node', () => {
+    const wireEl = document.createElement('cavi-wire') as unknown as HTMLElement & {
+      getWire(): { getIndex(): number };
+    };
+    wireEl.getWire = () => ({ getIndex: () => 2 });
+    const plug = document.createElement('cavi-plug');
+    plug.setAttribute('node', '7');
+    wireEl.appendChild(plug);
+    expect(describeDetail({ plug })).toBe('plug: <cavi-plug wire#2 node 7>');
+  });
 });
 
 describe('<cavi-debug>', () => {

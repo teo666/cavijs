@@ -1,7 +1,6 @@
 import { Node } from '../core/node';
 import { Jack } from './jack'; // Ensure Jack is imported if we check types
 import { Cavi } from '../core/cavi';
-import { clientToWorld, IDENTITY_TRANSFORM } from '../core/coords';
 import { emitCaviEvent } from '../core/events';
 import type { CaviWireElement } from './wirewc';
 
@@ -215,28 +214,13 @@ export class Plug extends HTMLElement {
     this.updatePosition();
   }
 
-  /**
-   * Converts a raw viewport point into world space — Plug's twin of
-   * Jack._clientToLocal, anchored on the same renderer container of this
-   * Plug's own world (see Jack._worldContainerOf for why it must not be
-   * `offsetParent`).
-   */
+  /** A viewport point in this Plug's world coordinates — see Cavi.clientToWorldOf. */
   private _clientToLocal(clientX: number, clientY: number): { x: number; y: number } {
-    const cavi = Cavi.for(this);
-    return clientToWorld(
-      clientX,
-      clientY,
-      cavi?.getContainer?.() ?? document.body,
-      cavi?.getCoordinateTransform?.() ?? IDENTITY_TRANSFORM
-    );
+    return Cavi.clientToWorldOf(this, clientX, clientY);
   }
 
   private _setMagnetTarget(jack: Jack | null): void {
-    if (jack === this._magnetJack) return;
-    this._magnetJack?.setMagnetActive(false);
-    jack?.setMagnetActive(true);
-    this._magnetJack = jack;
-    this.setMagnetActive(jack !== null);
+    this._magnetJack = Jack.switchMagnet(this._magnetJack, jack, this);
   }
 
   /**

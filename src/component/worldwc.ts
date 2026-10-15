@@ -156,43 +156,7 @@ export class CaviWorldElement extends HTMLElement {
     });
     cavi.setRenderer(renderer);
     if (this._transformProvider) cavi.setCoordinateTransformProvider(this._transformProvider);
-    cavi.setAcceleration(
-      parseFloat(this.getAttribute('gravity-x') ?? '0'),
-      parseFloat(this.getAttribute('gravity-y') ?? '5')
-    );
-    cavi.setDebugDrawNodes(this.hasAttribute('debug-nodes'));
-    cavi.setWireShadows(this.hasAttribute('wire-shadows'));
-
-    const cableDropBehavior = this.getAttribute('cable-drop-behavior');
-    if (
-      cableDropBehavior === 'cancel' ||
-      cableDropBehavior === 'dangle' ||
-      cableDropBehavior === 'detach'
-    ) {
-      cavi.setCableDropBehavior(cableDropBehavior);
-    }
-    const stepRate = this.getAttribute('step-rate');
-    if (stepRate !== null && Number.isFinite(parseFloat(stepRate))) {
-      cavi.setStepRate(parseFloat(stepRate));
-    }
-    const sleep = this.getAttribute('sleep');
-    if (sleep === 'on' || sleep === 'off') cavi.setSleepEnabled(sleep === 'on');
-    const orphanCleanup = this.getAttribute('orphan-cleanup');
-    if (orphanCleanup === 'on' || orphanCleanup === 'off') {
-      cavi.setOrphanCleanup(orphanCleanup === 'on');
-    }
-    const plugSpreadMode = this.getAttribute('plug-spread-mode');
-    if (plugSpreadMode === 'towardOther' || plugSpreadMode === 'radial') {
-      cavi.setPlugSpreadMode(plugSpreadMode);
-    }
-    const plugSpreadRadius = this.getAttribute('plug-spread-radius');
-    if (plugSpreadRadius !== null && Number.isFinite(parseFloat(plugSpreadRadius))) {
-      cavi.setPlugSpreadRadiusMultiplier(parseFloat(plugSpreadRadius));
-    }
-    const plugSpreadTimeout = this.getAttribute('plug-spread-timeout');
-    if (plugSpreadTimeout !== null && Number.isFinite(parseFloat(plugSpreadTimeout))) {
-      cavi.setPlugSpreadRecompactDelayMs(parseFloat(plugSpreadTimeout));
-    }
+    for (const name of WORLD_SETTINGS) this._applySetting(cavi, name);
 
     this._cavi = cavi;
     Cavi.shared = cavi;
@@ -243,6 +207,68 @@ export class CaviWorldElement extends HTMLElement {
     });
   }
 
+  static get observedAttributes(): string[] {
+    return [...WORLD_SETTINGS];
+  }
+
+  /**
+   * The settings attributes are live: changing one later applies it to the
+   * running world (removing one restores its default). `surface`, `canvas`
+   * and `no-interaction` are only read when the world is set up.
+   */
+  attributeChangedCallback(name: string, oldValue: string | null, newValue: string | null): void {
+    if (oldValue === newValue) return;
+    const cavi = this._cavi;
+    if (cavi && !cavi.isDestroyed?.()) this._applySetting(cavi, name);
+  }
+
+  /** Applies one settings attribute (see WORLD_SETTINGS) to `cavi`, its default when absent or invalid. */
+  private _applySetting(cavi: Cavi, name: string): void {
+    const value = this.getAttribute(name);
+    const number = (fallback: number) => {
+      const n = value === null ? NaN : parseFloat(value);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    switch (name) {
+      case 'gravity-x':
+      case 'gravity-y': {
+        const x = parseFloat(this.getAttribute('gravity-x') ?? '');
+        const y = parseFloat(this.getAttribute('gravity-y') ?? '');
+        cavi.setAcceleration(Number.isFinite(x) ? x : 0, Number.isFinite(y) ? y : 5);
+        break;
+      }
+      case 'debug-nodes':
+        cavi.setDebugDrawNodes(value !== null);
+        break;
+      case 'wire-shadows':
+        cavi.setWireShadows(value !== null);
+        break;
+      case 'cable-drop-behavior':
+        cavi.setCableDropBehavior(
+          value === 'cancel' || value === 'dangle' || value === 'detach' ? value : 'detach'
+        );
+        break;
+      case 'step-rate':
+        cavi.setStepRate(number(60));
+        break;
+      case 'sleep':
+        cavi.setSleepEnabled(value !== 'off');
+        break;
+      case 'orphan-cleanup':
+        cavi.setOrphanCleanup(value !== 'off');
+        break;
+      case 'plug-spread-mode':
+        cavi.setPlugSpreadMode(value === 'radial' ? 'radial' : 'towardOther');
+        break;
+      case 'plug-spread-radius':
+        cavi.setPlugSpreadRadiusMultiplier(number(1.8));
+        break;
+      case 'plug-spread-timeout':
+        cavi.setPlugSpreadRecompactDelayMs(number(500));
+        break;
+    }
+  }
+
   public getCavi(): Cavi | null {
     return this._cavi;
   }
@@ -264,5 +290,23 @@ export class CaviWorldElement extends HTMLElement {
     this._cavi?.notifyCoordinateTransformChanged();
   }
 }
+
+/**
+ * <cavi-world>'s settings attributes, in the order they are applied at
+ * setup. Live: see CaviWorldElement.attributeChangedCallback.
+ */
+const WORLD_SETTINGS = [
+  'gravity-x',
+  'gravity-y',
+  'debug-nodes',
+  'wire-shadows',
+  'cable-drop-behavior',
+  'step-rate',
+  'sleep',
+  'orphan-cleanup',
+  'plug-spread-mode',
+  'plug-spread-radius',
+  'plug-spread-timeout',
+] as const;
 
 customElements.define('cavi-world', CaviWorldElement);

@@ -1,7 +1,8 @@
 /**
  * One-line, human-readable summary of an event's `detail`, for
- * <cavi-debug>'s event log: elements as `<tag#id>`, Wire handles as
- * `wire#index`, numbers rounded, nested objects one level deep.
+ * <cavi-debug>'s event log: elements as `<tag#id>` (plugs without an id by
+ * their cable and node), Wire handles as `wire#index`, numbers rounded,
+ * nested objects one level deep.
  */
 export function describeDetail(detail: unknown): string {
   if (detail === null || detail === undefined) return '';
@@ -20,7 +21,17 @@ function describeValue(value: unknown, depth: number): string {
   if (typeof value === 'function') return 'ƒ';
   if (typeof Element !== 'undefined' && value instanceof Element) {
     const tag = value.tagName.toLowerCase();
-    return value.id ? `<${tag}#${value.id}>` : `<${tag}>`;
+    if (value.id) return `<${tag}#${value.id}>`;
+    // A plug rarely has an id: name it by its cable and node, so events of
+    // two different plugs never read the same (and get merged as ×N).
+    if (tag === 'cavi-plug') {
+      const wire = (
+        value.closest('cavi-wire') as { getWire?(): { getIndex(): number } | null } | null
+      )?.getWire?.();
+      const node = value.getAttribute('node');
+      return `<cavi-plug wire#${wire ? wire.getIndex() : '?'} node ${node ?? '?'}>`;
+    }
+    return `<${tag}>`;
   }
   if (isWireLike(value)) return `wire#${value.getIndex()}`;
   if (Array.isArray(value)) return `[${value.length}]`;

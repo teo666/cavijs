@@ -111,6 +111,8 @@ setColor(color: string): void
 getColor(): string | undefined
 setRadius(radius: number): void
 getRadius(): number
+setRenderType(renderType: number): void  // 0 = segmenti, 1 = bezier
+getRenderType(): number
 setLinkDistance(distance: number): void  // distanza a riposo tra i nodi (setRadius non la cambia più)
 getLinkDistance(): number
 isSleeping(): boolean
@@ -255,6 +257,44 @@ cavi.setAcceleration(0, 9.8);
 
 renderer.render(); // avvia il loop di animazione interno
 ```
+
+## Attributi di `<cavi-world>`
+
+Gli attributi di impostazione sono live: cambiarne uno dopo lo applica al mondo in esecuzione, e toglierlo ripristina il default.
+
+| Attributo                | Default       | Descrizione                                                                                                |
+| ------------------------ | ------------- | ---------------------------------------------------------------------------------------------------------- |
+| `gravity-x`, `gravity-y` | `0`, `5`      | Accelerazione globale                                                                                      |
+| `step-rate`              | `60`          | Passi fisici al secondo, qualunque sia la frequenza dello schermo                                          |
+| `sleep`                  | attivo        | `off` continua a simulare i cavi fermi invece di addormentarli                                             |
+| `orphan-cleanup`         | attivo        | `off` tiene i cavi senza capi fissi anche fuori vista                                                      |
+| `cable-drop-behavior`    | `detach`      | Un cavo nuovo lasciato nel vuoto: `detach` (cade), `dangle` (resta sul suo jack), `cancel` (viene rimosso) |
+| `plug-spread-mode`       | `towardOther` | Come si aprono i plug di un jack in hover: `towardOther` o `radial`                                        |
+| `plug-spread-radius`     | `1.8`         | Quanto si aprono, in mezze dimensioni del jack                                                             |
+| `plug-spread-timeout`    | `500`         | Ms prima che si richiudano quando il puntatore se ne va                                                    |
+| `debug-nodes`            | assente       | Disegna tutti i nodi e i raggi del puntatore                                                               |
+| `wire-shadows`           | assente       | Ombra morbida sotto ogni cavo (renderer canvas)                                                            |
+
+Letti solo quando il mondo viene creato:
+
+| Attributo               | Descrizione                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `surface="<selettore>"` | Un antenato non trasformato su cui disegnare, per pan/zoom — vedi [Zoom, pan e più mondi](./06-zoom-multiworld.md) |
+| `canvas="<selettore>"`  | Un canvas proprio su cui disegnare                                                                                 |
+| `no-interaction`        | Nessun `<cavi-interaction>` di default: niente reagisce a puntatore o tastiera finché non aggiungi un controller   |
+
+## Attributi di `<cavi-wire>`
+
+Tutti live: cambiarne uno aggiorna il cavo in esecuzione.
+
+| Attributo     | Default   | Descrizione                                                                     |
+| ------------- | --------- | ------------------------------------------------------------------------------- |
+| `length`      | `10`      | Numero di nodi (cambiarlo ridistribuisce i nodi tra i due capi)                 |
+| `tension`     | `20`      | Distanza a riposo tra nodi vicini                                               |
+| `size`        | `5`       | Raggio (metà dello spessore)                                                    |
+| `color`       | `#ffffff` | Colore                                                                          |
+| `type`        | `''`      | Tipo di connessione, dato ai suoi plug; vuoto fa da jolly                       |
+| `render-type` | bezier    | `segments` per segmenti dritti (la vecchia grafia `renderType` funziona ancora) |
 
 ## `Jack` / `Plug`
 

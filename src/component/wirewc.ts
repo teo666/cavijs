@@ -43,8 +43,61 @@ export class CaviWireElement extends HTMLElement {
    */
   private _pending: { plug: Plug; jackId: string; nodeIdx: number }[] = [];
 
+  /**
+   * All live: changing one later updates the running cable (see
+   * attributeChangedCallback). `rendertype` is the legacy `renderType`
+   * spelling (HTML lowercases attribute names); prefer `render-type`.
+   */
   static get observedAttributes() {
-    return ['length', 'tension', 'size', 'renderType', 'color', 'type'];
+    return ['length', 'tension', 'size', 'render-type', 'rendertype', 'color', 'type'];
+  }
+
+  attributeChangedCallback(name: string, oldValue: string | null, value: string | null): void {
+    const wire = this._wire;
+    if (!wire || oldValue === value) return; // read by _setup otherwise
+    switch (name) {
+      case 'color':
+        wire.setColor(value ?? '#ffffff');
+        break;
+      case 'tension': {
+        const distance = parseFloat(value ?? '20');
+        if (Number.isFinite(distance) && distance > 0) wire.setLinkDistance(distance);
+        break;
+      }
+      case 'size': {
+        const radius = parseFloat(value ?? '5');
+        if (Number.isFinite(radius) && radius > 0) wire.setRadius(radius);
+        break;
+      }
+      case 'type':
+        for (const plug of this._plugs) plug.setType(value ?? '');
+        break;
+      case 'render-type':
+      case 'rendertype':
+        wire.setRenderType(this._renderType());
+        break;
+      case 'length': {
+        const count = parseInt(value ?? '10', 10);
+        const current = wire.getNodeCount();
+        if (!Number.isFinite(count) || count < 2 || count === current) return;
+        wire.setNodeCount(count);
+        // The plug on the last node moved with it (see Wire.getNode); keep
+        // its `node` attribute telling the truth.
+        for (const plug of this._plugs) {
+          const el = plug as unknown as HTMLElement;
+          if (el.getAttribute('node') === String(current - 1)) {
+            el.setAttribute('node', String(count - 1));
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  /** 0 (segments) or 1 (bezier, the default) from `render-type` (or legacy `renderType`). */
+  private _renderType(): number {
+    const value = this.getAttribute('render-type') ?? this.getAttribute('renderType');
+    return value === 'segments' ? 0 : 1;
   }
 
   connectedCallback() {
@@ -96,9 +149,8 @@ export class CaviWireElement extends HTMLElement {
     const nodeCount = parseInt(this.getAttribute('length') ?? '10');
     const tension = parseFloat(this.getAttribute('tension') ?? '20');
     const radius = parseFloat(this.getAttribute('size') ?? '5');
-    // Bezier by default; explicit renderType="segments" opts back into
-    // straight-segment rendering.
-    const renderType = this.getAttribute('renderType') === 'segments' ? 0 : 1;
+    // Bezier by default; render-type="segments" opts into straight segments.
+    const renderType = this._renderType();
     const color = this.getAttribute('color') ?? '#ffffff';
     const type = this.getAttribute('type') ?? '';
 

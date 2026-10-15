@@ -237,6 +237,26 @@ describe('Jack spread with plugs coming and going', () => {
   });
 });
 
+describe('Jack accessibility', () => {
+  it('is a focusable button labelled by its type and id', () => {
+    const jack = makePositionedJack('in1', 0, 0, { type: 'audio' });
+    expect(jack.tabIndex).toBe(0);
+    expect(jack.getAttribute('role')).toBe('button');
+    expect(jack.getAttribute('aria-label')).toBe('audio jack in1');
+  });
+
+  it("keeps the author's own tabindex, role and label", () => {
+    const jack = makePositionedJack('x', 0, 0, {
+      tabindex: '-1',
+      role: 'switch',
+      'aria-label': 'Main out',
+    });
+    expect(jack.getAttribute('tabindex')).toBe('-1');
+    expect(jack.getAttribute('role')).toBe('switch');
+    expect(jack.getAttribute('aria-label')).toBe('Main out');
+  });
+});
+
 describe('Jack magnet class', () => {
   it('toggles the default magnet class on the host element', () => {
     const jack = makeJack();
@@ -577,6 +597,22 @@ describe('Jack cable session — magnet preview and snap on finish', () => {
 });
 
 describe('Jack cable session — finish/cancel away from any jack', () => {
+  it('discardCableSession removes the new cable as if it never existed', () => {
+    installFakeCavi();
+    const origin = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    const session = origin.createCable(300, 300)!;
+    const results: string[] = [];
+    document.addEventListener('cavi-cable-end', (e) =>
+      results.push((e as CustomEvent).detail.result)
+    );
+
+    Jack.discardCableSession(session);
+
+    expect(session.wireEl.isConnected).toBe(false);
+    expect(origin.plugCount).toBe(0);
+    expect(results).toEqual(['cancel']);
+  });
+
   it("finishCableSession defaults to 'detach': both ends end up unattached and unfixed", () => {
     installFakeCavi();
     const origin = makePositionedJack('origin', 0, 0, { type: 'audio' });

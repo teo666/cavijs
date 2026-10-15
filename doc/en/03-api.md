@@ -111,6 +111,8 @@ setColor(color: string): void
 getColor(): string | undefined
 setRadius(radius: number): void
 getRadius(): number
+setRenderType(renderType: number): void  // 0 = segments, 1 = bezier
+getRenderType(): number
 setLinkDistance(distance: number): void  // rest distance between nodes (setRadius no longer changes it)
 getLinkDistance(): number
 isSleeping(): boolean
@@ -255,6 +257,44 @@ cavi.setAcceleration(0, 9.8);
 
 renderer.render(); // starts the internal animation loop
 ```
+
+## `<cavi-world>` attributes
+
+The settings attributes are live: changing one later applies it to the running world, and removing one restores its default.
+
+| Attribute                | Default       | Description                                                                                                 |
+| ------------------------ | ------------- | ----------------------------------------------------------------------------------------------------------- |
+| `gravity-x`, `gravity-y` | `0`, `5`      | Global acceleration                                                                                         |
+| `step-rate`              | `60`          | Physics steps per second, whatever the display's frame rate                                                 |
+| `sleep`                  | on            | `off` keeps simulating cables at rest instead of putting them to sleep                                      |
+| `orphan-cleanup`         | on            | `off` keeps cables with no fixed end even once out of view                                                  |
+| `cable-drop-behavior`    | `detach`      | A new cable dropped in empty space: `detach` (falls away), `dangle` (stays on its jack), `cancel` (removed) |
+| `plug-spread-mode`       | `towardOther` | How a jack's plugs fan out on hover: `towardOther` or `radial`                                              |
+| `plug-spread-radius`     | `1.8`         | How far they fan out, in jack half-sizes                                                                    |
+| `plug-spread-timeout`    | `500`         | Ms before they close again once the pointer leaves                                                          |
+| `debug-nodes`            | absent        | Draws every node and the pointer radii                                                                      |
+| `wire-shadows`           | absent        | Soft shadow under every cable (canvas renderer)                                                             |
+
+Read only when the world is set up:
+
+| Attribute              | Description                                                                                                       |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `surface="<selector>"` | An untransformed ancestor to draw on, for pan/zoom — see [Zoom, pan and multiple worlds](./06-zoom-multiworld.md) |
+| `canvas="<selector>"`  | A canvas of your own to draw into                                                                                 |
+| `no-interaction`       | No default `<cavi-interaction>`: nothing reacts to the pointer or keyboard unless you add a controller            |
+
+## `<cavi-wire>` attributes
+
+All live: changing one updates the running cable.
+
+| Attribute     | Default   | Description                                                                  |
+| ------------- | --------- | ---------------------------------------------------------------------------- |
+| `length`      | `10`      | Node count (changing it redistributes the nodes between the two ends)        |
+| `tension`     | `20`      | Rest distance between neighbouring nodes                                     |
+| `size`        | `5`       | Radius (half the thickness)                                                  |
+| `color`       | `#ffffff` | Stroke color                                                                 |
+| `type`        | `''`      | Connection type, given to its plugs; empty is a wildcard                     |
+| `render-type` | bezier    | `segments` for straight segments (the old `renderType` spelling still works) |
 
 ## `Jack` / `Plug`
 
