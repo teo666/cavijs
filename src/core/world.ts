@@ -1,7 +1,8 @@
 import { WasmWorld } from 'cavi';
 import { Wire } from './wire';
 import type { IRenderer } from './types';
-import { type CoordinateTransform, IDENTITY_TRANSFORM } from './coords';
+import { type CoordinateTransform, IDENTITY_TRANSFORM, clientToWorld } from './coords';
+import type { FrameContext, FrameTask, WorldRect } from './frame';
 
 /**
  * Where the engine's mouse is parked while no pointer hovers the world
@@ -47,6 +48,8 @@ export class World {
    * without a step while the two disagree.
    */
   private _wiresChanged: boolean = false;
+  /** See addFrameTask. */
+  private _frameTasks = new Set<FrameTask>();
 
   constructor() {
     this.wasmWorld = new WasmWorld();
@@ -217,6 +220,57 @@ export class World {
 
     for (let i = 0; i < steps; i++) this.update();
     return steps;
+  }
+
+  /**
+   * Registers per-frame DOM work for this world (see FrameTask) — e.g. a
+   * <cavi-wire> keeping its plugs on the cable, an auto-positioned Jack
+   * following the layout. Returns a function that unregisters it.
+   */
+  public addFrameTask(task: FrameTask): () => void {
+    this._frameTasks.add(task);
+    return () => {
+      this._frameTasks.delete(task);
+    };
+  }
+
+  /**
+   * Runs every registered FrameTask: all `read`s, then all `write`s.
+   * Called once per frame by the renderer, right after advance() — a
+   * custom IRenderer driving its own loop should do the same.
+   */
+  public runFrameTasks(): void {
+    if (this._frameTasks.size === 0) return;
+    // A snapshot: a task may unregister itself (or another) while running.
+    const tasks = [...this._frameTasks];
+    // Measured on first access only, then shared by every task.
+    let viewBounds: WorldRect[] | null = null;
+    const measure = () => (viewBounds ??= this._measureViewBounds());
+    const ctx: FrameContext = {
+      get viewBounds() {
+        return measure();
+      },
+    };
+    for (const task of tasks) task.read?.(ctx);
+    for (const task of tasks) {
+      if (this._frameTasks.has(task)) task.write?.(ctx);
+    }
+  }
+
+  /** FrameContext.viewBounds: the renderer's container and surface boxes, in world coordinates. */
+  private _measureViewBounds(): WorldRect[] {
+    const renderer = this._renderer;
+    if (!renderer) return [];
+    const container = renderer.getContainer();
+    const surface = renderer.getSurface?.() ?? container;
+    const transform = this.getCoordinateTransform();
+    const elements = surface === container ? [container] : [container, surface];
+    return elements.map((el) => {
+      const rect = el.getBoundingClientRect();
+      const topLeft = clientToWorld(rect.left, rect.top, container, transform);
+      const bottomRight = clientToWorld(rect.right, rect.bottom, container, transform);
+      return { left: topLeft.x, top: topLeft.y, right: bottomRight.x, bottom: bottomRight.y };
+    });
   }
 
   /**

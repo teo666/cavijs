@@ -65,7 +65,9 @@ function targetsD3DragOwnedElement(event: Event): boolean {
  * the units are inline-blocks in normal flow, so growing one unit's margin
  * pushed every following unit along with it. cavijs anchors every
  * coordinate on the <cavi-world> container (never on a jack's
- * `offsetParent`), so a transformed unit is fine for its jacks.
+ * `offsetParent`), so a transformed unit is fine for its jacks — and every
+ * auto-positioned jack is re-measured each frame, so its plugged cables
+ * follow the unit with no call into cavijs.
  *
  * The translate delta is divided by the *outer* d3-zoom scale on every
  * drag tick: dragging this unit by a given screen-pixel amount must move it
@@ -105,7 +107,6 @@ function makeDraggableUnit(
       offsetX = originX + (p.x - startX) / scale;
       offsetY = originY + (p.y - startY) / scale;
       unitEl.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
-      worldEl.notifyCoordinateTransformChanged();
     });
 
   select(handleEl).call(behavior);

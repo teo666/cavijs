@@ -21,12 +21,10 @@ import '../src/component/interactionwc'; // registers cavi-interaction
  * Wires up a plain draggable HTML box (`.jack-holder`, dragged only via its
  * `.jack-holder-handle` header so it never fights a jack/plug's own
  * pointerdown handling) that cavijs knows nothing about, same as
- * `#viewport` above. Its jacks keep no x/y attribute either, so their
- * plugged cables would otherwise be left stranded at the box's old position
- * on every drag step — calling `notifyCoordinateTransformChanged()` (the
- * exact same call the zoom handler above makes on every zoom step) is
- * enough to make Jack re-measure and re-glue them, regardless of *what*
- * moved the jack on screen.
+ * `#viewport` above. Its jacks keep no x/y attribute either: every
+ * auto-positioned jack is re-measured each frame (as a frame task of its
+ * world, see World.runFrameTasks), so their plugged cables follow the box
+ * with no call into cavijs, regardless of *what* moved the jack on screen.
  */
 function setupDraggableJackHolder(holder: HTMLElement, handle: HTMLElement, cavi: Cavi): void {
   // Current translate offset of the holder, in its local (pre-zoom) space.
@@ -51,7 +49,6 @@ function setupDraggableJackHolder(holder: HTMLElement, handle: HTMLElement, cavi
     offsetX = originX + (e.clientX - startX) / scale;
     offsetY = originY + (e.clientY - startY) / scale;
     holder.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
-    cavi.notifyCoordinateTransformChanged();
   };
 
   const endDrag = (e: PointerEvent): void => {

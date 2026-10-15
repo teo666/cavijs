@@ -100,7 +100,7 @@ describe('Plug drag & drop', () => {
 
   it('skips a jack that is already at max-plugs capacity in favor of the next compatible one', () => {
     const full = makeJack('full', 101, 100, { type: 'audio', 'max-plugs': '1' });
-    full.attach({} as unknown as Plug);
+    full.attach({ unplug() {} } as unknown as Plug);
     const open = makeJack('open', 110, 100, { type: 'audio' });
     const { plug } = makePlug(100, 100, 'audio');
 

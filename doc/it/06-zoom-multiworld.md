@@ -6,10 +6,9 @@ cavijs non implementa pan/zoom: la pagina applica una trasformazione CSS (es. co
 
 ```typescript
 worldEl.setCoordinateTransform(() => ({ scale: t.k, translateX: t.x, translateY: t.y }));
-worldEl.notifyCoordinateTransformChanged(); // dopo ogni passo di zoom/pan
 ```
 
-(`Cavi.setCoordinateTransformProvider` / `Cavi.notifyCoordinateTransformChanged` in un setup manuale.) Ogni posizione del puntatore e ogni jack posizionato via CSS viene riconvertito in coordinate del mondo attraverso di esso (`clientToWorld` in `src/core/coords.ts`), così la fisica non vede mai valori scalati dallo zoom. Si può chiamare `setCoordinateTransform` anche prima che il mondo sia pronto: il provider viene applicato appena lo è.
+(`Cavi.setCoordinateTransformProvider` in un setup manuale.) Ogni posizione del puntatore e ogni jack posizionato via CSS viene riconvertito in coordinate del mondo attraverso di esso (`clientToWorld` in `src/core/coords.ts`), così la fisica non vede mai valori scalati dallo zoom. Il provider viene letto ad ogni frame, e anche i jack posizionati via CSS vengono rimisurati ad ogni frame, quindi dopo un passo di zoom/pan non serve chiamare altro. `notifyCoordinateTransformChanged()` invia ancora `cavi-transform-change` sul mondo, per il codice della pagina che vuole reagire. Si può chiamare `setCoordinateTransform` anche prima che il mondo sia pronto: il provider viene applicato appena lo è.
 
 ### La superficie di disegno (`surface`)
 

@@ -350,6 +350,8 @@ export class SvgRenderer implements IRenderer {
     this.world.advance(elapsed);
 
     this.applyViewTransform();
+    // DOM work of the world's elements — see Renderer.frame.
+    this.world.runFrameTasks();
     this.drawAllWires();
 
     if (this.debugDrawNodes) {

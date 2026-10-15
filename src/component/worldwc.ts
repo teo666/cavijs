@@ -241,7 +241,7 @@ export class CaviWorldElement extends HTMLElement {
     else this._pendingTransform = fn;
   }
 
-  /** Ergonomic passthrough to Cavi.notifyCoordinateTransformChanged. */
+  /** Ergonomic passthrough to Cavi.notifyCoordinateTransformChanged (optional — see there). */
   public notifyCoordinateTransformChanged(): void {
     this._cavi?.notifyCoordinateTransformChanged();
   }

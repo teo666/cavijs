@@ -3,6 +3,7 @@ import { Cavi } from '../core/cavi';
 import { Node } from '../core/node';
 import type { Jack } from '../component/jack';
 import { CaviWireElement } from '../component/wirewc';
+import type { FrameTask, WorldRect } from '../core/frame';
 
 function rect(x: number, y: number, width: number, height: number): DOMRect {
   return {
@@ -79,6 +80,14 @@ class FakeWire {
     return this.store.getNodeCount(this.index);
   }
 
+  getNodeX(nodeIndex: number): number {
+    return this.getNode(nodeIndex)?.x ?? 0;
+  }
+
+  getNodeY(nodeIndex: number): number {
+    return this.getNode(nodeIndex)?.y ?? 0;
+  }
+
   getIndex(): number {
     return this.index;
   }
@@ -107,6 +116,8 @@ class FakeWire {
 /** Minimal stand-in for Cavi, enough to drive CaviWireElement's setup + orphan cleanup. */
 class FakeCavi {
   public deletedIndices: number[] = [];
+  /** Stand-in for World's frame tasks (see runCleanupCheck). */
+  public frameTasks = new Set<FrameTask>();
   private store = new FakeWireStore();
   private wires: FakeWire[] = [];
   private container: HTMLElement;
@@ -145,6 +156,15 @@ class FakeCavi {
 
   getContainer(): HTMLElement {
     return this.container;
+  }
+
+  getWorld() {
+    return {
+      addFrameTask: (task: FrameTask) => {
+        this.frameTasks.add(task);
+        return () => this.frameTasks.delete(task);
+      },
+    };
   }
 
   // Jack.getWorldPosition()'s auto-detect fallback always consults this;
@@ -195,17 +215,38 @@ const OUTSIDE_FRAMES = (CaviWireElement as unknown as { OUTSIDE_FRAMES_BEFORE_CL
   .OUTSIDE_FRAMES_BEFORE_CLEANUP;
 
 /**
- * Runs the same private cleanup check the RAF loop calls every frame,
- * `frames` times in a row.
+ * Runs `frames` frames of every frame task registered with the wire's
+ * (fake) world — all reads, then all writes, like World.runFrameTasks —
+ * with the container (and surface, if any) as view bounds, in world
+ * coordinates (identity transform: the same numbers as their rects).
  *
  * Cleanup deliberately requires OUTSIDE_FRAMES_BEFORE_CLEANUP *consecutive*
- * frames outside the container (so a one-frame layout reflow glitch can
- * never delete a cable), so a single call proves nothing either way — the
+ * frames out of view, so a single frame proves nothing either way — the
  * default here runs exactly the number of frames that threshold needs.
  */
 function runCleanupCheck(wireEl: CaviWireElement, frames: number = OUTSIDE_FRAMES): void {
-  for (let i = 0; i < frames && wireEl.isConnected; i++) {
-    (wireEl as unknown as { _cleanupOrphanOutsideView(): void })._cleanupOrphanOutsideView();
+  const cavi = (wireEl as unknown as { _cavi: FakeCavi })._cavi;
+  const elements = [cavi.getContainer()];
+  const surface = (cavi as unknown as { getSurface?(): HTMLElement }).getSurface?.();
+  if (surface) elements.push(surface);
+  const viewBounds: WorldRect[] = elements.map((el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  });
+  for (let i = 0; i < frames; i++) {
+    const tasks = [...cavi.frameTasks];
+    for (const task of tasks) task.read?.({ viewBounds });
+    for (const task of tasks) if (cavi.frameTasks.has(task)) task.write?.({ viewBounds });
+  }
+}
+
+/** Moves the wire's two terminals, and spreads its interior nodes evenly between them. */
+function placeEnds(wireEl: CaviWireElement, x0: number, y0: number, x1: number, y1: number): void {
+  const wire = wireEl.getWire()!;
+  const last = wire.getNodeCount() - 1;
+  for (let i = 0; i <= last; i++) {
+    const t = i / last;
+    wire.getNode(i)!.setPosition(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
   }
 }
 
@@ -221,9 +262,7 @@ describe('CaviWireElement orphan cleanup', () => {
     Cavi.shared = cavi as unknown as Cavi;
 
     const wireEl = makeWireEl({ length: '4' });
-    const plugs = wireEl.querySelectorAll('cavi-plug');
-    vi.spyOn(plugs[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugs[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
 
     runCleanupCheck(wireEl);
 
@@ -238,9 +277,7 @@ describe('CaviWireElement orphan cleanup', () => {
 
     const wireEl = orphan(makeWireEl({ length: '4' }));
     const wireIndex = wireEl.getWire()!.getIndex();
-    const plugs = wireEl.querySelectorAll('cavi-plug');
-    vi.spyOn(plugs[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugs[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
 
     runCleanupCheck(wireEl);
 
@@ -254,10 +291,7 @@ describe('CaviWireElement orphan cleanup', () => {
     Cavi.shared = cavi as unknown as Cavi;
 
     const wireEl = orphan(makeWireEl({ length: '4' }));
-    const plugs = wireEl.querySelectorAll('cavi-plug');
-    const outside = rect(9999, 9999, 10, 10);
-    const p0 = vi.spyOn(plugs[0], 'getBoundingClientRect').mockReturnValue(outside);
-    vi.spyOn(plugs[1], 'getBoundingClientRect').mockReturnValue(outside);
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
 
     // One frame short of the threshold: still alive.
     runCleanupCheck(wireEl, OUTSIDE_FRAMES - 1);
@@ -265,9 +299,9 @@ describe('CaviWireElement orphan cleanup', () => {
 
     // A single frame back inside restarts the count from scratch, so the
     // next OUTSIDE_FRAMES - 1 frames outside must not be enough either.
-    p0.mockReturnValue(rect(100, 100, 10, 10));
+    placeEnds(wireEl, 100, 100, 9999, 9999);
     runCleanupCheck(wireEl, 1);
-    p0.mockReturnValue(outside);
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
     runCleanupCheck(wireEl, OUTSIDE_FRAMES - 1);
     expect(wireEl.isConnected).toBe(true);
     expect(cavi.deletedIndices).toEqual([]);
@@ -285,18 +319,45 @@ describe('CaviWireElement orphan cleanup', () => {
     Cavi.shared = cavi as unknown as Cavi;
 
     const wireEl = orphan(makeWireEl({ length: '4' }));
-    const plugs = wireEl.querySelectorAll('cavi-plug');
-    vi.spyOn(plugs[0], 'getBoundingClientRect').mockReturnValue(rect(900, 900, 10, 10));
-    vi.spyOn(plugs[1], 'getBoundingClientRect').mockReturnValue(rect(900, 900, 10, 10));
+    placeEnds(wireEl, 900, 900, 900, 900);
 
     runCleanupCheck(wireEl);
     expect(wireEl.isConnected).toBe(true);
 
     // ...and does once it leaves the surface too.
-    vi.spyOn(plugs[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugs[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
     runCleanupCheck(wireEl);
     expect(wireEl.isConnected).toBe(false);
+  });
+
+  it('keeps a cable whose ends are out of view but whose middle hangs back into view', () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    Cavi.shared = cavi as unknown as Cavi;
+
+    const wireEl = orphan(makeWireEl({ length: '5' }));
+    // Both ends far to the left and right, the middle node in the view.
+    placeEnds(wireEl, -2000, 250, 2500, 250);
+
+    runCleanupCheck(wireEl);
+    expect(wireEl.isConnected).toBe(true);
+  });
+
+  it('runs every plug of every wire through one batched frame, not a loop of its own', () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    Cavi.shared = cavi as unknown as Cavi;
+
+    const wireEl = makeWireEl({ length: '4' });
+    expect(cavi.frameTasks.size).toBe(1);
+    placeEnds(wireEl, 10, 20, 70, 80);
+    runCleanupCheck(wireEl, 1);
+
+    const plug = wireEl.querySelectorAll('cavi-plug')[1] as HTMLElement;
+    expect([plug.style.left, plug.style.top]).toEqual(['70px', '80px']);
+
+    wireEl.remove();
+    expect(cavi.frameTasks.size).toBe(0);
   });
 
   it('reads the orphan state live: cleans up once the last fixed terminal is released', () => {
@@ -305,9 +366,7 @@ describe('CaviWireElement orphan cleanup', () => {
     Cavi.shared = cavi as unknown as Cavi;
 
     const wireEl = makeWireEl({ length: '4' });
-    const plugs = wireEl.querySelectorAll('cavi-plug');
-    vi.spyOn(plugs[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugs[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
 
     wireEl.getWire()!.getNode(0)!.fixed = false;
     runCleanupCheck(wireEl);
@@ -326,9 +385,7 @@ describe('CaviWireElement orphan cleanup', () => {
     Cavi.shared = cavi as unknown as Cavi;
 
     const wireEl = orphan(makeWireEl({ length: '4' }));
-    const plugs = wireEl.querySelectorAll('cavi-plug');
-    vi.spyOn(plugs[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugs[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
 
     runCleanupCheck(wireEl, OUTSIDE_FRAMES - 1);
     wireEl.getWire()!.getNode(0)!.fixed = true; // e.g. plugged back in
@@ -348,9 +405,7 @@ describe('CaviWireElement orphan cleanup', () => {
     Cavi.shared = cavi as unknown as Cavi;
 
     const wireEl = orphan(makeWireEl({ length: '4' }));
-    const plugs = wireEl.querySelectorAll('cavi-plug');
-    vi.spyOn(plugs[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugs[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
 
     runCleanupCheck(wireEl, OUTSIDE_FRAMES * 3);
     expect(wireEl.isConnected).toBe(true);
@@ -371,9 +426,7 @@ describe('CaviWireElement orphan cleanup', () => {
     );
 
     const wireEl = orphan(makeWireEl({ length: '4' }));
-    const plugs = wireEl.querySelectorAll('cavi-plug');
-    vi.spyOn(plugs[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugs[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
     runCleanupCheck(wireEl);
 
     expect(reasons).toEqual(['cleanup']);
@@ -385,9 +438,7 @@ describe('CaviWireElement orphan cleanup', () => {
     Cavi.shared = cavi as unknown as Cavi;
 
     const wireEl = orphan(makeWireEl({ length: '4' }));
-    const plugs = wireEl.querySelectorAll('cavi-plug');
-    vi.spyOn(plugs[0], 'getBoundingClientRect').mockReturnValue(rect(100, 100, 10, 10)); // inside
-    vi.spyOn(plugs[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10)); // outside
+    placeEnds(wireEl, 100, 100, 9999, 9999);
 
     runCleanupCheck(wireEl);
 
@@ -424,9 +475,7 @@ describe('CaviWireElement orphan cleanup', () => {
     expect(jack.plugCount).toBe(1);
     orphan(wireEl);
 
-    const plugEls = wireEl.querySelectorAll('cavi-plug');
-    vi.spyOn(plugEls[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugEls[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
 
     runCleanupCheck(wireEl);
 
@@ -450,9 +499,7 @@ describe('CaviWireElement orphan cleanup', () => {
     bNode0.setPosition(111, 222);
     wireB.getWire()!.setColor('#123456');
 
-    const plugsA = wireA.querySelectorAll('cavi-plug');
-    vi.spyOn(plugsA[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugsA[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireA, 9999, 9999, 9999, 9999);
 
     runCleanupCheck(wireA);
 
@@ -507,9 +554,7 @@ describe('CaviWireElement orphan cleanup', () => {
     const followPlugB = wireB.querySelectorAll('cavi-plug')[1] as HTMLElement;
     followPlugB.setAttribute('node', String(wireBWire.getNodeCount() - 1));
 
-    const plugsA = wireA.querySelectorAll('cavi-plug');
-    vi.spyOn(plugsA[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugsA[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireA, 9999, 9999, 9999, 9999);
 
     runCleanupCheck(wireA);
 

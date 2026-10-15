@@ -5,6 +5,7 @@ import type { CaviWireElement } from './wirewc';
 import { Cavi } from '../core/cavi';
 import { clientToWorld, IDENTITY_TRANSFORM, type CoordinateTransform } from '../core/coords';
 import { emitCaviEvent, type CableEndResult } from '../core/events';
+import type { FrameTask } from '../core/frame';
 import './wirewc';
 
 /** Node count/distance growth used while dragging a cable out of a Jack. */
@@ -79,25 +80,12 @@ export class Jack extends HTMLElement {
   private _spread: boolean = false;
   private _recompactTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /**
-   * Watches this Jack's own rendered box for changes (a responsive
-   * flex/grid reflow, window resize, content/font load, ...) so a Jack with
-   * no explicit `x`/`y` (see _hasExplicitPosition/getWorldPosition) keeps
-   * any already-plugged cable glued to it as its CSS-driven position moves.
-   * Only created for a Jack in auto-position mode — see
-   * connectedCallback/disconnectedCallback.
-   */
-  private _resizeObserver: ResizeObserver | null = null;
-  /**
-   * The <cavi-world>/renderer container this Jack listens to for
-   * 'cavi-transform-change' (see Cavi.notifyCoordinateTransformChanged) —
-   * a pure CSS-transform pan/zoom step changes this Jack's rendered
-   * position without changing its own box size, so it never fires
-   * _resizeObserver on its own and needs this separate signal instead.
-   * Tracked so disconnectedCallback can remove the exact same listener.
-   */
-  private _transformChangeContainer: HTMLElement | null = null;
-  private _onTransformChange = (): void => this._syncAutoPosition();
+  /** Unregisters _frameTask from this Jack's world (see _startFrameSync). */
+  private _stopFrameTask: (() => void) | null = null;
+  /** World position measured by this frame's _frameTask.read, null if there is nothing to sync. */
+  private _measuredPosition: { x: number; y: number } | null = null;
+  /** World position the plugged cables were last glued to by _frameTask. */
+  private _syncedPosition: { x: number; y: number } | null = null;
 
   /**
    * How many drags that could try to connect a plug to a jack are
@@ -143,22 +131,30 @@ export class Jack extends HTMLElement {
     Jack._registry.add(this);
     this.render();
     this.updatePosition();
-    this._setupAutoPositionWatchers();
     // <cavi-world>'s Cavi instance is created asynchronously (after WASM
-    // init) — if it isn't ready yet, the container-based
-    // 'cavi-transform-change' listener above attached to nothing. Re-run
-    // once this Jack's own world is ready.
-    if (!Cavi.for(this)) {
-      Cavi.whenReady(this, () => {
-        if (this.isConnected) this._setupAutoPositionWatchers();
-      });
-    }
+    // init): register with this Jack's own world once it exists.
+    Cavi.whenReady(this, () => {
+      if (this.isConnected) this._startFrameSync();
+    });
   }
 
+  /**
+   * A Jack removed from the page can no longer hold cables: its plugs are
+   * released (see Plug.unplug) — their ends fall free, and an orphaned
+   * cable is then cleaned up like any other. Deferred to a microtask so a
+   * plain DOM move (disconnect immediately followed by connect) keeps every
+   * cable plugged in.
+   */
   disconnectedCallback() {
     Jack._registry.delete(this);
     this._cancelRecompactTimer();
-    this._teardownAutoPositionWatchers();
+    this._stopFrameSync();
+    queueMicrotask(() => {
+      if (this.isConnected) return;
+      // Deleting from a Set while iterating it is well-defined (unplug -> detach).
+      for (const plug of this._plugs) plug.unplug();
+      this._spread = false;
+    });
   }
 
   attributeChangedCallback(name: string, oldValue: string, newValue: string) {
@@ -171,7 +167,6 @@ export class Jack extends HTMLElement {
       // position/transform), not just the coordinate values.
       this.render();
       this.updatePosition();
-      this._setupAutoPositionWatchers();
     }
     if (name === 'type') {
       this._type = newValue ?? '';
@@ -584,53 +579,53 @@ export class Jack extends HTMLElement {
   }
 
   /**
-   * Re-measures and re-glues plugged cables — see
-   * _resizeObserver/_onTransformChange. No-op in explicit-position mode.
+   * Keeps cables glued to an auto-positioned Jack (no `x`/`y`, placed by
+   * the page's CSS) wherever the layout moves it — a flex/grid reflow, a
+   * window resize, a module dragged with `transform`, a pan/zoom step, a
+   * CSS animation — by re-measuring it every frame as a FrameTask of its
+   * world: the measurement happens in the read phase together with every
+   * other element's, the re-gluing in the write phase, and only when the
+   * position actually changed. Nothing to do for a Jack with explicit
+   * `x`/`y` (attributeChangedCallback re-glues on change) or with no plugs.
    */
-  private _syncAutoPosition(): void {
-    if (this._hasExplicitPosition()) return;
-    for (const plug of this._plugs) plug.snapToJack();
+  private _startFrameSync(): void {
+    this._stopFrameSync();
+    this._stopFrameTask = Cavi.for(this)?.getWorld?.().addFrameTask?.(this._frameTask) ?? null;
   }
 
-  /**
-   * Creates this Jack's auto-position watchers (ResizeObserver +
-   * 'cavi-transform-change' listener) if it's in auto-position mode and
-   * they don't already exist — idempotent, since attributeChangedCallback
-   * can flip the mode after connectedCallback already ran, and a custom
-   * element can also receive attributeChangedCallback before
-   * connectedCallback during upgrade. In explicit-position mode, any
-   * previously-created watchers (from before x/y were added) are torn down
-   * instead, since they'd otherwise keep firing pointless re-syncs.
-   */
-  private _setupAutoPositionWatchers(): void {
-    if (this._hasExplicitPosition()) {
-      this._teardownAutoPositionWatchers();
-      return;
-    }
-    if (!this._resizeObserver && typeof ResizeObserver !== 'undefined') {
-      this._resizeObserver = new ResizeObserver(() => this._syncAutoPosition());
-      this._resizeObserver.observe(this);
-    }
-    const container = Cavi.for(this)?.getContainer() ?? null;
-    if (container !== this._transformChangeContainer) {
-      this._transformChangeContainer?.removeEventListener(
-        'cavi-transform-change',
-        this._onTransformChange
-      );
-      container?.addEventListener('cavi-transform-change', this._onTransformChange);
-      this._transformChangeContainer = container;
-    }
+  private _stopFrameSync(): void {
+    this._stopFrameTask?.();
+    this._stopFrameTask = null;
+    this._syncedPosition = null;
   }
 
-  private _teardownAutoPositionWatchers(): void {
-    this._resizeObserver?.disconnect();
-    this._resizeObserver = null;
-    this._transformChangeContainer?.removeEventListener(
-      'cavi-transform-change',
-      this._onTransformChange
-    );
-    this._transformChangeContainer = null;
-  }
+  private _frameTask: FrameTask = {
+    read: () => {
+      this._measuredPosition = null;
+      if (this._plugs.size === 0 || this._hasExplicitPosition()) {
+        this._syncedPosition = null;
+        return;
+      }
+      this._measuredPosition = this.getWorldPosition();
+    },
+    write: () => {
+      const position = this._measuredPosition;
+      const synced = this._syncedPosition;
+      if (!position) return;
+      if (
+        synced &&
+        Math.abs(synced.x - position.x) < 0.01 &&
+        Math.abs(synced.y - position.y) < 0.01
+      ) {
+        return;
+      }
+      this._syncedPosition = position;
+      for (const plug of this._plugs) plug.snapToJack(position);
+      // Spread-out plugs were just re-centered: fan them out again around
+      // the new position.
+      if (this._spread) this._applySpreadPositions();
+    },
+  };
 
   private render() {
     const color = this.getAttribute('color') || '#333';

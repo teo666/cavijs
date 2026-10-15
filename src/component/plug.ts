@@ -160,7 +160,7 @@ export class Plug extends HTMLElement {
    * being left stranded at the jack's old position. No-op mid-drag (the
    * drag itself owns the node's position) or if unplugged.
    */
-  public snapToJack(): void {
+  public snapToJack(position?: { x: number; y: number }): void {
     if (this._dragging || !this._node || !this._jack) return;
 
     // Straight from the Jack's own world position rather than re-deriving
@@ -168,7 +168,9 @@ export class Plug extends HTMLElement {
     // and keeps auto-positioned ones going through the single
     // container-anchored, zoom-corrected conversion (see
     // Jack.getWorldPosition) instead of a second, subtly different one.
-    const { x, y } = this._jack.getWorldPosition();
+    // A caller that already measured it (Jack's frame task) passes it in,
+    // so re-gluing doesn't read layout again.
+    const { x, y } = position ?? this._jack.getWorldPosition();
     this._node.setPosition(x, y);
     this.updatePosition();
   }
@@ -293,6 +295,18 @@ export class Plug extends HTMLElement {
     this._jack = jack;
     jack.attach(this);
     emitCaviEvent(Cavi.for(jack), jack, 'cavi-plug-attach', { plug: this, jack });
+  }
+
+  /**
+   * Pulls this Plug out of its Jack, if any, and lets its end go: the node
+   * is unfixed and falls/moves freely under physics — used when the Jack
+   * itself disappears from the page. No-op mid-drag.
+   */
+  public unplug(): void {
+    if (this._dragging) return;
+    this.detach();
+    this.removeAttribute('plugged');
+    if (this._node) this._node.fixed = false;
   }
 
   public detach(): void {

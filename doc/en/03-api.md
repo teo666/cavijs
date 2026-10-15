@@ -31,7 +31,7 @@ getContainer(): HTMLElement | null
 getSurface(): HTMLElement | null        // the renderer's drawing surface (container unless a `surface` was given)
 setCoordinateTransformProvider(fn: (() => CoordinateTransform) | null): void
 getCoordinateTransform(): CoordinateTransform
-notifyCoordinateTransformChanged(): void
+notifyCoordinateTransformChanged(): void  // optional: dispatches cavi-transform-change for page code
 static for(el: Element): Cavi | null   // the Cavi `el` belongs to
 static whenReady(el: Element, fn: (cavi: Cavi) => void): void
 ```
@@ -55,6 +55,8 @@ getWireByIndex(index: number): Wire | null
 getWires(): Wire[]
 getWireCount(): number
 update(): void                          // exactly one physics step
+addFrameTask(task: FrameTask): () => void  // registers per-frame DOM work, returns an unregister function
+runFrameTasks(): void                   // runs every task: all reads, then all writes (the renderer calls it)
 advance(elapsedMs: number): number      // fixed-rate stepping, returns steps run
 setStepRate(stepsPerSecond: number): void
 getStepRate(): number

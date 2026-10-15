@@ -521,6 +521,11 @@ export class Renderer implements IRenderer {
     sizeCanvasToHost(this.canvas, this.getSurface());
     this.clear();
     this.applyViewTransform();
+    // DOM work of the world's elements (plugs following their nodes,
+    // jacks following the layout, ...): after this renderer's own layout
+    // reads above, so measuring the page costs one layout per frame. The
+    // drawing below only touches the canvas.
+    this.world.runFrameTasks();
 
     // Draw all wires using efficient memory access, over their shadows
     if (this.wireShadows) this.drawWireShadows();

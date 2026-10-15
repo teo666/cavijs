@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Jack, type CableSession } from '../component/jack';
 import { Cavi } from '../core/cavi';
+import type { FrameTask } from '../core/frame';
 import type { Plug } from '../component/plug';
 import type { CaviWireElement } from '../component/wirewc';
 import { Node } from '../core/node';
@@ -32,7 +33,7 @@ afterEach(() => {
 
 /**
  * A minimal stand-in for a Plug, exposing just enough of its interface
- * (getBoundingClientRect/setSpreadPosition/snapToJack/getOtherEndCenter)
+ * (getBoundingClientRect/setSpreadPosition/snapToJack/getOtherEndCenter/unplug)
  * for Jack's hover-spread bookkeeping (_refreshSpread) to run against it
  * without crashing, for tests that only care about capacity/full-state
  * behavior and don't need a real DOM Plug.
@@ -43,6 +44,7 @@ function fakePlug(): Plug {
     setSpreadPosition: () => {},
     snapToJack: () => {},
     getOtherEndCenter: () => null,
+    unplug: () => {},
   } as unknown as Plug;
 }
 
@@ -155,6 +157,25 @@ class FakeCavi {
   public getContainer = (): HTMLElement => document.body;
 
   deleteWire(): void {}
+
+  /** Stand-in for World's frame tasks — see runFrame. */
+  public frameTasks = new Set<FrameTask>();
+  getWorld() {
+    return {
+      addFrameTask: (task: FrameTask) => {
+        this.frameTasks.add(task);
+        return () => this.frameTasks.delete(task);
+      },
+    };
+  }
+}
+
+/** Runs one frame of `fake`'s frame tasks: all reads, then all writes (like World.runFrameTasks). */
+function runFrame(fake: FakeCavi): void {
+  const ctx = { viewBounds: [] };
+  const tasks = [...fake.frameTasks];
+  for (const task of tasks) task.read?.(ctx);
+  for (const task of tasks) if (fake.frameTasks.has(task)) task.write?.(ctx);
 }
 
 function installFakeCavi(): FakeCavi {
@@ -891,60 +912,113 @@ describe('Jack rendering — position mode affects :host CSS', () => {
   });
 });
 
-describe('Jack auto-position re-sync (ResizeObserver + cavi-transform-change)', () => {
-  let resizeCallbacks: (() => void)[];
-
-  function stubResizeObserver() {
-    resizeCallbacks = [];
-    vi.stubGlobal(
-      'ResizeObserver',
-      class {
-        constructor(cb: () => void) {
-          resizeCallbacks.push(cb);
-        }
-        observe() {}
-        disconnect() {}
-      }
-    );
-  }
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it('re-glues an attached plug when its own ResizeObserver fires', () => {
-    stubResizeObserver();
-    installFakeCavi();
-    const jack = makePositionedJack('a', 42, 24);
-    const snapToJack = vi.fn();
-    jack.attach({ ...fakePlug(), snapToJack } as unknown as Plug);
-
-    expect(resizeCallbacks.length).toBeGreaterThan(0);
-    resizeCallbacks.forEach((cb) => cb());
-
-    // Re-glued through Plug.snapToJack(), which reads this Jack's
-    // getWorldPosition() — the single container-anchored, zoom-corrected
-    // conversion every position in the library now goes through.
-    expect(snapToJack).toHaveBeenCalled();
-  });
-
-  it('does not create a ResizeObserver for a Jack with explicit x/y', () => {
-    stubResizeObserver();
-    installFakeCavi();
-    makePositionedJack('a', 0, 0, { x: '10', y: '20' });
-    expect(resizeCallbacks.length).toBe(0);
-  });
-
-  it('re-glues an attached plug when Cavi fires cavi-transform-change on the container', () => {
-    stubResizeObserver();
+describe('Jack auto-position re-sync (frame task)', () => {
+  it('re-glues its plugs once the layout moves it, and only then', () => {
     const fake = installFakeCavi();
     const jack = makePositionedJack('a', 42, 24);
     const snapToJack = vi.fn();
     jack.attach({ ...fakePlug(), snapToJack } as unknown as Plug);
 
-    (fake.getContainer() as HTMLElement).dispatchEvent(new CustomEvent('cavi-transform-change'));
+    runFrame(fake); // first frame: glues to the measured position
+    expect(snapToJack).toHaveBeenLastCalledWith({ x: 42, y: 24 });
+    snapToJack.mockClear();
 
-    expect(snapToJack).toHaveBeenCalled();
+    runFrame(fake); // nothing moved: no DOM writes
+    expect(snapToJack).not.toHaveBeenCalled();
+
+    // A reflow (or a transform on an ancestor) moves the jack — no resize
+    // of its own box, no event: picked up by the next frame anyway.
+    vi.spyOn(jack, 'getBoundingClientRect').mockReturnValue(rect(300, 120));
+    runFrame(fake);
+    expect(snapToJack).toHaveBeenCalledWith({ x: 300, y: 120 });
+  });
+
+  it('measures every jack before re-gluing any (no layout read after a write)', () => {
+    const fake = installFakeCavi();
+    const a = makePositionedJack('a', 0, 0);
+    const b = makePositionedJack('b', 50, 50);
+    const calls: string[] = [];
+    for (const [jack, name] of [
+      [a, 'a'],
+      [b, 'b'],
+    ] as const) {
+      vi.spyOn(jack, 'getBoundingClientRect').mockImplementation(() => {
+        calls.push(`read ${name}`);
+        return rect(10, 10);
+      });
+      jack.attach({
+        ...fakePlug(),
+        snapToJack: () => calls.push(`write ${name}`),
+      } as unknown as Plug);
+    }
+
+    runFrame(fake);
+
+    expect(calls).toEqual(['read a', 'read b', 'write a', 'write b']);
+  });
+
+  it('does nothing for a Jack with explicit x/y, or with no plugs', () => {
+    const fake = installFakeCavi();
+    const explicit = makePositionedJack('a', 0, 0, { x: '10', y: '20' });
+    const explicitRect = vi.spyOn(explicit, 'getBoundingClientRect');
+    const empty = makePositionedJack('b', 0, 0);
+    const emptyRect = vi.spyOn(empty, 'getBoundingClientRect');
+    const snapToJack = vi.fn();
+    explicit.attach({ ...fakePlug(), snapToJack } as unknown as Plug);
+    snapToJack.mockClear();
+
+    runFrame(fake);
+
+    expect(explicitRect).not.toHaveBeenCalled();
+    expect(emptyRect).not.toHaveBeenCalled();
+    expect(snapToJack).not.toHaveBeenCalled();
+  });
+
+  it('stops syncing once removed', () => {
+    const fake = installFakeCavi();
+    const jack = makePositionedJack('a', 42, 24);
+    expect(fake.frameTasks.size).toBe(1);
+    jack.remove();
+    expect(fake.frameTasks.size).toBe(0);
+  });
+});
+
+describe('Jack removed from the page', () => {
+  it('releases its plugs, so their cable ends fall free', async () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 0, 0, { type: 'audio' });
+    const plug = document.createElement('cavi-plug') as Plug;
+    document.body.appendChild(plug);
+    const node = new Node(0, 0, true);
+    plug.setNode(node);
+    plug.attach(jack);
+    plug.setAttribute('plugged', 'true');
+
+    jack.remove();
+    await Promise.resolve();
+
+    expect(plug.jack).toBeNull();
+    expect(plug.hasAttribute('plugged')).toBe(false);
+    expect(node.fixed).toBe(false);
+    expect(jack.plugCount).toBe(0);
+  });
+
+  it('keeps them plugged across a plain DOM move', async () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 0, 0, { type: 'audio' });
+    const plug = document.createElement('cavi-plug') as Plug;
+    document.body.appendChild(plug);
+    const node = new Node(0, 0, true);
+    plug.setNode(node);
+    plug.attach(jack);
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    host.appendChild(jack); // disconnect + connect in the same task
+    await Promise.resolve();
+
+    expect(plug.jack).toBe(jack);
+    expect(node.fixed).toBe(true);
   });
 });
 

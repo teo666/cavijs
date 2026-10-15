@@ -1,38 +1,41 @@
 import { Cavi } from '../core/cavi';
 import type { Wire } from '../core/wire';
 import { emitCaviEvent } from '../core/events';
+import { rectContains, type FrameContext, type FrameTask } from '../core/frame';
 import type { Plug } from './plug';
 import type { Jack } from './jack';
 import './plug';
 
-/** Simple axis-aligned bounding-box overlap test (touching edges don't count). */
-function rectsOverlap(a: DOMRect, b: DOMRect): boolean {
-  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-}
+/**
+ * How far (world units) outside the view a node must be to count as out of
+ * view — a plug is 24px across, so a terminal just past the edge is still
+ * partly visible.
+ */
+const OUT_OF_VIEW_MARGIN = 32;
 
 export class CaviWireElement extends HTMLElement {
   /**
-   * ~0.5s at 60fps — long enough that no single-frame layout reflow glitch
-   * (see _framesOutside) can be mistaken for a cable that has genuinely
-   * drifted away under gravity/tension.
+   * ~0.5s at 60fps — long enough that no momentary state (see
+   * _framesOutside) can be mistaken for a cable that has genuinely drifted
+   * away under gravity/tension.
    */
   private static readonly OUTSIDE_FRAMES_BEFORE_CLEANUP = 30;
 
   private _wire: Wire | null = null;
   private _plugs: Plug[] = [];
-  private _rafId: number | null = null;
   private _cavi: Cavi | null = null;
-  private _container: HTMLElement | null = null;
+  /** Unregisters _frameTask from the world (see _startFrameSync). */
+  private _stopFrameTask: (() => void) | null = null;
   /**
-   * Consecutive frames this orphaned wire's plugs have been found entirely
-   * outside the container — a layout reflow (e.g. a responsive container resizing,
-   * see worldwc.ts's ResizeObserver) can leave a jack's DOM position stale
-   * for a frame or two before it's re-measured, which would otherwise read
-   * as a false "drifted away" positive on a single frame. Cleanup only
-   * fires once this holds for OUTSIDE_FRAMES_BEFORE_CLEANUP consecutive
-   * frames, so a transient reflow glitch can never delete a cable.
+   * Consecutive frames this wire has been found orphaned and entirely out
+   * of view. Cleanup only fires once this holds for
+   * OUTSIDE_FRAMES_BEFORE_CLEANUP consecutive frames, so a cable that is
+   * out of view only for a moment (e.g. a plug dropped near the edge, or a
+   * quick pan) is never deleted.
    */
   private _framesOutside: number = 0;
+  /** Set by _frameTask.read when this frame's write must delete the cable. */
+  private _destroyPending: boolean = false;
 
   static get observedAttributes() {
     return ['length', 'tension', 'size', 'renderType', 'color', 'type'];
@@ -46,7 +49,7 @@ export class CaviWireElement extends HTMLElement {
     // the WASM wire is still alive (see disconnectedCallback), so just
     // resume the per-frame sync instead of creating a duplicate wire.
     if (this._wire) {
-      this._startUpdateLoop();
+      this._startFrameSync();
       return;
     }
 
@@ -61,7 +64,7 @@ export class CaviWireElement extends HTMLElement {
    * (disconnect immediately followed by connect) keeps the live wire.
    */
   disconnectedCallback() {
-    this._stopUpdateLoop();
+    this._stopFrameSync();
     queueMicrotask(() => {
       if (!this.isConnected) this._releaseWire();
     });
@@ -91,7 +94,6 @@ export class CaviWireElement extends HTMLElement {
     const type = this.getAttribute('type') ?? '';
 
     this._cavi = cavi;
-    this._container = cavi.getContainer();
 
     const plugEls = Array.from(this.children).filter(
       (el) => el.tagName.toLowerCase() === 'cavi-plug'
@@ -170,37 +172,45 @@ export class CaviWireElement extends HTMLElement {
       }
     }
 
-    this._startUpdateLoop();
+    this._startFrameSync();
   }
 
   /**
    * Keeps each Plug's DOM position in sync with its physics node every
-   * frame. Without this, a Plug dropped away from any Jack freezes at the
-   * drop point while its underlying node keeps moving under gravity/tension
-   * — visually detaching the plug icon from the wire it's still bound to.
+   * frame, and runs the orphan cleanup — as a FrameTask of its world rather
+   * than a requestAnimationFrame loop of its own, so a world with N cables
+   * still measures the page once per frame (see World.runFrameTasks).
+   * Without it, a Plug dropped away from any Jack would freeze at the drop
+   * point while its underlying node keeps moving under gravity/tension.
    */
-  private _startUpdateLoop(): void {
-    this._stopUpdateLoop();
-    const tick = () => {
-      for (const plug of this._plugs) {
-        plug.update();
-      }
-      this._cleanupOrphanOutsideView();
-      // _cleanupOrphanOutsideView may have synchronously disconnected this
-      // element (via _destroy -> remove()) — don't reschedule if it did.
-      if (this.isConnected) {
-        this._rafId = requestAnimationFrame(tick);
-      }
-    };
-    this._rafId = requestAnimationFrame(tick);
+  private _startFrameSync(): void {
+    this._stopFrameSync();
+    this._stopFrameTask = this._cavi?.getWorld?.().addFrameTask?.(this._frameTask) ?? null;
   }
 
-  private _stopUpdateLoop(): void {
-    if (this._rafId !== null) {
-      cancelAnimationFrame(this._rafId);
-      this._rafId = null;
-    }
+  private _stopFrameSync(): void {
+    this._stopFrameTask?.();
+    this._stopFrameTask = null;
   }
+
+  private _frameTask: FrameTask = {
+    read: (ctx) => {
+      this._destroyPending = false;
+      if (!this._isOrphanOutOfView(ctx)) {
+        this._framesOutside = 0;
+        return;
+      }
+      this._framesOutside++;
+      this._destroyPending = this._framesOutside >= CaviWireElement.OUTSIDE_FRAMES_BEFORE_CLEANUP;
+    },
+    write: () => {
+      if (this._destroyPending) {
+        this._destroy();
+        return;
+      }
+      for (const plug of this._plugs) plug.update();
+    },
+  };
 
   /**
    * Whether this cable is orphaned: neither terminal node is fixed — not
@@ -217,48 +227,44 @@ export class CaviWireElement extends HTMLElement {
   }
 
   /**
-   * Orphan cleanup, called once per frame from the update loop above: an
-   * orphaned cable (see isOrphan) whose plugs have all drifted entirely
-   * outside both the world container and the renderer's surface (see
-   * RendererOptions.surface — so a cable still visible in a zoomed-out view
-   * is never deleted) for OUTSIDE_FRAMES_BEFORE_CLEANUP consecutive frames
-   * is deleted — freeing its WASM-side wire, its DOM (which cascades
-   * disconnectedCallback on every child <cavi-plug>), and this element's
-   * own RAF loop. Applies to every cable however it was created, unless
-   * its world turned it off (Cavi.setOrphanCleanup / <cavi-world
-   * orphan-cleanup="off">) — both the policy and the orphan state are read
-   * live, so plugging a falling cable back in (or toggling the policy)
-   * takes effect on the next frame.
+   * Orphan cleanup check, run once per frame by _frameTask: whether this
+   * cable is orphaned (see isOrphan) and every node of it lies outside both
+   * the world container and the renderer's surface (FrameContext.viewBounds
+   * — see RendererOptions.surface, so a cable still visible in a zoomed-out
+   * view is never deleted). Once that has held for
+   * OUTSIDE_FRAMES_BEFORE_CLEANUP consecutive frames the cable is deleted,
+   * freeing its WASM-side wire and its DOM (which cascades
+   * disconnectedCallback on every child <cavi-plug>). Applies to every
+   * cable however it was created, unless its world turned it off
+   * (Cavi.setOrphanCleanup / <cavi-world orphan-cleanup="off">) — both the
+   * policy and the orphan state are read live, so plugging a falling cable
+   * back in (or toggling the policy) takes effect on the next frame.
    *
-   * Checked via real bounding-box overlap (not the physics node's raw x/y)
-   * so it stays correct regardless of where in the DOM a <cavi-wire> lives
-   * relative to the container. The bounds test runs first: reading a
-   * node's fixed state allocates a temporary WASM copy (see Node.fixed),
-   * so it is only paid for cables that are already out of view.
+   * Works on the physics nodes' world positions, compared against view
+   * bounds measured once per frame for the whole world — no layout read
+   * per cable. Cheapest test first: the two terminals; then the orphan
+   * state (reading a node's fixed state allocates a temporary WASM copy,
+   * see Node.fixed); then every node, so a cable hanging back into view
+   * between two out-of-view ends is kept.
    */
-  private _cleanupOrphanOutsideView(): void {
-    if (!this._container || this._plugs.length === 0) return;
-    if (this._cavi?.getOrphanCleanup?.() === false) {
-      this._framesOutside = 0;
-      return;
+  private _isOrphanOutOfView(ctx: FrameContext): boolean {
+    const wire = this._wire;
+    if (!wire || this._cavi?.getOrphanCleanup?.() === false) return false;
+    const count = wire.getNodeCount();
+    if (count === 0) return false;
+    const bounds = ctx.viewBounds;
+    if (bounds.length === 0) return false; // nothing measured: no renderer
+    const outside = (i: number) => {
+      const x = wire.getNodeX(i);
+      const y = wire.getNodeY(i);
+      return bounds.every((b) => !rectContains(b, x, y, OUT_OF_VIEW_MARGIN));
+    };
+    if (!outside(0) || !outside(count - 1)) return false;
+    if (!this.isOrphan()) return false;
+    for (let i = 1; i < count - 1; i++) {
+      if (!outside(i)) return false;
     }
-
-    const bounds = [this._container.getBoundingClientRect()];
-    const surface = this._cavi?.getSurface?.();
-    if (surface && surface !== this._container) bounds.push(surface.getBoundingClientRect());
-    const allOutside = this._plugs.every((plug) => {
-      const r = plug.getBoundingClientRect();
-      return bounds.every((b) => !rectsOverlap(r, b));
-    });
-
-    if (!allOutside || !this.isOrphan()) {
-      this._framesOutside = 0;
-      return;
-    }
-    this._framesOutside++;
-    if (this._framesOutside >= CaviWireElement.OUTSIDE_FRAMES_BEFORE_CLEANUP) {
-      this._destroy();
-    }
+    return true;
   }
 
   /**

@@ -69,6 +69,24 @@ export class Wire {
   }
 
   /**
+   * A node's current x, read straight from WASM — unlike getNode(), no
+   * wrapper is allocated, for code that reads positions every frame.
+   * 0 for an index out of range.
+   */
+  public getNodeX(index: number): number {
+    return this.world && this.wireIndex >= 0
+      ? this.world.get_wire_node_x(this.wireIndex, index)
+      : 0;
+  }
+
+  /** A node's current y — see getNodeX. */
+  public getNodeY(index: number): number {
+    return this.world && this.wireIndex >= 0
+      ? this.world.get_wire_node_y(this.wireIndex, index)
+      : 0;
+  }
+
+  /**
    * Get a node at a specific index. The returned Node is a live view: it
    * reads and writes the WASM node through this Wire (so it follows this
    * wire's index if an earlier wire is deleted) rather than holding a copy.

@@ -33,6 +33,7 @@ function makeFakeWorld() {
     getStepRate: () => 60,
     setMouse: vi.fn(),
     releaseMouse: vi.fn(),
+    runFrameTasks: vi.fn(),
     getCoordinateTransform: () => ({ scale: 2, translateX: 0, translateY: 0 }),
   } as any;
 }

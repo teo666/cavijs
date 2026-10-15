@@ -387,9 +387,10 @@ export class Cavi {
    * Consulted by Jack.getWorldPosition() when a Jack has no explicit `x`/`y`
    * attributes, so an auto-detected position is converted back to a stable
    * logical space before reaching the physics engine, regardless of any
-   * zoom currently applied on screen. Call notifyCoordinateTransformChanged
-   * after the transform changes (e.g. on every zoom event) so every
-   * auto-positioned Jack re-syncs.
+   * zoom currently applied on screen. The provider is read every frame:
+   * auto-positioned Jacks re-measure themselves each frame (see
+   * Jack._startFrameSync), so nothing else needs to be called when the
+   * transform changes.
    */
   public setCoordinateTransformProvider(fn: (() => CoordinateTransform) | null): void {
     this.world.setCoordinateTransformProvider(fn);
@@ -406,10 +407,9 @@ export class Cavi {
   /**
    * Announces that the registered coordinate transform's value just changed
    * (e.g. a zoom/pan step) by dispatching a `cavi-transform-change`
-   * CustomEvent on getContainer() — every auto-positioned Jack listens for
-   * this to re-measure and re-snap its plugs, since a pure CSS-transform
-   * zoom/pan does not resize the container and therefore never fires a
-   * ResizeObserver on its own.
+   * CustomEvent on getContainer(), for page code that wants to react to it.
+   * Optional: cavijs itself re-measures auto-positioned Jacks every frame
+   * and no longer needs this call.
    */
   public notifyCoordinateTransformChanged(): void {
     this.getContainer()?.dispatchEvent(new CustomEvent('cavi-transform-change'));
