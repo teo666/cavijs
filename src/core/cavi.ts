@@ -242,6 +242,33 @@ export class Cavi {
     return this.world.getStepRate();
   }
 
+  /** See World.setTimeStep — simulated time per engine sub-step, default 0.3. */
+  public setTimeStep(timeStep: number): void {
+    this.world.setTimeStep(timeStep);
+  }
+
+  public getTimeStep(): number {
+    return this.world.getTimeStep();
+  }
+
+  /** See World.setSubsteps — engine sub-steps per step, default 2. */
+  public setSubsteps(substeps: number): void {
+    this.world.setSubsteps(substeps);
+  }
+
+  public getSubsteps(): number {
+    return this.world.getSubsteps();
+  }
+
+  /** See World.setConstraintIterations — link relaxation passes per sub-step, default 1. */
+  public setConstraintIterations(iterations: number): void {
+    this.world.setConstraintIterations(iterations);
+  }
+
+  public getConstraintIterations(): number {
+    return this.world.getConstraintIterations();
+  }
+
   /**
    * Render using the configured renderer
    */

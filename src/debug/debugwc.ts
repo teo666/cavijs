@@ -425,6 +425,8 @@ export class CaviDebugElement extends HTMLElement {
     this._setText('pointerRadius', formatNumber(stats.pointerRadius, 1));
     this._setText('responseCoef', formatNumber(stats.responseCoef, 2));
     this._setText('stepRate', `${formatNumber(stats.stepRate, 1)} /s`);
+    this._setText('substeps', `${stats.substeps} × ${formatNumber(stats.timeStep, 3)}`);
+    this._setText('constraintIterations', String(stats.constraintIterations));
     this._setText('buffer', formatBytes(stats.bufferBytes));
 
     this._setText(
@@ -1117,6 +1119,8 @@ const TEMPLATE = `
         <dt>Pointer radius</dt><dd id="pointerRadius">—</dd>
         <dt>Response coef.</dt><dd id="responseCoef">—</dd>
         <dt>Step rate</dt><dd id="stepRate">—</dd>
+        <dt>Sub-steps × dt</dt><dd id="substeps">—</dd>
+        <dt>Link iterations</dt><dd id="constraintIterations">—</dd>
         <dt>Render buffer</dt><dd id="buffer">—</dd>
       </dl>
     </details>

@@ -24,6 +24,9 @@ setMouse(x: number, y: number): void
 releaseMouse(): void
 setStepRate(stepsPerSecond: number): void  // default 60
 getStepRate(): number
+setTimeStep(timeStep: number): void     // tempo simulato per sotto-passo del motore, default 0.3
+setSubsteps(substeps: number): void     // sotto-passi del motore per passo, default 2 (cambia anche la velocità)
+setConstraintIterations(iterations: number): void  // passate di rilassamento dei vincoli per sotto-passo, default 1 (solo rigidità)
 render(): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
@@ -60,6 +63,9 @@ runFrameTasks(): void                   // esegue tutti i task: prima le letture
 advance(elapsedMs: number): number      // passi a frequenza fissa, ritorna quanti ne ha eseguiti
 setStepRate(stepsPerSecond: number): void
 getStepRate(): number
+setTimeStep(timeStep: number): void     // tempo simulato per sotto-passo del motore, default 0.3
+setSubsteps(substeps: number): void     // sotto-passi del motore per passo, default 2 (cambia anche la velocità)
+setConstraintIterations(iterations: number): void  // passate di rilassamento dei vincoli per sotto-passo, default 1 (solo rigidità)
 setMouse(x: number, y: number): void
 releaseMouse(): void                    // parcheggia il mouse del motore fuori portata
 getWireDataPtr(): number

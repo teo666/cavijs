@@ -137,12 +137,21 @@ export class Plug extends HTMLElement {
     this.updatePosition();
   }
 
+  /**
+   * Per-frame sync (see CaviWireElement's frame task): moves this Plug to
+   * where its node is *drawn* — interpolated between physics steps on a
+   * display faster than the step rate (see Node.getRenderPosition) — so it
+   * stays on the rendered cable. No-op mid-drag.
+   */
   public update() {
-    if (!this._dragging) {
-      this.updatePosition();
+    if (!this._dragging && this._node) {
+      const { x, y } = this._node.getRenderPosition();
+      this.style.left = `${x}px`;
+      this.style.top = `${y}px`;
     }
   }
 
+  /** Moves this Plug onto its node's current physics position, right away. */
   private updatePosition() {
     if (this._node) {
       const x = this._node.x;

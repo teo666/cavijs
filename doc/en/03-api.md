@@ -24,6 +24,9 @@ setMouse(x: number, y: number): void
 releaseMouse(): void
 setStepRate(stepsPerSecond: number): void  // default 60
 getStepRate(): number
+setTimeStep(timeStep: number): void     // simulated time per engine sub-step, default 0.3
+setSubsteps(substeps: number): void     // engine sub-steps per step, default 2 (changes speed too)
+setConstraintIterations(iterations: number): void  // link relaxation passes per sub-step, default 1 (stiffness only)
 render(): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
@@ -60,6 +63,9 @@ runFrameTasks(): void                   // runs every task: all reads, then all 
 advance(elapsedMs: number): number      // fixed-rate stepping, returns steps run
 setStepRate(stepsPerSecond: number): void
 getStepRate(): number
+setTimeStep(timeStep: number): void     // simulated time per engine sub-step, default 0.3
+setSubsteps(substeps: number): void     // engine sub-steps per step, default 2 (changes speed too)
+setConstraintIterations(iterations: number): void  // link relaxation passes per sub-step, default 1 (stiffness only)
 setMouse(x: number, y: number): void
 releaseMouse(): void                    // parks the engine mouse out of reach
 getWireDataPtr(): number

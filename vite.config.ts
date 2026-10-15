@@ -31,7 +31,10 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     fs: {
-      allow: ['..'],
+      // Relative to `root` (examples/): the project, and the sibling `cavi`
+      // checkout for when the dependency is linked to a local build
+      // (`"cavi": "link:../cavi/pkg"`) to develop both side by side.
+      allow: ['..', '../../cavi'],
     },
   },
   assetsInclude: ['**/*.wasm'],

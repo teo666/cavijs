@@ -65,7 +65,7 @@ src/
 
 `Renderer.render()` drives the whole loop: it advances physics (`world.advance(elapsed)`), clears the canvas, draws, and re-schedules itself via `requestAnimationFrame`. Callers only need to call `renderer.render()` once to start it.
 
-The engine's step has a fixed time delta, so `World.advance` turns the real time elapsed since the previous frame into a fixed number of steps per second (`setStepRate`, default 60) with an accumulator: one step per frame at 60 Hz, one every other frame at 120 Hz, two per frame at 30 Hz. A frame still steps once whenever a wire was added or deleted since the last step, because the render buffer is only rebuilt by a step.
+The engine's step has a fixed time delta, so `World.advance` turns the real time elapsed since the previous frame into a fixed number of steps per second (`setStepRate`, default 60) with an accumulator: one step per frame at 60 Hz, one every other frame at 120 Hz, two per frame at 30 Hz. Then, on every frame, `build_render_data(alpha)` rebuilds the render buffer with the cables drawn `alpha` of the way between the last two steps (`alpha` = time left in the accumulator / step duration). A display faster than the step rate therefore draws a new position on every frame instead of repeating the last step's, and the buffer always matches the current wires. Drawing trails the simulation by at most one step; fixed nodes (plugged or dragged ends) are drawn where they are. Plugs follow the drawn position too (`Node.getRenderPosition`), so they stay on the cable.
 
 ### Mouse interaction
 

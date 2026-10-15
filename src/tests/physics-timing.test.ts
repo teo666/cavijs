@@ -60,18 +60,51 @@ describe('World.advance — fixed step rate', () => {
     expect(world.advance(1000 / 60)).toBe(1);
   });
 
-  it('steps at least once after a wire was added, so the render buffer matches the wire count', () => {
+  it('rebuilds the render buffer on every advance, even without a step', () => {
     const world = new World();
     world.setStepRate(30);
     expect(world.advance(1000 / 60)).toBe(0);
 
     world.addWire(0, 0, 100, 0, 5, 20, 4);
-    expect(world.getWasmWorld().wire_data_len()).toBe(0); // stale until a step
+    expect(world.getWasmWorld().wire_data_len()).toBe(0); // stale until rebuilt
     expect(world.advance(1000 / 60)).toBe(1);
-    expect(world.getWasmWorld().wire_data_len()).toBeGreaterThan(0);
+    world.addWire(0, 50, 100, 50, 5, 20, 4);
+    expect(world.advance(1000 / 60)).toBe(0);
+    // Both wires are in the buffer although no step ran since the second.
+    expect(world.getWasmWorld().wire_data_len()).toBe(2 * (4 + 2 * 13));
+  });
 
-    // The borrowed step is paid back: the long-run rate is unchanged.
-    expect(run(world, 1000 / 60, 58)).toBe(29);
+  it('draws a new, interpolated position on every frame of a 120 Hz display', () => {
+    const world = new World();
+    const wire = world.addWire(0, 0, 200, 0, 9, 20, 4); // falls under gravity
+    world.advance(1000 / 60);
+
+    const drawnY: number[] = [];
+    const physicsY: number[] = [];
+    for (let i = 0; i < 8; i++) {
+      world.advance(1000 / 120);
+      drawnY.push(wire.getNode(4)!.getRenderPosition().y);
+      physicsY.push(wire.getNode(4)!.y);
+    }
+    // Physics steps every other frame (4 steps: 5 states counting the first
+    // frame's); what is drawn moves on every frame.
+    expect(new Set(physicsY).size).toBe(5);
+    expect(new Set(drawnY).size).toBe(8);
+    // ...always between the last two physics states, never ahead of them.
+    for (let i = 1; i < 8; i++) expect(drawnY[i]).toBeLessThanOrEqual(physicsY[i] + 1e-3);
+  });
+
+  it('exposes the engine step parameters, with the defaults of the old hardcoded values', () => {
+    const world = new World();
+    expect(world.getTimeStep()).toBeCloseTo(0.3);
+    expect([world.getSubsteps(), world.getConstraintIterations()]).toEqual([2, 1]);
+    world.setTimeStep(0.2);
+    world.setSubsteps(3);
+    world.setConstraintIterations(4);
+    expect(world.getTimeStep()).toBeCloseTo(0.2);
+    expect([world.getSubsteps(), world.getConstraintIterations()]).toEqual([3, 4]);
+    world.setSubsteps(0);
+    expect(world.getSubsteps()).toBe(1);
   });
 });
 

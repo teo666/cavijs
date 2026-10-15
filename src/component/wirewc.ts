@@ -243,9 +243,8 @@ export class CaviWireElement extends HTMLElement {
    * Works on the physics nodes' world positions, compared against view
    * bounds measured once per frame for the whole world — no layout read
    * per cable. Cheapest test first: the two terminals; then the orphan
-   * state (reading a node's fixed state allocates a temporary WASM copy,
-   * see Node.fixed); then every node, so a cable hanging back into view
-   * between two out-of-view ends is kept.
+   * state; then every node, so a cable hanging back into view between two
+   * out-of-view ends is kept.
    */
   private _isOrphanOutOfView(ctx: FrameContext): boolean {
     const wire = this._wire;

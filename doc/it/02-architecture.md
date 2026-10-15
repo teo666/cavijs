@@ -65,7 +65,7 @@ src/
 
 `Renderer.render()` guida l'intero loop: fa avanzare la fisica (`world.advance(elapsed)`), pulisce il canvas, disegna e si ripianifica tramite `requestAnimationFrame`. Chi lo usa deve solo chiamare `renderer.render()` una volta per avviarlo.
 
-Il passo del motore ha un delta di tempo fisso, quindi `World.advance` trasforma il tempo reale trascorso dal frame precedente in un numero fisso di passi al secondo (`setStepRate`, default 60) con un accumulatore: un passo per frame a 60 Hz, uno ogni due frame a 120 Hz, due per frame a 30 Hz. Un frame fa comunque un passo se dall'ultimo passo è stato aggiunto o eliminato un cavo, perché il buffer di rendering viene ricostruito solo da un passo.
+Il passo del motore ha un delta di tempo fisso, quindi `World.advance` trasforma il tempo reale trascorso dal frame precedente in un numero fisso di passi al secondo (`setStepRate`, default 60) con un accumulatore: un passo per frame a 60 Hz, uno ogni due frame a 120 Hz, due per frame a 30 Hz. Poi, a ogni frame, `build_render_data(alpha)` ricostruisce il buffer di rendering con i cavi disegnati ad `alpha` del tragitto tra gli ultimi due passi (`alpha` = tempo rimasto nell'accumulatore / durata di un passo). Uno schermo più veloce della frequenza dei passi disegna così una posizione nuova a ogni frame invece di ripetere quella dell'ultimo passo, e il buffer corrisponde sempre ai cavi attuali. Il disegno resta indietro al massimo di un passo; i nodi fissi (capi collegati o trascinati) sono disegnati dove sono. Anche i plug seguono la posizione disegnata (`Node.getRenderPosition`), così restano sul cavo.
 
 ### Interazione col mouse
 

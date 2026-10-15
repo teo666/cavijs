@@ -42,6 +42,11 @@ export interface CaviStats {
   responseCoef: number;
   /** Physics steps per second (World.advance). */
   stepRate: number;
+  /** Engine sub-steps per step, and simulated time per sub-step. */
+  substeps: number;
+  timeStep: number;
+  /** Link relaxation passes per sub-step. */
+  constraintIterations: number;
   /** Last pointer position in world coordinates, null if the renderer doesn't track it. */
   pointer: { x: number; y: number } | null;
   transform: CoordinateTransform;
@@ -135,6 +140,9 @@ export function collectStats(cavi: Cavi): CaviStats {
     pointerRadius: wasm.get_pointer_radius(),
     responseCoef: wasm.get_response_coef(),
     stepRate: world.getStepRate(),
+    substeps: world.getSubsteps(),
+    timeStep: world.getTimeStep(),
+    constraintIterations: world.getConstraintIterations(),
     pointer:
       typeof renderer?.mouseX === 'number' && typeof renderer.mouseY === 'number'
         ? { x: renderer.mouseX, y: renderer.mouseY }
@@ -146,10 +154,5 @@ export function collectStats(cavi: Cavi): CaviStats {
 }
 
 function isNodeFixed(cavi: Cavi, wireIndex: number, nodeIndex: number): boolean {
-  // Same temporary-copy read as Node.fixed — WasmWorld has no direct getter.
-  const copy = cavi.getWorld().getWasmWorld().get_wire_node(wireIndex, nodeIndex);
-  if (!copy) return false;
-  const fixed = copy.get_fixed();
-  copy.free();
-  return fixed;
+  return cavi.getWorld().getWasmWorld().get_wire_node_fixed(wireIndex, nodeIndex);
 }

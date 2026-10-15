@@ -66,16 +66,25 @@ export class Node {
     return this._y;
   }
 
+  /**
+   * Where this node is drawn right now — between its position before the
+   * last physics step and its current one, as interpolated by the last
+   * World.advance (see WasmWorld.build_render_data). For DOM elements that
+   * must stay on the drawn cable; physics and app logic use x/y.
+   */
+  public getRenderPosition(): { x: number; y: number } {
+    if (this.world && this.wireIndex >= 0 && this.nodeIndex >= 0) {
+      return {
+        x: this.world.get_wire_node_render_x(this.wireIndex, this.nodeIndex),
+        y: this.world.get_wire_node_render_y(this.wireIndex, this.nodeIndex),
+      };
+    }
+    return { x: this.x, y: this.y };
+  }
+
   public get fixed(): boolean {
     if (this.world && this.wireIndex >= 0 && this.nodeIndex >= 0) {
-      // WasmWorld has no direct fixed getter: read it off a temporary copy,
-      // freed right away rather than left to the finalizer.
-      const copy = this.world.get_wire_node(this.wireIndex, this.nodeIndex);
-      if (copy) {
-        const fixed = copy.get_fixed();
-        copy.free();
-        return fixed;
-      }
+      return this.world.get_wire_node_fixed(this.wireIndex, this.nodeIndex);
     }
     if (this.wasmNode) {
       return this.wasmNode.get_fixed();

@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       cavi:
-        specifier: ^0.1.2
-        version: 0.1.2
+        specifier: link:../cavi/pkg
+        version: link:../cavi/pkg
     devDependencies:
       '@types/d3-drag':
         specifier: ^3.0.7
@@ -602,9 +602,6 @@ packages:
 
   bidi-js@1.0.3:
     resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
-
-  cavi@0.1.2:
-    resolution: {integrity: sha512-wsF84qQo3YBOvuKvDTkHDIhQBhdGlQ2cYASOWbmKAAs5bbLpUtw3b5G5YtUXHrWrAQO1sWg9Q1HSJrAXbWDcIg==}
 
   chai@6.2.2:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
@@ -1293,8 +1290,6 @@ snapshots:
   bidi-js@1.0.3:
     dependencies:
       require-from-string: 2.0.2
-
-  cavi@0.1.2: {}
 
   chai@6.2.2: {}
 

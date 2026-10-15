@@ -41,13 +41,6 @@ export class World {
   private _stepRate: number = DEFAULT_STEP_RATE;
   /** Simulated time owed by advance(), in ms — may dip slightly below 0 (see STEP_TOLERANCE_MS). */
   private _accumulatorMs: number = 0;
-  /**
-   * Set when a wire was added or deleted since the last step. The render
-   * buffer (wire_data_ptr) is only rebuilt by a step, and renderers walk it
-   * using the current wire count — so advance() never lets a frame go by
-   * without a step while the two disagree.
-   */
-  private _wiresChanged: boolean = false;
   /** See addFrameTask. */
   private _frameTasks = new Set<FrameTask>();
 
@@ -83,7 +76,6 @@ export class World {
     this.wasmWorld.add_wire_with_count(x1, y1, x2, y2, nodes, tension, radius, renderType);
     const wire = new Wire(this.wasmWorld, wireIndex);
     this.wires.push(wire);
-    this._wiresChanged = true;
     return wire;
   }
 
@@ -100,7 +92,6 @@ export class World {
       for (let i = index; i < this.wires.length; i++) {
         this.wires[i]._setIndex(i);
       }
-      this._wiresChanged = true;
     }
   }
 
@@ -184,14 +175,14 @@ export class World {
   }
 
   /**
-   * Runs exactly one physics step (and rebuilds the render buffer). The
-   * engine's step has a fixed time delta, so how fast the simulation runs
-   * depends on how often this is called — renderers call advance() instead,
-   * which turns real elapsed time into a steady number of steps.
+   * Runs exactly one physics step and rebuilds the render buffer for the
+   * resulting state. The engine's step has a fixed time delta, so how fast
+   * the simulation runs depends on how often this is called — renderers
+   * call advance() instead, which turns real elapsed time into a steady
+   * number of steps.
    */
   public update(): void {
     this.wasmWorld.update();
-    this._wiresChanged = false;
   }
 
   /**
@@ -201,16 +192,20 @@ export class World {
    * so cables fall and swing at the same speed everywhere. Returns how many
    * steps ran. Gaps longer than MAX_ELAPSED_MS (background tab) are not
    * replayed, and at most MAX_STEPS_PER_ADVANCE steps run per call.
+   *
+   * Then rebuilds the render buffer on every call, steps or not, with the
+   * cables drawn as far between the last two steps as the time left over in
+   * the accumulator (WasmWorld.build_render_data): a display faster than
+   * the step rate draws a new, interpolated position on every frame instead
+   * of repeating the last step's, and the buffer always matches the current
+   * wires even right after one was added or deleted. Drawing trails the
+   * simulation by at most one step.
    */
   public advance(elapsedMs: number): number {
     const stepMs = 1000 / this._stepRate;
     this._accumulatorMs += Math.min(Math.max(elapsedMs, 0), MAX_ELAPSED_MS);
 
     let steps = Math.floor((this._accumulatorMs + STEP_TOLERANCE_MS) / stepMs);
-    if (steps === 0 && this._wiresChanged) {
-      // Borrowed from the next frame's time, so the long-run rate holds.
-      steps = 1;
-    }
     if (steps > MAX_STEPS_PER_ADVANCE) {
       steps = MAX_STEPS_PER_ADVANCE;
       this._accumulatorMs = 0;
@@ -218,8 +213,47 @@ export class World {
       this._accumulatorMs -= steps * stepMs;
     }
 
-    for (let i = 0; i < steps; i++) this.update();
+    for (let i = 0; i < steps; i++) this.wasmWorld.step();
+    this.wasmWorld.build_render_data(Math.min(Math.max(this._accumulatorMs / stepMs, 0), 1));
     return steps;
+  }
+
+  /**
+   * Simulated time covered by one engine sub-step (default 0.3). Together
+   * with setStepRate and setSubsteps it sets how fast the simulation runs;
+   * larger values are faster but less stable.
+   */
+  public setTimeStep(timeStep: number): void {
+    this.wasmWorld.set_time_step(timeStep);
+  }
+
+  public getTimeStep(): number {
+    return this.wasmWorld.get_time_step();
+  }
+
+  /**
+   * Engine sub-steps per step (default 2). Each advances time by
+   * getTimeStep(), so this changes speed as well as accuracy — for stiffer
+   * cables at the same speed, use setConstraintIterations.
+   */
+  public setSubsteps(substeps: number): void {
+    this.wasmWorld.set_substeps(Math.max(1, Math.round(substeps)));
+  }
+
+  public getSubsteps(): number {
+    return this.wasmWorld.get_substeps();
+  }
+
+  /**
+   * Link relaxation passes per sub-step (default 1): more make cables
+   * stiffer (less stretch), at no change in speed and a small CPU cost.
+   */
+  public setConstraintIterations(iterations: number): void {
+    this.wasmWorld.set_constraint_iterations(Math.max(1, Math.round(iterations)));
+  }
+
+  public getConstraintIterations(): number {
+    return this.wasmWorld.get_constraint_iterations();
   }
 
   /**
