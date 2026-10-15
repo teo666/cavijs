@@ -77,3 +77,68 @@ describe('Node — live view of a WASM node', () => {
     expect(wire.getNode(-1)).toBeNull();
   });
 });
+
+describe('Wire node handles — follow their node across node edits', () => {
+  /** A wire whose last node sits at a recognizable spot. */
+  function wireWithMarkedEnd() {
+    const world = new World();
+    const wire = world.addWire(0, 0, 100, 0, 5, 20, 5);
+    const end = wire.getNode(4)!;
+    end.setPosition(123, 45);
+    return { world, wire, end };
+  }
+
+  it('hands out one handle per node', () => {
+    const { wire } = wireWithMarkedEnd();
+    expect(wire.getNode(2)).toBe(wire.getNode(2));
+  });
+
+  it('keeps a terminal handle on the terminal when nodes are inserted before it', () => {
+    const { wire, end } = wireWithMarkedEnd();
+    wire.addNodeAt(2, 50, 0);
+    wire.addNodeAt(4, 70, 0);
+
+    expect(wire.getNodeCount()).toBe(7);
+    expect(wire.getNode(6)).toBe(end);
+    expect([end.x, end.y]).toEqual([123, 45]);
+    end.setPosition(200, 10);
+    expect(wire.getNodeX(6)).toBe(200);
+  });
+
+  it('follows removals before it, and invalidates the removed node', () => {
+    const { wire, end } = wireWithMarkedEnd();
+    const middle = wire.getNode(2)!;
+
+    expect(wire.removeNode(2)).toBe(true);
+
+    expect(wire.getNode(3)).toBe(end);
+    expect([end.x, end.y]).toEqual([123, 45]);
+    // The removed node's handle no longer writes to whatever took its index.
+    const occupant = wire.getNodeX(2);
+    middle.setPosition(999, 999);
+    expect(wire.getNodeX(2)).toBe(occupant);
+  });
+
+  it('refuses to go below 2 nodes', () => {
+    const world = new World();
+    const wire = world.addWire(0, 0, 100, 0, 2, 20, 5);
+    expect(wire.removeNode(0)).toBe(false);
+    expect(wire.getNodeCount()).toBe(2);
+  });
+
+  it('keeps both terminals across setNodeCount, and invalidates the old intermediates', () => {
+    const { wire, end } = wireWithMarkedEnd();
+    const start = wire.getNode(0)!;
+    const middle = wire.getNode(2)!;
+
+    wire.setNodeCount(9);
+
+    expect(wire.getNode(0)).toBe(start);
+    expect(wire.getNode(8)).toBe(end);
+    expect([end.x, end.y]).toEqual([123, 45]);
+    expect(wire.getNode(2)).not.toBe(middle);
+
+    wire.setNodeCount(3);
+    expect(wire.getNode(2)).toBe(end);
+  });
+});

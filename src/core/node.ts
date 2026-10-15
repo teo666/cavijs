@@ -111,6 +111,15 @@ export class Node {
     }
   }
 
+  /**
+   * Internal: called by Wire when a node insertion/removal shifts this
+   * node's index, or with -1 once the node is gone (every method then
+   * falls back to the last known values instead of touching another node).
+   */
+  public _setIndex(index: number): void {
+    this.nodeIndex = index;
+  }
+
   public setMousePosition(x: number, y: number) {
     this.world?.set_mouse(x, y);
   }

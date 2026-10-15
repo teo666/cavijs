@@ -11,6 +11,14 @@ export class Wire {
   private meta: WireMeta = {};
   private world: WasmWorld | null = null;
   private wireIndex: number = -1;
+  /**
+   * The Node handles getNode() has handed out, by node index (a sparse
+   * array: only nodes someone asked for). Kept in step with every node
+   * insertion/removal made through this Wire, so a handle keeps pointing at
+   * the same node — e.g. a Plug stays on its cable's terminal when nodes are
+   * inserted before it — the way World keeps Wire handles valid.
+   */
+  private nodes: (Node | undefined)[] = [];
 
   constructor(world?: WasmWorld, wireIndex?: number) {
     if (world !== undefined && wireIndex !== undefined) {
@@ -24,6 +32,7 @@ export class Wire {
    */
   public addNode(x: number, y: number, fixed: boolean = false): void {
     if (this.world && this.wireIndex >= 0) {
+      // Appended after every existing node: no handle moves.
       this.world.add_wire_node(this.wireIndex, x, y, fixed);
     }
   }
@@ -32,18 +41,28 @@ export class Wire {
    * Add a node at a specific index in the wire
    */
   public addNodeAt(index: number, x: number, y: number, fixed: boolean = false): void {
-    if (this.world && this.wireIndex >= 0) {
-      this.world.add_wire_node_at(this.wireIndex, index, x, y, fixed);
+    if (!this.world || this.wireIndex < 0) return;
+    // Same bounds as the engine, which ignores an index past the end.
+    if (index < 0 || index > this.getNodeCount()) return;
+    this.world.add_wire_node_at(this.wireIndex, index, x, y, fixed);
+    if (index < this.nodes.length) {
+      this.nodes.splice(index, 0, undefined);
+      this._reindexNodes(index + 1);
     }
   }
 
   /**
-   * Remove a node at the specified index
+   * Remove a node at the specified index. Returns false (and changes
+   * nothing) if that would leave fewer than 2 nodes or the index is out of
+   * range. A handle to the removed node is invalidated.
    */
-  public removeNode(index: number): void {
-    if (this.world && this.wireIndex >= 0) {
-      this.world.remove_wire_node(this.wireIndex, index);
-    }
+  public removeNode(index: number): boolean {
+    if (!this.world || this.wireIndex < 0) return false;
+    if (!this.world.remove_wire_node(this.wireIndex, index)) return false;
+    const [removed] = this.nodes.splice(index, 1);
+    removed?._setIndex(-1);
+    this._reindexNodes(index);
+    return true;
   }
 
   /**
@@ -63,8 +82,20 @@ export class Wire {
    * is discarded — this rebuilds the node vector from scratch.
    */
   public setNodeCount(count: number): void {
-    if (this.world && this.wireIndex >= 0) {
-      this.world.set_wire_node_count(this.wireIndex, count);
+    if (!this.world || this.wireIndex < 0) return;
+    const current = this.getNodeCount();
+    // Same no-op cases as the engine's set_node_count.
+    if (count < 2 || count === current) return;
+    this.world.set_wire_node_count(this.wireIndex, count);
+    // The terminals survive (handles to them stay valid, the last one moving
+    // to the new last index); every intermediate node is new.
+    const first = this.nodes[0];
+    const last = current > 1 ? this.nodes[current - 1] : undefined;
+    for (let i = 1; i < current - 1; i++) this.nodes[i]?._setIndex(-1);
+    this.nodes = [first];
+    if (last) {
+      this.nodes[count - 1] = last;
+      last._setIndex(count - 1);
     }
   }
 
@@ -90,19 +121,33 @@ export class Wire {
    * Get a node at a specific index. The returned Node is a live view: it
    * reads and writes the WASM node through this Wire (so it follows this
    * wire's index if an earlier wire is deleted) rather than holding a copy.
+   * Always the same handle for the same node, and it follows its node when
+   * nodes are inserted or removed before it through this Wire (addNodeAt,
+   * removeNode, setNodeCount) — so it is the node, not the index, that a
+   * Plug is bound to.
    */
   public getNode(index: number): Node | null {
     if (!this.world || this.wireIndex < 0) return null;
     if (index < 0 || index >= this.world.get_wire_node_count(this.wireIndex)) return null;
-    return new Node(
-      this.world.get_wire_node_x(this.wireIndex, index),
-      this.world.get_wire_node_y(this.wireIndex, index),
-      false,
-      undefined,
-      this.world,
-      this,
-      index
-    );
+    let node = this.nodes[index];
+    if (!node) {
+      node = new Node(
+        this.world.get_wire_node_x(this.wireIndex, index),
+        this.world.get_wire_node_y(this.wireIndex, index),
+        false,
+        undefined,
+        this.world,
+        this,
+        index
+      );
+      this.nodes[index] = node;
+    }
+    return node;
+  }
+
+  /** Tells every handle from `from` on its (shifted) index. */
+  private _reindexNodes(from: number): void {
+    for (let i = from; i < this.nodes.length; i++) this.nodes[i]?._setIndex(i);
   }
 
   /**

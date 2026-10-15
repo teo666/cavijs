@@ -505,7 +505,8 @@ export class CaviControls extends HTMLElement {
         `nodeCount${i}`,
         `nodeCount${i}Value`,
         (value) => {
-          wasmWorld.set_wire_node_count(i, value);
+          // Through Wire, so plugs keep their node (see Wire.getNode).
+          this.cavi!.getWireByIndex(i)?.setNodeCount(value);
         },
         0
       );
@@ -526,7 +527,7 @@ export class CaviControls extends HTMLElement {
         const defaultCount = this.calculateOptimalLength(startX, startY, endX, endY, 10.0);
 
         // Apply default
-        wasmWorld.set_wire_node_count(i, defaultCount);
+        this.cavi!.getWireByIndex(i)?.setNodeCount(defaultCount);
 
         // Update UI
         const slider = this.shadowRoot.getElementById(`nodeCount${i}`) as HTMLInputElement;
