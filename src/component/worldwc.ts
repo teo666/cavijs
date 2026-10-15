@@ -4,7 +4,7 @@ import type { IResizeController } from '../core/types';
 import type { CoordinateTransform } from '../core/coords';
 import { StandardResizeController } from '../renderer/resize';
 import './jack'; // registers cavi-jack, and transitively cavi-wire (wirewc) + cavi-plug
-import './interactionwc'; // registers cavi-interaction
+import { CaviInteractionElement } from './interactionwc'; // also registers cavi-interaction
 
 /**
  * WASM init is process-wide and not safe to run twice (Cavi.initWasm calls
@@ -204,8 +204,15 @@ export class CaviWorldElement extends HTMLElement {
     // <cavi-interaction>, nothing here would be interactive. An author can
     // drop one in manually (e.g. with a custom `.controller`); otherwise
     // this provides the standard mouse/touch drag-and-drop for free, same
-    // as the auto-created canvas above.
-    if (!this.querySelector('cavi-interaction')) {
+    // as the auto-created canvas above. Not when the world already has one
+    // attached from elsewhere on the page (a <cavi-interaction> outside this
+    // element attaches during the caviready dispatch above) — two
+    // controllers would both handle every click — nor with `no-interaction`.
+    if (
+      !this.hasAttribute('no-interaction') &&
+      !this.querySelector('cavi-interaction') &&
+      !CaviInteractionElement.attachedTo(cavi)
+    ) {
       this.appendChild(document.createElement('cavi-interaction'));
     }
 

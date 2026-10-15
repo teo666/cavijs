@@ -156,7 +156,7 @@ afterEach(() => {
   controller?.detach();
   document.body.innerHTML = '';
   Cavi.shared = null;
-  (Jack as unknown as { _activeDragCount: number })._activeDragCount = 0;
+  Jack._resetInteractionState();
 });
 
 function attachController(): StandardInteractionController {

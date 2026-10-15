@@ -23,6 +23,7 @@ export default defineConfig({
         basic: './examples/demo-basic.html',
         svg: './examples/demo-svg.html',
         jackPlug: './examples/demo-jack-plug.html',
+        twoWorlds: './examples/demo-two-worlds.html',
         patchbay: './examples/demo-patchbay.html',
         patchbaySvg: './examples/demo-patchbay-svg.html',
         noopInteraction: './examples/demo-noop-interaction.html',

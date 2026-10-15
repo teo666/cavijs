@@ -10,7 +10,7 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
   fermi, handle dei nodi stabili, `Cavi.destroy()` e smontaggio dei mondi rimossi, cavi creati trascinando
   che sopravvivono a un reinserimento, colori di default fissati alla creazione, plug che si aprono su un
   jack già aperto, tipo vuoto come jolly, `World` che rifiuta modifiche fatte direttamente sul WASM,
-  `Wire.delete()`.
+  `Wire.delete()`, mondi multipli isolati (anche negli shadow root), suite end-to-end Playwright.
 - **`cavi`:** `step()` separato da `build_render_data(alpha)`, parametri del passo configurabili, cavi che
   partono dritti, cavo tenuto (`pointer_radius`), sospensione, lancio al rilascio, distanza tra i nodi
   separata dal raggio, `intersect` vero, README.
@@ -19,8 +19,7 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
 
 1. Le due verifiche a occhio qui sotto, poi il rilascio di `cavi`: sblocca il merge su `main` e la CI.
 2. La CI, appena la dipendenza torna su una versione pubblicata.
-3. "Più mondi nella stessa pagina" e "Packaging", solo se servono (più mondi per pagina, pubblicazione
-   di cavijs su npm).
+3. "Packaging", solo se vuoi pubblicare cavijs su npm.
 4. Il resto quando capita.
 
 ## Da verificare a mano
@@ -53,17 +52,7 @@ Tutto fatto.
 
 ## Più mondi nella stessa pagina
 
-- [ ] `Cavi.whenReady` usa `closest('cavi-world')`, che non attraversa lo shadow DOM (`Cavi.for` sì): un
-      elemento in uno shadow root può agganciarsi al primo mondo che diventa pronto.
-- [ ] `jack="id"` è risolto con `document.getElementById` (`wirewc.ts`): non funziona nello shadow DOM,
-      con id duplicati in mondi diversi prende il primo, non riprova se il jack arriva dopo, e ignora
-      `max-plugs`.
-- [ ] Stato statico globale in `Jack` (posizione del puntatore, contatore dei drag, registro): con più
-      mondi ogni `pointermove` ricalcola tutti i jack una volta per mondo, e un drag nel mondo A cambia
-      l'aspetto dei jack nel mondo B. Spostare questo stato sul singolo `Cavi`.
-- [ ] Un `<cavi-interaction>` messo fuori dal mondo più quello creato automaticamente dentro fanno due
-      controller: un clic crea due cavi. Un solo controller per `Cavi`, o un attributo per disattivare
-      quello automatico.
+Tutto fatto.
 
 ## Prestazioni
 
@@ -88,7 +77,8 @@ Tutto fatto.
       `attributeChangedCallback`. `renderType` in camelCase non può mai corrispondere (l'HTML lo porta in
       minuscolo): rinominarlo `render-type`. Anche gli attributi di `<cavi-world>` sono letti una volta sola.
 - [ ] Documentare gli attributi di `<cavi-world>` (`gravity-x/y`, `step-rate`, `orphan-cleanup`, `sleep`,
-      `cable-drop-behavior`, `plug-spread-*`, `debug-nodes`, `wire-shadows`, `surface`, `canvas`): oggi non
+      `cable-drop-behavior`, `plug-spread-*`, `debug-nodes`, `wire-shadows`, `surface`, `canvas`,
+      `no-interaction`): oggi non
       sono descritti da nessuna parte.
 - [ ] Accessibilità: jack e plug non sono raggiungibili da tastiera; manca Escape per annullare la modalità
       "carry" (oggi annullare un cavo vuol dire crearne uno orfano).

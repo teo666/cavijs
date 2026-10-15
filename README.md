@@ -268,7 +268,7 @@ To keep cables visible and sharp at any zoom, give the world a **surface**, an u
 
 To draw into a canvas of your own — e.g. stacked above jacks and plugs — use `<cavi-world canvas="#myCanvas">` (or the `.canvas` property; `{ canvas }` / `{ svg }` for a hand-made renderer). It can sit anywhere on the page: its on-screen position is measured every frame.
 
-Several `<cavi-world>`s can coexist on one page: every element resolves its own world with `Cavi.for(element)`. `Cavi.shared` remains as a fallback for single-world setups.
+Several `<cavi-world>`s can coexist on one page, also inside shadow roots: every element resolves its own world with `Cavi.for(element)`, `<cavi-plug jack="id">` looks the id up among its own world's jacks (so worlds can reuse ids), and each world has a single interaction controller with its own pointer and drag state — see `examples/demo-two-worlds.html`. `Cavi.shared` remains as a fallback for single-world setups.
 
 Details: [doc/en/06-zoom-multiworld.md](doc/en/06-zoom-multiworld.md).
 
@@ -291,7 +291,7 @@ pnpm test        # vitest (jsdom + the real cavi WASM module)
 pnpm test:e2e    # Playwright: the demos in Chrome, driven with a real mouse
 ```
 
-The end-to-end tests (`e2e/`) start their own Vite server and use the locally installed Google Chrome, so no browser download is needed. They cover every demo loading and drawing, cable creation/relocation/drop with both interaction controllers, fixed-rate physics on emulated 120 Hz and 30 Hz displays, the held cable, the release throw, sleeping, and a world removed and inserted back.
+The end-to-end tests (`e2e/`) start their own Vite server and use the locally installed Google Chrome, so no browser download is needed. They cover every demo loading and drawing, cable creation/relocation/drop with both interaction controllers, fixed-rate physics on emulated 120 Hz and 30 Hz displays, the held cable, the release throw, sleeping, a world removed and inserted back, and two worlds (one in a shadow root) with the same jack ids.
 
 The WASM engine comes from the `cavi` package; after modifying its Rust code, rebuild it there with `wasm-pack build --target web`.
 

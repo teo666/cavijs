@@ -73,9 +73,12 @@ Note sulla sovrapposizione:
 Ogni Jack, Plug, Wire e controller di interazione risolve l'istanza `Cavi` a cui appartiene con `Cavi.for(element)`: quella il cui container del renderer (registrato da `Cavi.setRenderer`) è l'elemento o il suo antenato più vicino. Così più `<cavi-world>` possono coesistere:
 
 - ogni mondo ha la propria fisica, trasformazione di coordinate e impostazioni;
-- un cavo non si aggancia mai a un jack di un altro mondo;
-- il `<cavi-interaction>` di ogni mondo gestisce solo gli eventi sui propri elementi;
-- `caviready` viene emesso sul `<cavi-world>` stesso (e risale fino a `document`), e `Cavi.whenReady(el, fn)` aspetta il mondo dell'elemento.
+- un cavo non si aggancia mai a un jack di un altro mondo, e `<cavi-plug jack="id">` viene risolto tra i jack del suo mondo, così i mondi possono riusare gli stessi id, anche dentro gli shadow root;
+- il `<cavi-interaction>` di ogni mondo gestisce solo gli eventi sui propri elementi e ha il suo stato di puntatore e di drag (`Jack.setPointerHoverPosition`/`setDragActive` ricevono il mondo): un drag in un mondo non cambia mai l'aspetto dei jack di un altro, e un movimento del puntatore misura solo i jack del suo mondo;
+- un solo controller di interazione per mondo: un secondo `<cavi-interaction>` per lo stesso mondo resta inattivo (con un avviso), e `<cavi-world>` aggiunge il suo di default solo se il mondo non ne ha già uno, nemmeno messo altrove nella pagina. `<cavi-world no-interaction>` non ne aggiunge nessuno;
+- `caviready` viene emesso sul `<cavi-world>` stesso (e risale fino a `document`), e `Cavi.whenReady(el, fn)` aspetta il mondo dell'elemento, trovato anche attraverso gli shadow root, ignorando gli altri mondi che diventano pronti.
+
+Vedi `examples/demo-two-worlds.html`: lo stesso pannello due volte, il secondo dentro uno shadow root, con gli stessi id dei jack.
 
 `Cavi.shared` esiste ancora — punta all'ultimo mondo inizializzato ed è il ripiego per gli elementi fuori da qualunque container registrato (pagine a mondo singolo con setup manuale, test). Un `<cavi-world>` rimosso dalla pagina smonta il suo mondo (vedi [Smontare un mondo](./03-api.md#smontare-un-mondo)), e questo azzera anche `Cavi.shared` se puntava lì.
 

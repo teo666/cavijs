@@ -22,6 +22,17 @@ export class CaviInteractionElement extends HTMLElement {
   public controller: IInteractionController = new StandardInteractionController();
   private _attachedTo: Cavi | null = null;
 
+  /** The element whose controller drives each world — at most one per world. */
+  private static readonly _byWorld = new WeakMap<Cavi, CaviInteractionElement>();
+
+  /**
+   * The <cavi-interaction> whose controller is attached to `cavi`, if any.
+   * Used by <cavi-world> to not add a default one next to an existing one.
+   */
+  public static attachedTo(cavi: Cavi): CaviInteractionElement | null {
+    return CaviInteractionElement._byWorld.get(cavi) ?? null;
+  }
+
   connectedCallback(): void {
     Cavi.whenReady(this, (cavi) => this._setup(cavi));
   }
@@ -29,14 +40,29 @@ export class CaviInteractionElement extends HTMLElement {
   private _setup(cavi: Cavi): void {
     if (!this.isConnected) return; // removed while waiting for caviready
     if (this._attachedTo) return; // already attached (e.g. reconnected while waiting)
+    // One controller per world: two would both handle every click — one
+    // click, two cables. The first one to attach wins.
+    const existing = CaviInteractionElement._byWorld.get(cavi);
+    if (existing && existing !== this && existing.isConnected) {
+      console.warn(
+        '<cavi-interaction>: this world already has an interaction controller ' +
+          '(another <cavi-interaction>); this one stays inactive.'
+      );
+      return;
+    }
     this._attachedTo = cavi;
+    CaviInteractionElement._byWorld.set(cavi, this);
     this.controller.attach(cavi);
   }
 
   disconnectedCallback(): void {
-    if (this._attachedTo) {
+    const cavi = this._attachedTo;
+    if (cavi) {
       this.controller.detach();
       this._attachedTo = null;
+      if (CaviInteractionElement._byWorld.get(cavi) === this) {
+        CaviInteractionElement._byWorld.delete(cavi);
+      }
     }
   }
 }

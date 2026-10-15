@@ -42,12 +42,12 @@ export class StandardInteractionController implements IInteractionController {
   public detach(): void {
     if (!this._attached) return;
     this._attached = false;
-    this._cavi = null;
     document.removeEventListener('pointerdown', this._handlePointerDown);
     document.removeEventListener('pointermove', this._handleHoverMove);
-    // Leaving hover state stuck would strand every Jack's hover-spread/
+    // Leaving hover state stuck would strand this world's hover-spread/
     // full-jack preview in whatever state it was in at the moment of detach.
-    Jack.setPointerHoverPosition(null, null);
+    Jack.setPointerHoverPosition(null, null, this._cavi);
+    this._cavi = null;
   }
 
   /** Walks the real (shadow-DOM-aware) event path to find the nearest Jack/Plug custom element, if any. */
@@ -59,7 +59,8 @@ export class StandardInteractionController implements IInteractionController {
   }
 
   private _handleHoverMove = (e: PointerEvent): void => {
-    Jack.setPointerHoverPosition(e.clientX, e.clientY);
+    // Only this world's jacks: each world's controller feeds its own.
+    Jack.setPointerHoverPosition(e.clientX, e.clientY, this._cavi);
   };
 
   private _handlePointerDown = (e: PointerEvent): void => {
@@ -98,7 +99,9 @@ export class StandardInteractionController implements IInteractionController {
   private _startPlugDrag(plug: Plug, e: PointerEvent): void {
     e.preventDefault();
     const pointerId = e.pointerId;
-    Jack.setDragActive(true);
+    // Captured: the gesture may end after this controller detached.
+    const cavi = this._cavi;
+    Jack.setDragActive(true, cavi);
     plug.beginDrag();
 
     const clickToCarry = e.pointerType !== 'touch';
@@ -151,7 +154,7 @@ export class StandardInteractionController implements IInteractionController {
           }
         }
       }
-      Jack.setDragActive(false);
+      Jack.setDragActive(false, cavi);
     };
 
     if (clickToCarry) {
@@ -186,7 +189,9 @@ export class StandardInteractionController implements IInteractionController {
 
     e.preventDefault();
     const pointerId = e.pointerId;
-    Jack.setDragActive(true);
+    // Captured: the gesture may end after this controller detached.
+    const cavi = this._cavi;
+    Jack.setDragActive(true, cavi);
 
     const clickToCarry = e.pointerType !== 'touch';
 
@@ -238,7 +243,7 @@ export class StandardInteractionController implements IInteractionController {
           }
         }
       }
-      Jack.setDragActive(false);
+      Jack.setDragActive(false, cavi);
     };
 
     if (clickToCarry) {

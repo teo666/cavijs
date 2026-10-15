@@ -55,6 +55,8 @@ type DragSubject = (
   originY: number;
   /** Whether the pointer has travelled past CARRY_CLICK_DISTANCE since `start`. */
   moved: boolean;
+  /** The world the gesture belongs to, set in `start` — it may end after detach. */
+  cavi?: Cavi | null;
 };
 
 /**
@@ -131,7 +133,8 @@ export class D3InteractionController implements IInteractionController {
         const { x, y } = clientPointFromSourceEvent(event.sourceEvent);
         subject.originX = x;
         subject.originY = y;
-        Jack.setDragActive(true);
+        subject.cavi = this._cavi;
+        Jack.setDragActive(true, subject.cavi);
         if (subject.kind === 'plug') {
           subject.plug.beginDrag();
           subject.plug.updateDragPosition(x, y);
@@ -170,6 +173,7 @@ export class D3InteractionController implements IInteractionController {
   public detach(): void {
     if (!this._attached) return;
     this._attached = false;
+    const cavi = this._cavi;
     this._cavi = null;
     document.removeEventListener('pointermove', this._handleHoverMove);
     // Unbinds every "*.drag" namespaced listener d3-drag itself installed
@@ -184,9 +188,9 @@ export class D3InteractionController implements IInteractionController {
       this._cancel(carried);
     }
     // Same reasoning as StandardInteractionController.detach(): leaving
-    // hover state stuck would strand every Jack's hover-spread/full-jack
+    // hover state stuck would strand this world's hover-spread/full-jack
     // preview in whatever state it was in at the moment of detach.
-    Jack.setPointerHoverPosition(null, null);
+    Jack.setPointerHoverPosition(null, null, cavi);
   }
 
   private _move(subject: DragSubject, x: number, y: number): void {
@@ -203,7 +207,7 @@ export class D3InteractionController implements IInteractionController {
     } else if (subject.session) {
       Jack.finishCableSession(subject.session);
     }
-    Jack.setDragActive(false);
+    Jack.setDragActive(false, subject.cavi);
   }
 
   private _cancel(subject: DragSubject): void {
@@ -212,7 +216,7 @@ export class D3InteractionController implements IInteractionController {
     } else if (subject.session) {
       Jack.cancelCableSession(subject.session);
     }
-    Jack.setDragActive(false);
+    Jack.setDragActive(false, subject.cavi);
   }
 
   /**
@@ -268,6 +272,6 @@ export class D3InteractionController implements IInteractionController {
   }
 
   private _handleHoverMove = (e: PointerEvent): void => {
-    Jack.setPointerHoverPosition(e.clientX, e.clientY);
+    Jack.setPointerHoverPosition(e.clientX, e.clientY, this._cavi);
   };
 }

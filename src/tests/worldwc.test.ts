@@ -68,7 +68,9 @@ vi.mock('../renderer/renderer', () => {
 // elements — irrelevant to worldwc's own behavior and this file only needs
 // '../core/cavi' and '../renderer/renderer' to be the fakes above.
 vi.mock('../component/jack', () => ({}));
-vi.mock('../component/interactionwc', () => ({}));
+vi.mock('../component/interactionwc', () => ({
+  CaviInteractionElement: { attachedTo: () => null },
+}));
 
 import { Cavi } from '../core/cavi';
 import type { Renderer } from '../renderer/renderer';

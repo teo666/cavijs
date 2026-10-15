@@ -52,6 +52,23 @@ export interface CableSession {
  * the default mouse/touch/click implementation, and <cavi-interaction>
  * (src/interactionwc.ts) for how it's wired up declaratively.
  */
+/**
+ * Pointer and drag state of one world's interaction, fed by its interaction
+ * controller (Jack.setPointerHoverPosition / Jack.setDragActive).
+ */
+interface InteractionState {
+  /** Last known pointer position (viewport coordinates), null if none. */
+  pointerX: number | null;
+  pointerY: number | null;
+  /**
+   * How many drags that could try to connect a plug to a jack are in
+   * progress — a count rather than a boolean so overlapping/concurrent
+   * drags (multi-touch, or a plug drag and a cable-creation drag at once)
+   * don't clear each other's state early.
+   */
+  drags: number;
+}
+
 export class Jack extends HTMLElement {
   private static readonly _registry = new Set<Jack>();
 
@@ -88,26 +105,62 @@ export class Jack extends HTMLElement {
   private _syncedPosition: { x: number; y: number } | null = null;
 
   /**
-   * How many drags that could try to connect a plug to a jack are
-   * currently in progress, fed externally via Jack.setDragActive — a count
-   * rather than a boolean so overlapping/concurrent drags (e.g.
-   * multi-touch, or a plug drag and a cable-creation drag happening at
-   * once) don't clear each other's state early.
+   * The world this Jack belongs to, cached once it is ready (see
+   * connectedCallback) — null until then, or for a Jack outside any world.
+   * Keys the per-world interaction state below.
    */
-  private static _activeDragCount: number = 0;
-  private static get _dragActive(): boolean {
-    return Jack._activeDragCount > 0;
-  }
+  private _world: Cavi | null = null;
+
   /**
-   * Last known pointer position (viewport coordinates), fed externally via
-   * Jack.setPointerHoverPosition, so "is the cursor over this Jack" can be
-   * recomputed by distance rather than native hover events — a Jack that
-   * already has a Plug attached has that Plug sitting exactly on top of it
-   * (higher z-index), which would otherwise swallow pointerenter/
-   * pointerleave before they ever reach it.
+   * Each world's pointer and drag state (see InteractionState), so a drag
+   * or the pointer in one <cavi-world> never changes how another world's
+   * jacks look. The pointer position lets "is the cursor over this Jack" be
+   * recomputed by distance rather than native hover events — a Jack with a
+   * Plug attached has that Plug sitting exactly on top of it (higher
+   * z-index), which would otherwise swallow pointerenter/pointerleave.
    */
-  private static _pointerX: number | null = null;
-  private static _pointerY: number | null = null;
+  private static _states = new WeakMap<Cavi, InteractionState>();
+  /** The state of jacks with no world (not ready yet, or outside any). */
+  private static _noWorldState: InteractionState = { pointerX: null, pointerY: null, drags: 0 };
+
+  private static _stateFor(world: Cavi | null): InteractionState {
+    if (!world) return Jack._noWorldState;
+    let state = Jack._states.get(world);
+    if (!state) {
+      state = { pointerX: null, pointerY: null, drags: 0 };
+      Jack._states.set(world, state);
+    }
+    return state;
+  }
+
+  /** This Jack's world's interaction state. */
+  private get _state(): InteractionState {
+    return Jack._stateFor(this._world);
+  }
+
+  private get _dragActive(): boolean {
+    return this._state.drags > 0;
+  }
+
+  /**
+   * The worlds a static setter applies to: `world` if given, else — for
+   * callers predating per-world state — every world that has a jack, plus
+   * jacks with none.
+   */
+  private static _targetWorlds(world: Cavi | null | undefined): (Cavi | null)[] {
+    if (world !== undefined) return [world];
+    const worlds = new Set<Cavi | null>([null]);
+    for (const jack of Jack._registry) worlds.add(jack._world);
+    return [...worlds];
+  }
+
+  /**
+   * Internal, for tests: forgets every world's pointer and drag state.
+   */
+  public static _resetInteractionState(): void {
+    Jack._states = new WeakMap();
+    Jack._noWorldState = { pointerX: null, pointerY: null, drags: 0 };
+  }
 
   static get observedAttributes() {
     return [
@@ -133,8 +186,10 @@ export class Jack extends HTMLElement {
     this.updatePosition();
     // <cavi-world>'s Cavi instance is created asynchronously (after WASM
     // init): register with this Jack's own world once it exists.
-    Cavi.whenReady(this, () => {
-      if (this.isConnected) this._startFrameSync();
+    Cavi.whenReady(this, (cavi) => {
+      if (!this.isConnected) return;
+      this._world = cavi;
+      this._startFrameSync();
     });
   }
 
@@ -147,6 +202,7 @@ export class Jack extends HTMLElement {
    */
   disconnectedCallback() {
     Jack._registry.delete(this);
+    this._world = null;
     this._cancelRecompactTimer();
     this._stopFrameSync();
     queueMicrotask(() => {
@@ -194,12 +250,17 @@ export class Jack extends HTMLElement {
    * synchronous layout per jack on every pointermove, which gets expensive
    * with a large patchbay.
    */
-  private static _refreshAll(): void {
-    const measured = Array.from(Jack._registry, (jack) => ({
-      jack,
-      blocked: jack._computeBlocked(),
-      hovering: jack._plugs.size > 0 && !Jack._dragActive && jack._hoveringExpandedArea(),
-    }));
+  private static _refreshAll(world: Cavi | null): void {
+    const measured: { jack: Jack; blocked: boolean; hovering: boolean }[] = [];
+    for (const jack of Jack._registry) {
+      // Only this world's jacks: each world's controller refreshes its own.
+      if (jack._world !== world) continue;
+      measured.push({
+        jack,
+        blocked: jack._computeBlocked(),
+        hovering: jack._plugs.size > 0 && !jack._dragActive && jack._hoveringExpandedArea(),
+      });
+    }
     for (const { jack, blocked, hovering } of measured) {
       jack._applyFullState(blocked);
       jack._refreshSpread(hovering);
@@ -218,12 +279,21 @@ export class Jack extends HTMLElement {
    * Public entry point for "the pointer is now at this viewport position" —
    * whoever drives interaction calls this on every pointermove. Pass
    * null/null to clear (e.g. pointer left the window, or no controller is
-   * currently attached).
+   * currently attached). `world` is the Cavi whose jacks it is for (an
+   * interaction controller passes the one it is attached to); without it,
+   * it applies to every world.
    */
-  public static setPointerHoverPosition(x: number | null, y: number | null): void {
-    Jack._pointerX = x;
-    Jack._pointerY = y;
-    Jack._refreshAll();
+  public static setPointerHoverPosition(
+    x: number | null,
+    y: number | null,
+    world?: Cavi | null
+  ): void {
+    for (const target of Jack._targetWorlds(world)) {
+      const state = Jack._stateFor(target);
+      state.pointerX = x;
+      state.pointerY = y;
+      Jack._refreshAll(target);
+    }
   }
 
   /**
@@ -232,12 +302,16 @@ export class Jack extends HTMLElement {
    * an existing connection and a Jack cable-creation drag — so a full jack
    * previews itself as forbidden on hover for the whole duration of the
    * gesture, and so the hover-spread mechanic (_refreshSpread) stays out
-   * of the way while a drag is in progress.
+   * of the way while a drag is in progress. `world`: see
+   * setPointerHoverPosition.
    */
-  public static setDragActive(active: boolean): void {
-    const before = Jack._dragActive;
-    Jack._activeDragCount += active ? 1 : -1;
-    if (Jack._dragActive !== before) Jack._refreshAll();
+  public static setDragActive(active: boolean, world?: Cavi | null): void {
+    for (const target of Jack._targetWorlds(world)) {
+      const state = Jack._stateFor(target);
+      const before = state.drags > 0;
+      state.drags = Math.max(0, state.drags + (active ? 1 : -1));
+      if (state.drags > 0 !== before) Jack._refreshAll(target);
+    }
   }
 
   /**
@@ -261,13 +335,14 @@ export class Jack extends HTMLElement {
    * an at-capacity jack — the common case costs no layout read at all.
    */
   private _computeBlocked(): boolean {
-    if (!Jack._dragActive || this.canAcceptMore()) return false;
-    if (Jack._pointerX === null || Jack._pointerY === null) return false;
+    const state = this._state;
+    if (state.drags === 0 || this.canAcceptMore()) return false;
+    if (state.pointerX === null || state.pointerY === null) return false;
     // Measured in world space against the same CABLE_SNAP_DISTANCE
     // findSnapTarget uses, so this preview lights up over exactly the ring
     // that would actually accept the drop — at any zoom level.
     const c = this.getWorldPosition();
-    const p = this._clientToLocal(Jack._pointerX, Jack._pointerY);
+    const p = this._clientToLocal(state.pointerX, state.pointerY);
     return Math.hypot(p.x - c.x, p.y - c.y) <= CABLE_SNAP_DISTANCE;
   }
 
@@ -279,10 +354,11 @@ export class Jack extends HTMLElement {
     if (this.style.cursor !== cursor) this.style.cursor = cursor;
   }
 
-  /** Distance (viewport px) from the pointer to a point, or Infinity if there's no known pointer position. */
-  private static _pointerDistanceTo(x: number, y: number): number {
-    if (Jack._pointerX === null || Jack._pointerY === null) return Infinity;
-    return Math.hypot(Jack._pointerX - x, Jack._pointerY - y);
+  /** Distance (viewport px) from this world's pointer to a point, or Infinity if there's no known pointer position. */
+  private _pointerDistanceTo(x: number, y: number): number {
+    const { pointerX, pointerY } = this._state;
+    if (pointerX === null || pointerY === null) return Infinity;
+    return Math.hypot(pointerX - x, pointerY - y);
   }
 
   /**
@@ -304,13 +380,13 @@ export class Jack extends HTMLElement {
    */
   private _hoveringExpandedArea(): boolean {
     const c = this.getCenter();
-    if (Jack._pointerDistanceTo(c.x, c.y) <= this._hoverRadius()) return true;
+    if (this._pointerDistanceTo(c.x, c.y) <= this._hoverRadius()) return true;
     for (const plug of this._plugs) {
       const pc = plug.getBoundingClientRect();
       const px = pc.left + pc.width / 2;
       const py = pc.top + pc.height / 2;
       const pr = Math.max(pc.width, pc.height) / 2;
-      if (Jack._pointerDistanceTo(px, py) <= pr) return true;
+      if (this._pointerDistanceTo(px, py) <= pr) return true;
     }
     return false;
   }
@@ -332,7 +408,7 @@ export class Jack extends HTMLElement {
       this._spread = false;
       return;
     }
-    if (Jack._dragActive) return;
+    if (this._dragActive) return;
 
     if (hovering) {
       this._cancelRecompactTimer();
@@ -817,7 +893,7 @@ export class Jack extends HTMLElement {
 
     for (const jack of Jack.registry) {
       if (exclude && jack === exclude) continue;
-      if (Cavi.for(jack) !== world) continue;
+      if ((jack._world ?? Cavi.for(jack)) !== world) continue;
       if (!jack.canAcceptMore()) continue;
       if (!jack.canAccept(type)) continue;
 

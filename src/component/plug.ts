@@ -113,6 +113,11 @@ export class Plug extends HTMLElement {
     return this._jack;
   }
 
+  /** The cable node this Plug is bound to (see setNode), null before its cable is set up. */
+  public get node(): Node | null {
+    return this._node;
+  }
+
   /**
    * Whether this Plug is currently spread out (fanned away from its
    * attached Jack's center by that Jack's hover-spread mechanic — see

@@ -73,9 +73,12 @@ Stacking notes:
 Every Jack, Plug, Wire and interaction controller resolves the `Cavi` instance it belongs to with `Cavi.for(element)`: the instance whose renderer container (registered by `Cavi.setRenderer`) is the element or its nearest ancestor. So several `<cavi-world>`s can coexist:
 
 - each world has its own physics, coordinate transform and settings;
-- a cable never snaps to a jack of another world;
-- each world's `<cavi-interaction>` only handles pointer events on its own elements;
-- `caviready` is dispatched on the `<cavi-world>` itself (and bubbles to `document`), and `Cavi.whenReady(el, fn)` waits for the element's own world.
+- a cable never snaps to a jack of another world, and `<cavi-plug jack="id">` is resolved among its own world's jacks — so worlds can reuse the same ids, also inside shadow roots;
+- each world's `<cavi-interaction>` only handles pointer events on its own elements, and keeps its own pointer and drag state (`Jack.setPointerHoverPosition`/`setDragActive` take the world): a drag in one world never changes how another world's jacks look, and a pointer move only measures the jacks of its own world;
+- one interaction controller per world: a second `<cavi-interaction>` for the same world stays inactive (with a warning), and `<cavi-world>` adds its default one only if the world has none — not even one placed elsewhere on the page. `<cavi-world no-interaction>` adds none at all;
+- `caviready` is dispatched on the `<cavi-world>` itself (and bubbles to `document`), and `Cavi.whenReady(el, fn)` waits for the element's own world — found across shadow roots — ignoring the other worlds getting ready.
+
+See `examples/demo-two-worlds.html`: the same panel twice, the second inside a shadow root, with the same jack ids.
 
 `Cavi.shared` still exists — it points at the most recently initialized world and is the fallback for elements that live outside any registered container (single-world pages with a manual setup, tests). A `<cavi-world>` removed from the page destroys its world (see [Tearing a world down](./03-api.md#tearing-a-world-down)), which also clears `Cavi.shared` if it pointed there.
 

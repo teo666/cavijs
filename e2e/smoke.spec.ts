@@ -15,6 +15,7 @@ const DEMOS = [
   'demo-patchbay-zoom.html',
   'demo-patchbay-zoom-svg.html',
   'demo-d3-interaction.html',
+  'demo-two-worlds.html',
 ];
 
 test('the demo index loads without errors', async ({ page }) => {

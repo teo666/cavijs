@@ -3,7 +3,7 @@ import type { Wire } from '../core/wire';
 import { emitCaviEvent } from '../core/events';
 import { rectContains, type FrameContext, type FrameTask } from '../core/frame';
 import type { Plug } from './plug';
-import type { Jack } from './jack';
+import { Jack } from './jack';
 import './plug';
 
 /**
@@ -36,6 +36,12 @@ export class CaviWireElement extends HTMLElement {
   private _framesOutside: number = 0;
   /** Set by _frameTask.read when this frame's write must delete the cable. */
   private _destroyPending: boolean = false;
+  /**
+   * Plugs whose `jack="id"` named no jack of this world at setup — retried
+   * every frame (see _plugPending), so a jack inserted after its cable
+   * still gets it.
+   */
+  private _pending: { plug: Plug; jackId: string; nodeIdx: number }[] = [];
 
   static get observedAttributes() {
     return ['length', 'tension', 'size', 'renderType', 'color', 'type'];
@@ -126,7 +132,7 @@ export class CaviWireElement extends HTMLElement {
     const restored = new Map<HTMLElement, { x: number; y: number; fixed: boolean }>();
     for (const { plugEl, jackId } of validPlugs) {
       const state = (plugEl as unknown as Plug).takeRestoreState?.();
-      const plugged = jackId !== null && document.getElementById(jackId) !== null;
+      const plugged = jackId !== null && this._findJack(jackId) !== null;
       if (state && !plugged) restored.set(plugEl, state);
     }
 
@@ -136,8 +142,8 @@ export class CaviWireElement extends HTMLElement {
       x2 = 300,
       y2 = 300;
     for (const { plugEl, nodeIdx, jackId } of validPlugs) {
-      const jack = jackId ? (document.getElementById(jackId) as unknown as Jack | null) : null;
-      const position = jack ? jack.getWorldPosition() : restored.get(plugEl);
+      const jack = jackId ? this._findJack(jackId) : null;
+      const position = jack?.canAcceptMore() ? jack.getWorldPosition() : restored.get(plugEl);
       if (!position) continue;
       if (nodeIdx === 0) {
         x1 = position.x;
@@ -153,6 +159,7 @@ export class CaviWireElement extends HTMLElement {
     this._wire = wire;
     emitCaviEvent(cavi, this, 'cavi-wire-add', { wire, element: this });
 
+    this._pending = [];
     for (const { plugEl, nodeIdx, jackId } of validPlugs) {
       const node = wire.getNode(nodeIdx);
       if (!node) continue;
@@ -165,27 +172,70 @@ export class CaviWireElement extends HTMLElement {
       if (state) node.fixed = state.fixed;
 
       if (jackId) {
-        const jackEl = document.getElementById(jackId) as unknown as Jack | null;
-        if (jackEl) {
-          const { x: jx, y: jy } = jackEl.getWorldPosition();
-          node.setPosition(jx, jy);
-          node.fixed = true;
-
-          if (!jackEl.canAccept(type)) {
-            console.warn(
-              `<cavi-wire>: <cavi-plug node="${nodeIdx}"> (type="${type}") is ` +
-                `declaratively wired to jack #${jackId} (type="${jackEl.type}") — ` +
-                `types do not match.`
-            );
-          }
-
-          plug.attach(jackEl);
-          plugEl.setAttribute('plugged', 'true');
-        }
+        const jack = this._findJack(jackId);
+        if (jack) this._plugInto(plug, jack, jackId, nodeIdx);
+        else this._pending.push({ plug, jackId, nodeIdx });
       }
     }
 
     this._startFrameSync();
+  }
+
+  /**
+   * The jack with id `id` among this cable's own world's jacks — looked up
+   * in the jack registry rather than with document.getElementById, so it
+   * also works inside shadow roots, and an id repeated in another world
+   * never picks that world's jack.
+   */
+  private _findJack(id: string): Jack | null {
+    for (const jack of Jack.registry) {
+      if (jack.id === id && Cavi.for(jack) === this._cavi) return jack;
+    }
+    return null;
+  }
+
+  /**
+   * Declaratively plugs `plug` into `jack`: pins its node on the jack and
+   * attaches it — unless the jack is already at `max-plugs`, in which case
+   * the plug stays unplugged (with a warning) rather than overfilling it. A
+   * type mismatch only warns: the markup takes precedence.
+   */
+  private _plugInto(plug: Plug, jack: Jack, jackId: string, nodeIdx: number): void {
+    const plugEl = plug as unknown as HTMLElement;
+    if (!jack.canAcceptMore()) {
+      console.warn(
+        `<cavi-wire>: <cavi-plug node="${nodeIdx}"> is declaratively wired to jack ` +
+          `#${jackId}, which is already full (max-plugs); left unplugged.`
+      );
+      return;
+    }
+    const node = plug.node;
+    if (node) {
+      const { x, y } = jack.getWorldPosition();
+      node.setPosition(x, y);
+      node.fixed = true;
+    }
+    const type = this.getAttribute('type') ?? '';
+    if (!jack.canAccept(type)) {
+      console.warn(
+        `<cavi-wire>: <cavi-plug node="${nodeIdx}"> (type="${type}") is ` +
+          `declaratively wired to jack #${jackId} (type="${jack.type}") — ` +
+          `types do not match.`
+      );
+    }
+    plug.attach(jack);
+    plugEl.setAttribute('plugged', 'true');
+  }
+
+  /** Retries the plugs whose jack wasn't there at setup (see _pending). */
+  private _plugPending(): void {
+    this._pending = this._pending.filter(({ plug, jackId, nodeIdx }) => {
+      if (plug.jack) return false; // plugged in some other way meanwhile
+      const jack = this._findJack(jackId);
+      if (!jack) return true;
+      this._plugInto(plug, jack, jackId, nodeIdx);
+      return false;
+    });
   }
 
   /**
@@ -221,6 +271,7 @@ export class CaviWireElement extends HTMLElement {
         this._destroy();
         return;
       }
+      if (this._pending.length > 0) this._plugPending();
       for (const plug of this._plugs) plug.update();
     },
   };

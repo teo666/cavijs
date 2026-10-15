@@ -44,9 +44,10 @@ export class Cavi {
   /**
    * Runs `fn` with `el`'s Cavi as soon as it exists — immediately if it
    * already does. Waits on the `caviready` of the nearest enclosing
-   * <cavi-world> (which bubbles to document), or of document for elements
-   * outside any, so an element never binds to another world's instance
-   * just because that one finished initializing first.
+   * <cavi-world> (found across shadow roots, like Cavi.for does), or of
+   * document for elements outside any, so an element never binds to
+   * another world's instance just because that one finished initializing
+   * first.
    */
   static whenReady(el: Element, fn: (cavi: Cavi) => void): void {
     const now = Cavi.for(el);
@@ -54,12 +55,29 @@ export class Cavi {
       fn(now);
       return;
     }
-    const target: EventTarget = el.closest('cavi-world') ?? document;
-    target.addEventListener(
-      'caviready',
-      (e: Event) => fn(Cavi.for(el) ?? (e as CustomEvent<{ cavi: Cavi }>).detail.cavi),
-      { once: true }
-    );
+    // The enclosing world found the same way Cavi.for looks for its
+    // container — across shadow roots, which Element.closest() doesn't.
+    const world = Cavi._enclosingWorld(el);
+    const target: EventTarget = world ?? document;
+    const onReady = (e: Event): void => {
+      // Inside a world: only that world's own caviready counts. Outside
+      // any: the first world to get ready (Cavi.shared, as before).
+      const cavi = Cavi.for(el) ?? (world ? null : (e as CustomEvent<{ cavi: Cavi }>).detail.cavi);
+      if (!cavi) return;
+      target.removeEventListener('caviready', onReady);
+      fn(cavi);
+    };
+    target.addEventListener('caviready', onReady);
+  }
+
+  /** The nearest <cavi-world> enclosing `el` (itself included), crossing shadow roots. */
+  private static _enclosingWorld(el: Element): Element | null {
+    for (let n: Element | null = el; n instanceof Element;) {
+      if (n.tagName === 'CAVI-WORLD') return n;
+      const root = n.getRootNode();
+      n = n.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+    }
+    return null;
   }
 
   private world: World;
