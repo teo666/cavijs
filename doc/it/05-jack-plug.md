@@ -42,7 +42,7 @@ Un custom element (`cavi-jack`) con Shadow DOM.
 
 | Metodo                                                                | Descrizione                                                                                               |
 | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `canAccept(type: string) -> boolean`                                  | Ritorna true se `type` è uguale al `type` del jack (e il jack ne ha uno configurato)                      |
+| `canAccept(type: string) -> boolean`                                  | Ritorna true se `type` è uguale al `type` del jack, o se uno dei due è vuoto: un tipo vuoto fa da jolly   |
 | `canAcceptMore() -> boolean`                                          | Ritorna true se il jack non ha raggiunto `max-plugs`                                                      |
 | `attach(plug: Plug)` / `detach(plug: Plug)`                           | Registra/rimuove un plug collegato (aggiorna `plugCount`)                                                 |
 | `plugCount`                                                           | Numero di plug attualmente collegati                                                                      |
@@ -94,6 +94,7 @@ Un jack con uno o più plug già agganciati li ha posizionati esattamente al pro
   - `'radial'`: i plug vengono distribuiti uniformemente intorno al jack, ignorando la direzione dei cavi.
 - Una volta aperti, `Jack.isSpread()` (e `Plug.isSpread()`, che si limita a delegare a questo) ritorna `true` — `StandardInteractionController` lo usa per instradare un click su quel particolare plug verso lo spostamento del cavo (`beginDrag`), invece di inoltrarlo al jack come click per un nuovo cavo.
 - **Uscendo dall'area espansa**, un jack attende `Cavi.getPlugSpreadRecompactDelayMs()` (default `500`) prima di far tornare ogni plug al proprio centro (`Plug.snapToJack()`) — il timeout si azzera, invece di continuare il conto alla rovescia, se il puntatore rientra nell'area prima che scatti.
+- Mentre è aperto, un plug aggiunto o tolto fa ridisporre i plug al jack, così un plug lasciato su un jack aperto si apre insieme agli altri invece di restare al centro.
 - Il meccanismo viene saltato del tutto per un jack senza plug, e mentre è in corso un drag qualsiasi (`Jack.setDragActive(true)`), così non entra mai in conflitto con un gesto attivo.
 
 ## `Plug` (`src/plug.ts`)
@@ -178,7 +179,8 @@ container.appendChild(el);
 - L'attributo `type` su `<cavi-wire>` viene letto una volta in fase di setup e propagato a ogni `<cavi-plug>` figlio tramite `plug.setType(type)`.
 - Solo i `<cavi-plug node="...">` con indice `0` o `nodeCount - 1` (i due nodi terminali) vengono collegati; un indice intermedio produce un `console.warn` e il plug viene ignorato — i nodi intermedi non sono ancora supportati.
 - Se un `<cavi-plug>` ha un attributo `jack="id"`, viene collegato dichiarativamente al jack corrispondente in fase di setup, passando dallo stesso `plug.attach(jack)` usato dal drag (così `jack.plugCount`/`max-plugs` restano corretti anche per le connessioni dichiarative). Se il `type` del jack non coincide con quello del cavo, viene emesso un `console.warn` ma la connessione viene comunque stabilita (il markup ha precedenza).
-- L'attributo `node="N"` di ogni `<cavi-plug>` è la fonte di verità dichiarativa sull'indice del nodo a cui è legato: se il numero di nodi del cavo cambia dopo la connessione iniziale (unico caso oggi: la crescita durante `updateCableSession`, vedi sopra), chi sposta il plug libero su un nuovo indice aggiorna anche questo attributo, così il markup non contraddice mai il legame reale.
+- L'attributo `node="N"` di ogni `<cavi-plug>` è la fonte di verità dichiarativa sull'indice del nodo a cui è legato: se il numero di nodi del cavo cambia dopo la connessione iniziale (unico caso oggi: la crescita durante `updateCableSession`, vedi sopra), chi sposta il plug libero su un nuovo indice aggiorna anche questo attributo, e con lui il `length` del cavo, così il markup non contraddice mai il legame reale.
+- Anche le connessioni si riflettono nel markup: `Plug.attach` scrive `jack="id"` (se il jack ha un id), e staccare un plug (`detach`, un trascinamento) lo toglie. Così un cavo creato trascinando è descritto dal suo markup come uno scritto in HTML, e se il suo `<cavi-wire>` viene ricostruito (il mondo è stato rimosso e reinserito) torna collegato agli stessi jack. Un plug che esce dalla pagina insieme al suo jack mantiene `jack="id"`; uno il cui jack viene rimosso da solo lo perde. Un capo scollegato torna dov'era, libero o fisso com'era (`Plug.takeRestoreState`).
 
 ### Eliminazione dei cavi orfani fuori vista
 

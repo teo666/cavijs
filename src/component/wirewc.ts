@@ -121,22 +121,30 @@ export class CaviWireElement extends HTMLElement {
       return acc;
     }, []);
 
-    // Determine wire start/end from jack-bound plugs
+    // Unplugged ends of a cable set up again (its world was removed and
+    // inserted back) come back where they were — see Plug.takeRestoreState.
+    const restored = new Map<HTMLElement, { x: number; y: number; fixed: boolean }>();
+    for (const { plugEl, jackId } of validPlugs) {
+      const state = (plugEl as unknown as Plug).takeRestoreState?.();
+      const plugged = jackId !== null && document.getElementById(jackId) !== null;
+      if (state && !plugged) restored.set(plugEl, state);
+    }
+
+    // Determine wire start/end from jack-bound plugs, else restored ends
     let x1 = 100,
       y1 = 100,
       x2 = 300,
       y2 = 300;
-    for (const { nodeIdx, jackId } of validPlugs) {
-      if (!jackId) continue;
-      const jack = document.getElementById(jackId) as unknown as Jack | null;
-      if (!jack) continue;
-      const { x: jx, y: jy } = jack.getWorldPosition();
+    for (const { plugEl, nodeIdx, jackId } of validPlugs) {
+      const jack = jackId ? (document.getElementById(jackId) as unknown as Jack | null) : null;
+      const position = jack ? jack.getWorldPosition() : restored.get(plugEl);
+      if (!position) continue;
       if (nodeIdx === 0) {
-        x1 = jx;
-        y1 = jy;
+        x1 = position.x;
+        y1 = position.y;
       } else if (nodeIdx === nodeCount - 1) {
-        x2 = jx;
-        y2 = jy;
+        x2 = position.x;
+        y2 = position.y;
       }
     }
 
@@ -153,6 +161,8 @@ export class CaviWireElement extends HTMLElement {
       plug.setType(type);
       plug.setNode(node);
       this._plugs.push(plug);
+      const state = restored.get(plugEl);
+      if (state) node.fixed = state.fixed;
 
       if (jackId) {
         const jackEl = document.getElementById(jackId) as unknown as Jack | null;
@@ -161,7 +171,7 @@ export class CaviWireElement extends HTMLElement {
           node.setPosition(jx, jy);
           node.fixed = true;
 
-          if (jackEl.type !== type) {
+          if (!jackEl.canAccept(type)) {
             console.warn(
               `<cavi-wire>: <cavi-plug node="${nodeIdx}"> (type="${type}") is ` +
                 `declaratively wired to jack #${jackId} (type="${jackEl.type}") — ` +

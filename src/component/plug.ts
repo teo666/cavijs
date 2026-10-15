@@ -33,6 +33,13 @@ export class Plug extends HTMLElement {
   private _type: string = '';
   private _magnetClass: string = 'cavi-magnet-active';
   private _freezeOnDrop: boolean = false;
+  /**
+   * Where this Plug's node was, and whether it was fixed, when the Plug
+   * left the page — so if its <cavi-wire> is set up again later (its world
+   * was removed and inserted back), a free end comes back where it was,
+   * falling or held as before (see takeRestoreState).
+   */
+  private _restoreState: { x: number; y: number; fixed: boolean } | null = null;
 
   static get observedAttributes() {
     return ['plugged', 'magnet-class', 'freeze-on-drop'];
@@ -76,9 +83,27 @@ export class Plug extends HTMLElement {
    * immediately followed by connect) keeps the cable plugged in.
    */
   disconnectedCallback() {
+    // Read now: once removed for good, the world is torn down a microtask
+    // later and the node can no longer be read.
+    if (this._node) {
+      this._restoreState = { x: this._node.x, y: this._node.y, fixed: this._node.fixed };
+    }
     queueMicrotask(() => {
-      if (!this.isConnected) this.detach();
+      // Keeps `jack="id"`: the markup still says where this Plug belongs, so
+      // it plugs back in if its cable is set up again.
+      if (!this.isConnected) this._release(true);
     });
+  }
+
+  /**
+   * The state recorded when this Plug left the page (see _restoreState),
+   * handed over once: used by CaviWireElement to set an unplugged end up
+   * again where it was.
+   */
+  public takeRestoreState(): { x: number; y: number; fixed: boolean } | null {
+    const state = this._restoreState;
+    this._restoreState = null;
+    return state;
   }
 
   /**
@@ -319,6 +344,10 @@ export class Plug extends HTMLElement {
     if (this._jack === jack) return;
     this.detach();
     this._jack = jack;
+    // Reflected in the markup (when the Jack has an id), so <cavi-wire> can
+    // plug it back in if it is ever set up again — a cable created by
+    // dragging becomes as declarative as one written in HTML.
+    if (jack.id) this.setAttribute('jack', jack.id);
     jack.attach(this);
     emitCaviEvent(Cavi.for(jack), jack, 'cavi-plug-attach', { plug: this, jack });
   }
@@ -330,16 +359,24 @@ export class Plug extends HTMLElement {
    */
   public unplug(): void {
     if (this._dragging) return;
-    this.detach();
+    // Keep `jack="id"` when this Plug left the page too (its whole world
+    // was removed): it plugs back in if the world comes back.
+    this._release(!this.isConnected);
     this.removeAttribute('plugged');
     if (this._node) this._node.fixed = false;
   }
 
+  /** Pulls this Plug out of its Jack, if any (and drops `jack="id"` from the markup). */
   public detach(): void {
+    this._release(false);
+  }
+
+  private _release(keepMarkup: boolean): void {
     const jack = this._jack;
     if (jack) {
       jack.detach(this);
       this._jack = null;
+      if (!keepMarkup) this.removeAttribute('jack');
       emitCaviEvent(Cavi.for(jack), jack, 'cavi-plug-detach', { plug: this, jack });
     }
   }

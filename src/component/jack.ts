@@ -719,8 +719,14 @@ export class Jack extends HTMLElement {
     }
   }
 
+  /**
+   * Whether a plug of `type` can go into this Jack: same type, or either
+   * side untyped — an empty type is a wildcard, so a page that doesn't use
+   * types (no `type` on its jacks, hence on the cables they create) still
+   * connects everything with everything.
+   */
   public canAccept(type: string): boolean {
-    return this._type !== '' && this._type === type;
+    return this._type === '' || type === '' || this._type === type;
   }
 
   public get type(): string {
@@ -748,6 +754,7 @@ export class Jack extends HTMLElement {
   public attach(plug: Plug): void {
     this._plugs.add(plug);
     this._refreshFullState();
+    this._respreadIfSpread();
   }
 
   /**
@@ -756,6 +763,17 @@ export class Jack extends HTMLElement {
   public detach(plug: Plug): void {
     this._plugs.delete(plug);
     this._refreshFullState();
+    this._respreadIfSpread();
+  }
+
+  /**
+   * While spread out (see _refreshSpread), lays the plugs out again after
+   * one was added or removed — otherwise a plug dropped onto an open jack
+   * stays docked at its center among the fanned-out ones, and the others
+   * keep a layout computed for a different number of plugs.
+   */
+  private _respreadIfSpread(): void {
+    if (this._spread && this._plugs.size > 0) this._applySpreadPositions();
   }
 
   public get plugCount(): number {
@@ -997,6 +1015,9 @@ export class Jack extends HTMLElement {
       // that later re-derives the binding from markup snap the plug back to
       // a now-intermediate node instead of the real terminal.
       session.followPlug.setAttribute('node', String(desired - 1));
+      // ...and the cable's own `length` with it, or a set-up-again cable
+      // would find its free plug past its last node and drop it.
+      session.wireEl.setAttribute('length', String(desired));
     } else {
       session.followPlug.update();
     }

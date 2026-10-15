@@ -40,17 +40,17 @@ A custom element (`cavi-jack`) with Shadow DOM.
 
 **Manipulation API**
 
-| Method                                                               | Description                                                                           |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `canAccept(type: string) -> boolean`                                 | Returns true if `type` equals the jack's own `type` (and the jack has one configured) |
-| `canAcceptMore() -> boolean`                                         | Returns true if the jack hasn't reached `max-plugs`                                   |
-| `attach(plug: Plug)` / `detach(plug: Plug)`                          | Registers/removes an attached plug (updates `plugCount`)                              |
-| `plugCount`                                                          | Number of currently attached plugs                                                    |
-| `getCenter() -> { x, y }`                                            | Center point in viewport coordinates (`getBoundingClientRect`)                        |
-| `type` (getter)                                                      | The jack's current `type`                                                             |
-| `setMagnetActive(active: boolean)`                                   | Toggles the `magnet-class` class on the host, used for the magnet preview during drag |
-| `Jack.registry` (static)                                             | Read-only set of every `<cavi-jack>` currently connected to the document              |
-| `Jack.findSnapTarget(plug, type, exclude?) -> Jack \| null` (static) | Finds the nearest compatible jack within snap range, optionally excluding one         |
+| Method                                                               | Description                                                                                          |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `canAccept(type: string) -> boolean`                                 | Returns true if `type` equals the jack's own `type`, or either is empty: an empty type is a wildcard |
+| `canAcceptMore() -> boolean`                                         | Returns true if the jack hasn't reached `max-plugs`                                                  |
+| `attach(plug: Plug)` / `detach(plug: Plug)`                          | Registers/removes an attached plug (updates `plugCount`)                                             |
+| `plugCount`                                                          | Number of currently attached plugs                                                                   |
+| `getCenter() -> { x, y }`                                            | Center point in viewport coordinates (`getBoundingClientRect`)                                       |
+| `type` (getter)                                                      | The jack's current `type`                                                                            |
+| `setMagnetActive(active: boolean)`                                   | Toggles the `magnet-class` class on the host, used for the magnet preview during drag                |
+| `Jack.registry` (static)                                             | Read-only set of every `<cavi-jack>` currently connected to the document                             |
+| `Jack.findSnapTarget(plug, type, exclude?) -> Jack \| null` (static) | Finds the nearest compatible jack within snap range, optionally excluding one                        |
 
 **API for driving cable creation** (used by `StandardInteractionController`, but callable from any custom controller)
 
@@ -94,6 +94,7 @@ A jack with one or more plugs already attached has them sitting exactly at its c
   - `'radial'`: plugs are evenly distributed around the jack, ignoring cable direction.
 - Once spread, `Jack.isSpread()` (and `Plug.isSpread()`, which just delegates to it) returns `true` — `StandardInteractionController` uses this to route a click on that particular plug to relocating it (`beginDrag`), rather than forwarding it to the jack as a new-cable click.
 - **On leaving the expanded area**, a jack waits `Cavi.getPlugSpreadRecompactDelayMs()` (default `500`) before snapping every plug back to its center (`Plug.snapToJack()`) — the timeout resets, rather than continuing to count down, if the pointer re-enters the area before it fires.
+- While spread, a plug attached or removed makes the jack lay its plugs out again, so a plug dropped onto an open jack fans out with the others instead of staying docked at its center.
 - The mechanic is skipped entirely for a jack with no plugs, and while any drag is in progress (`Jack.setDragActive(true)`), so it never fights an active gesture.
 
 ## `Plug` (`src/plug.ts`)
@@ -178,7 +179,8 @@ container.appendChild(el);
 - The `type` attribute on `<cavi-wire>` is read once during setup and propagated to every child `<cavi-plug>` via `plug.setType(type)`.
 - Only `<cavi-plug node="...">` elements with index `0` or `nodeCount - 1` (the two terminal nodes) are wired up; an intermediate index logs a `console.warn` and the plug is skipped — intermediate nodes are not supported yet.
 - If a `<cavi-plug>` has a `jack="id"` attribute, it is declaratively attached to the matching jack during setup, going through the same `plug.attach(jack)` used by dragging (so `jack.plugCount`/`max-plugs` stay correct for declarative connections too). If the jack's `type` doesn't match the cable's, a `console.warn` is logged but the connection is still made (the markup takes precedence).
-- Each `<cavi-plug>`'s `node="N"` attribute is the declarative ground truth for which node index it's bound to: if the cable's node count changes after the initial connection (today's only case: growing during `updateCableSession`, see above), whoever moves the free plug to a new index also updates this attribute, so the markup never contradicts the live binding.
+- Each `<cavi-plug>`'s `node="N"` attribute is the declarative ground truth for which node index it's bound to: if the cable's node count changes after the initial connection (today's only case: growing during `updateCableSession`, see above), whoever moves the free plug to a new index also updates this attribute, and the cable's `length` with it, so the markup never contradicts the live binding.
+- The markup follows the live connections too: `Plug.attach` writes `jack="id"` (when the jack has an id), and pulling a plug out (`detach`, a drag) removes it. So a cable created by dragging is described by its markup just like one written in HTML, and if its `<cavi-wire>` is set up again — its world was removed and inserted back — it comes back plugged into the same jacks. A plug that leaves the page together with its jack keeps `jack="id"`; one whose jack alone is removed loses it. An unplugged end comes back where it was, free or fixed as it was (`Plug.takeRestoreState`).
 
 ### Deleting orphaned cables once out of view (orphan cleanup)
 

@@ -199,9 +199,41 @@ describe('Jack.canAccept', () => {
     expect(jack.canAccept('midi')).toBe(false);
   });
 
-  it('does not match when the jack has no type configured', () => {
-    const jack = makeJack();
-    expect(jack.canAccept('audio')).toBe(false);
+  it('treats an empty type as a wildcard, on either side', () => {
+    const untyped = makeJack();
+    expect(untyped.canAccept('audio')).toBe(true);
+    expect(untyped.canAccept('')).toBe(true);
+    expect(makeJack({ type: 'audio' }).canAccept('')).toBe(true);
+  });
+});
+
+describe('Jack spread with plugs coming and going', () => {
+  it('lays the plugs out again when one is added or removed while spread', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 0, 0);
+    const first = fakePlug();
+    jack.attach(first);
+    (jack as unknown as { _spread: boolean })._spread = true;
+    const respread = vi.spyOn(
+      jack as unknown as { _applySpreadPositions(): void },
+      '_applySpreadPositions'
+    );
+
+    jack.attach(fakePlug());
+    expect(respread).toHaveBeenCalledTimes(1);
+    jack.detach(first);
+    expect(respread).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves a closed jack alone', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 0, 0);
+    const respread = vi.spyOn(
+      jack as unknown as { _applySpreadPositions(): void },
+      '_applySpreadPositions'
+    );
+    jack.attach(fakePlug());
+    expect(respread).not.toHaveBeenCalled();
   });
 });
 

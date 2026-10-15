@@ -7,7 +7,9 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
 - **cavijs:** pannello `<cavi-debug>` ed eventi di dominio, pulizia dei cavi orfani, mouse fantasma,
   fisica a passo fisso, un ciclo di frame per mondo, jack che seguono il layout, jack rimosso che rilascia i
   plug, interpolazione tra i passi fisici, cavo tenuto durante il trascinamento, sospensione dei cavi
-  fermi, handle dei nodi stabili, `Cavi.destroy()` e smontaggio dei mondi rimossi.
+  fermi, handle dei nodi stabili, `Cavi.destroy()` e smontaggio dei mondi rimossi, cavi creati trascinando
+  che sopravvivono a un reinserimento, colori di default fissati alla creazione, plug che si aprono su un
+  jack già aperto, tipo vuoto come jolly.
 - **`cavi`:** `step()` separato da `build_render_data(alpha)`, parametri del passo configurabili, cavi che
   partono dritti, cavo tenuto (`pointer_radius`), sospensione, lancio al rilascio, distanza tra i nodi
   separata dal raggio, `intersect` vero, README.
@@ -15,7 +17,7 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
 ## Ordine consigliato
 
 1. Le verifiche a mano qui sotto, poi il rilascio di `cavi`: sblocca il merge su `main` e la CI.
-2. Le piccole correzioni di "Correttezza".
+2. L'ultima correzione di "Correttezza" (`getWasmWorld()` pubblico).
 3. La CI, appena la dipendenza torna su una versione pubblicata.
 4. "Più mondi nella stessa pagina" e "Packaging", solo se servono (più mondi per pagina, pubblicazione
    di cavijs su npm).
@@ -47,19 +49,9 @@ Cose che i test non possono dire.
 
 ## Correttezza
 
-- [ ] **Un cavo creato trascinando non sopravvive a una rimozione e reinserimento** del suo
-      `<cavi-wire>` (o del mondo): `length` resta 4 mentre il `node` del plug libero cresce, quindi al nuovo
-      setup il plug viene scartato; e il plug d'origine non ha un attributo `jack`, quindi non si ricollega.
-      Basterebbe aggiornare `length` insieme a `node` e scrivere `jack="id"` sui plug collegati.
 - [ ] **`getWasmWorld()` è pubblico**: chi aggiunge o toglie cavi direttamente sul WASM fa divergere la
       lista JS da quella del motore, e i colori finiscono sui cavi sbagliati. Aggiungere un controllo in
       `addWire` e un `Wire.delete()` / `deleteWire(wire)` per non dover passare indici.
-- [ ] **Il colore di default dipende dalla posizione** del cavo nei renderer: cancellare il cavo 0 cambia
-      colore a tutti quelli dopo. Assegnarlo nei metadati una volta, in `addWire`.
-- [ ] Un jack senza `type` crea cavi che non si possono collegare a niente (`canAccept` richiede un tipo,
-      `createCable` no): rifiutare in `createCable` o trattare `''` come jolly.
-- [ ] Un plug lasciato su un jack già "aperto" (spread) resta al centro invece di aprirsi con gli altri
-      (`Jack._refreshSpread` ricalcola solo nel passaggio chiuso → aperto).
 
 ## Più mondi nella stessa pagina
 
