@@ -11,6 +11,12 @@ import type { FrameContext, FrameTask, WorldRect } from './frame';
  */
 const PARKED_MOUSE = -1e6;
 
+/**
+ * Colors given to new wires that get none of their own, in creation order
+ * (see addWire).
+ */
+export const DEFAULT_WIRE_COLORS: readonly string[] = ['#00ff88', '#ff00ff', '#ffaa00'];
+
 /** Default physics rate of advance(), in steps per second. */
 const DEFAULT_STEP_RATE = 60;
 /**
@@ -43,6 +49,8 @@ export class World {
   private _accumulatorMs: number = 0;
   /** See addFrameTask. */
   private _frameTasks = new Set<FrameTask>();
+  /** Wires created so far — picks each new wire's default color. */
+  private _wiresCreated: number = 0;
   /** See destroy. */
   private _destroyed: boolean = false;
 
@@ -77,6 +85,10 @@ export class World {
     const wireIndex = this.wasmWorld.wire_count();
     this.wasmWorld.add_wire_with_count(x1, y1, x2, y2, nodes, tension, radius, renderType);
     const wire = new Wire(this.wasmWorld, wireIndex);
+    // A default color of its own, fixed at creation: picked by position at
+    // draw time instead, every later wire changed color when one was deleted.
+    // Callers with a color of their own (<cavi-wire>) just overwrite it.
+    wire.setColor(DEFAULT_WIRE_COLORS[this._wiresCreated++ % DEFAULT_WIRE_COLORS.length]);
     this.wires.push(wire);
     return wire;
   }

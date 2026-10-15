@@ -1,6 +1,6 @@
 import type { WasmWorld } from 'cavi';
 import type { IRenderer, RendererOptions } from '../core/types';
-import type { World } from '../core/world';
+import { DEFAULT_WIRE_COLORS, type World } from '../core/world';
 import { Cavi } from '../core/cavi';
 import { containerOrigin } from '../core/coords';
 import { sizeCanvasToHost } from './resize';
@@ -427,8 +427,6 @@ export class Renderer implements IRenderer {
   }
 
   private drawAllWires() {
-    // Default colors as fallback
-    const defaultColors = ['#00ff88', '#ff00ff', '#ffaa00'];
     const wires = this.world.getWires();
     const ctx = this.context;
 
@@ -437,7 +435,9 @@ export class Renderer implements IRenderer {
 
     this.traceWires(ctx, (wireIdx, radius) => {
       // Get wire instance to access metadata
-      const wireColor = wires[wireIdx]?.getColor() || defaultColors[wireIdx % defaultColors.length];
+      // Every wire gets a color at creation (World.addWire); the fallback
+      // only covers one explicitly cleared.
+      const wireColor = wires[wireIdx]?.getColor() || DEFAULT_WIRE_COLORS[0];
 
       ctx.lineWidth = radius * 2;
       ctx.strokeStyle = wireColor;

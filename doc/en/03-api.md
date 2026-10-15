@@ -173,7 +173,7 @@ stop(): void                  // stops the loop, removes the pointer listener, c
 **Features:**
 
 - Direct WASM memory access for efficient rendering (zero-copy `Float32Array` view over `Cavi.wasm.memory.buffer`)
-- Reads wire colors from `Wire` metadata, falling back to a default palette (`['#00ff88', '#ff00ff', '#ffaa00']`) by wire index
+- Reads wire colors from `Wire` metadata. `World.addWire` gives every new wire a color from `DEFAULT_WIRE_COLORS` (`['#00ff88', '#ff00ff', '#ffaa00']`, in creation order), so deleting a wire never recolors the others
 - Supports both segment (`ctx.lineTo`) and Bezier (`ctx.bezierCurveTo`) rendering, per the `render_type` encoded in the wire data buffer
 - Built-in `requestAnimationFrame` loop with FPS tracking (updated once per second)
 - Draws mouse/pointer interaction radius indicators (dashed circles) at the current mouse position

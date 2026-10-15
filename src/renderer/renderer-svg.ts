@@ -1,6 +1,6 @@
 import type { WasmWorld } from 'cavi';
 import type { IRenderer, RendererOptions } from '../core/types';
-import type { World } from '../core/world';
+import { DEFAULT_WIRE_COLORS, type World } from '../core/world';
 import { Cavi } from '../core/cavi';
 import { containerOrigin } from '../core/coords';
 import { PointerTracker } from './pointer';
@@ -197,7 +197,6 @@ export class SvgRenderer implements IRenderer {
     if (len === 0) return;
 
     const wireData = new Float32Array(Cavi.wasm.memory.buffer, ptr, len);
-    const defaultColors = ['#00ff88', '#ff00ff', '#ffaa00'];
     const wires = this.world.getWires();
 
     let offset = 0;
@@ -211,7 +210,8 @@ export class SvgRenderer implements IRenderer {
 
       if (pathLength >= 2) {
         const wire = wires[wireIdx];
-        const wireColor = wire?.getColor() || defaultColors[wireIdx % defaultColors.length];
+        // See Renderer.drawAllWires: colors are fixed at creation.
+        const wireColor = wire?.getColor() || DEFAULT_WIRE_COLORS[0];
 
         let d = `M ${wireData[offset]} ${wireData[offset + 1]}`;
         offset += 2;

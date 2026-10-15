@@ -173,7 +173,7 @@ stop(): void                  // ferma il loop, rimuove il listener del puntator
 **Caratteristiche:**
 
 - Accesso diretto alla memoria WASM per un rendering efficiente (vista `Float32Array` a copia zero su `Cavi.wasm.memory.buffer`)
-- Legge i colori dei cavi dai metadati di `Wire`, ricadendo su una palette di default (`['#00ff88', '#ff00ff', '#ffaa00']`) in base all'indice del cavo
+- Legge i colori dei cavi dai metadati di `Wire`. `World.addWire` assegna a ogni cavo nuovo un colore da `DEFAULT_WIRE_COLORS` (`['#00ff88', '#ff00ff', '#ffaa00']`, in ordine di creazione), così cancellare un cavo non cambia mai il colore degli altri
 - Supporta sia il rendering a segmenti (`ctx.lineTo`) sia Bezier (`ctx.bezierCurveTo`), in base al `render_type` codificato nel buffer dati dei cavi
 - Loop `requestAnimationFrame` integrato con tracciamento FPS (aggiornato una volta al secondo)
 - Disegna indicatori del raggio di interazione mouse/puntatore (cerchi tratteggiati) alla posizione corrente del mouse

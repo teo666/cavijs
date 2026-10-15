@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import init from 'cavi';
-import { World } from '../core/world';
+import { World, DEFAULT_WIRE_COLORS } from '../core/world';
 
 /**
  * Runs against the real `cavi` WASM build (not a fake), since the bug these
@@ -140,5 +140,23 @@ describe('Wire node handles — follow their node across node edits', () => {
 
     wire.setNodeCount(3);
     expect(wire.getNode(2)).toBe(end);
+  });
+});
+
+describe('default wire colors', () => {
+  it('are given at creation, in order, and stay when an earlier wire is deleted', () => {
+    const world = new World();
+    const wires = [0, 1, 2, 3].map((i) => world.addWire(0, i * 10, 100, i * 10, 4, 20, 4));
+    expect(wires.map((w) => w.getColor())).toEqual([
+      ...DEFAULT_WIRE_COLORS,
+      DEFAULT_WIRE_COLORS[0],
+    ]);
+
+    world.deleteWire(0);
+    expect(world.getWires().map((w) => w.getColor())).toEqual([
+      DEFAULT_WIRE_COLORS[1],
+      DEFAULT_WIRE_COLORS[2],
+      DEFAULT_WIRE_COLORS[0],
+    ]);
   });
 });
