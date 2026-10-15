@@ -17,7 +17,7 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
 
 ## Ordine consigliato
 
-1. Le verifiche a mano qui sotto, poi il rilascio di `cavi`: sblocca il merge su `main` e la CI.
+1. Le due verifiche a occhio qui sotto, poi il rilascio di `cavi`: sblocca il merge su `main` e la CI.
 2. La CI, appena la dipendenza torna su una versione pubblicata.
 3. "Più mondi nella stessa pagina" e "Packaging", solo se servono (più mondi per pagina, pubblicazione
    di cavijs su npm).
@@ -25,15 +25,15 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
 
 ## Da verificare a mano
 
-Cose che i test non possono dire.
+Quasi tutto è ora coperto dai test end-to-end (`pnpm test:e2e`): 60 passi al secondo e un disegno nuovo a
+ogni frame su un display a 120 Hz emulato, cavo tenuto non stirato (23 contro 34 con riposo 20), lancio pari
+all'ultimo movimento, cavi addormentati nella forma finale (scarto massimo 0,016 px), mondo rimosso e
+reinserito. Restano i giudizi a occhio:
 
-- [ ] Su uno schermo a 120 Hz: i cavi si muovono fluidi e alla stessa velocità di prima? Se sembrano
-      più lenti, era lo step rate: provare `<cavi-world step-rate="120">`.
-- [ ] Il lancio di un cavo rilasciato nel vuoto è naturale, né troppo forte né troppo debole?
-- [ ] Trascinando un plug il cavo non si stira più vicino al cursore, e gli altri cavi vengono spostati
-      di quanto ti aspetti (`pointer_radius`, default 20)?
-- [ ] La sospensione non blocca cavi che si stanno ancora assestando (soglia 0,01 per 30 passi).
-- [ ] In un'app vera, rimuovere e reinserire un `<cavi-world>` non lascia niente di rotto.
+- [ ] Su uno schermo a 120 Hz vero il movimento sembra fluido? (I numeri tornano, la percezione no.) Se i
+      cavi sembrano più lenti di prima, era lo step rate: provare `<cavi-world step-rate="120">`.
+- [ ] La forza del lancio di un cavo rilasciato nel vuoto, e quanto `pointer_radius` (20) sposta gli altri
+      cavi durante un trascinamento, ti sembrano giusti?
 
 ## Rilascio di `cavi` (bloccante per `main`)
 
@@ -103,13 +103,14 @@ Tutto fatto.
 
 ## Manutenzione
 
-- [ ] La CI non esegue test, lint, controllo del formato né `build:lib`, e non gira sulle PR. Su questo
-      branch fallirebbe comunque finché la dipendenza punta a `../cavi/pkg`.
+- [ ] La CI non esegue test (unitari ed end-to-end), lint, controllo del formato né `build:lib`, e non gira
+      sulle PR. Su questo branch fallirebbe comunque finché la dipendenza punta a `../cavi/pkg`. Per gli
+      end-to-end in CI: Chrome è già presente sui runner Ubuntu di GitHub (`channel: 'chrome'`).
 - [ ] `<cavi-controls>` è codice vecchio: indici dei cavi 0..2 e canvas 1000×600 scritti a mano,
       `alert`/`confirm`, `setCavi` chiamato più volte avvia nuovi timer, non regge uno spostamento nel DOM,
       ignora i mondi multipli. Sostituirlo con `<cavi-debug>` o spostarlo negli esempi.
-- [ ] Test mancanti: disegno dei path SVG, `sizeCanvasToHost`, `<cavi-interaction>`, errore di
-      caricamento del WASM. I finti oggetti dei test non sono controllati rispetto alle classi vere
+- [ ] Test mancanti: disegno dei path SVG (unitario; negli end-to-end è coperto solo "disegna qualcosa"),
+      `sizeCanvasToHost`, errore di caricamento del WASM, interazione touch. I finti oggetti dei test non sono controllati rispetto alle classi vere
       (`satisfies Pick<Cavi, ...>`), e alcuni test accedono a membri privati.
 - [ ] Documentazione con percorsi vecchi: `02-architecture`, `03-api`, `04-getting-started` e
       `05-jack-plug` citano `src/main.ts`, `src/cavi.ts`, `src/jack.ts` e altri file che non esistono più

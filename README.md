@@ -288,7 +288,10 @@ Details: [doc/en/07-debug.md](doc/en/07-debug.md).
 pnpm build       # type-check + demo site (dist/, deployed to GitHub Pages)
 pnpm build:lib   # library: dist-lib/cavijs.js + dist-lib/types/*.d.ts
 pnpm test        # vitest (jsdom + the real cavi WASM module)
+pnpm test:e2e    # Playwright: the demos in Chrome, driven with a real mouse
 ```
+
+The end-to-end tests (`e2e/`) start their own Vite server and use the locally installed Google Chrome, so no browser download is needed. They cover every demo loading and drawing, cable creation/relocation/drop with both interaction controllers, fixed-rate physics on emulated 120 Hz and 30 Hz displays, the held cable, the release throw, sleeping, and a world removed and inserted back.
 
 The WASM engine comes from the `cavi` package; after modifying its Rust code, rebuild it there with `wasm-pack build --target web`.
 

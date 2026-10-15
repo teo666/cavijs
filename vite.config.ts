@@ -7,6 +7,10 @@ export default defineConfig({
   base: '/cavijs/',
   optimizeDeps: {
     exclude: ['cavi'],
+    // Pre-bundled at server start: discovered on first page load instead,
+    // Vite reloads that page (requests answered 504 meanwhile) — which also
+    // made the first e2e run after a cache wipe fail.
+    include: ['d3-selection', 'd3-zoom', 'd3-drag'],
   },
   build: {
     outDir: '../dist',

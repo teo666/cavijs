@@ -23,12 +23,14 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@types/d3-drag": "^3.0.7",
     "@types/d3-selection": "^3.0.11",
     "@types/d3-zoom": "^3.0.8",
