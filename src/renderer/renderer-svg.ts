@@ -44,6 +44,26 @@ export class SvgRenderer implements IRenderer {
 
   /** Pooled per-wire <path> elements, indexed by wire index — updated in place each frame, only added/removed when wire count changes. */
   private wirePaths: SVGPathElement[] = [];
+  /**
+   * What each pooled path last showed — its slice of the render buffer and
+   * its color — so a cable that didn't change since the previous frame
+   * (asleep, or simply at rest) costs a comparison instead of rebuilding
+   * its path string and rewriting its attributes. Indexed like wirePaths.
+   */
+  private wireDrawn: { data: Float32Array; color: string }[] = [];
+  /** The viewLayer transform last written (see applyViewTransform). */
+  private viewTransform: string = '';
+  /** Pooled node circles of the debug overlay, reused frame to frame (see drawNodeDebug). */
+  private nodeCircles: SVGCircleElement[] = [];
+  /** The interaction-radii overlay (two circles, a dot, two labels), created once. */
+  private radii: {
+    group: SVGGElement;
+    pointer: SVGCircleElement;
+    mouse: SVGCircleElement;
+    dot: SVGCircleElement;
+    pointerLabel: SVGTextElement;
+    mouseLabel: SVGTextElement;
+  } | null = null;
 
   private resizeObserver: ResizeObserver | null = null;
 
@@ -167,10 +187,12 @@ export class SvgRenderer implements IRenderer {
     const t = this.world.getCoordinateTransform();
     const origin = containerOrigin(this.container, t.scale);
     const scale = t.scale / c;
-    this.viewLayer.setAttribute(
-      'transform',
-      `matrix(${scale} 0 0 ${scale} ${(origin.x - rect.left) / c} ${(origin.y - rect.top) / c})`
-    );
+    const transform = `matrix(${scale} 0 0 ${scale} ${(origin.x - rect.left) / c} ${(origin.y - rect.top) / c})`;
+    // Only when it changed: an attribute write invalidates the SVG's rendering.
+    if (transform !== this.viewTransform) {
+      this.viewTransform = transform;
+      this.viewLayer.setAttribute('transform', transform);
+    }
   }
 
   private syncPoolSize(count: number): void {
@@ -181,9 +203,11 @@ export class SvgRenderer implements IRenderer {
       p.setAttribute('stroke-linejoin', 'round');
       this.wireLayer.appendChild(p);
       this.wirePaths.push(p);
+      this.wireDrawn.push({ data: new Float32Array(0), color: '' });
     }
     while (this.wirePaths.length > count) {
       const p = this.wirePaths.pop()!;
+      this.wireDrawn.pop();
       p.remove();
     }
   }
@@ -197,22 +221,32 @@ export class SvgRenderer implements IRenderer {
     if (len === 0) return;
 
     const wireData = new Float32Array(Cavi.wasm.memory.buffer, ptr, len);
-    const wires = this.world.getWires();
+    const wires = this.world.getWiresView();
 
     let offset = 0;
     for (let wireIdx = 0; wireIdx < wireCount; wireIdx++) {
+      const start = offset;
       offset++; // node count — unused here
       const radius = wireData[offset++];
       const renderType = wireData[offset++];
       const pathLength = wireData[offset++];
+      const end = offset + pathLength;
 
       const pathEl = this.wirePaths[wireIdx];
+      // See Renderer.drawAllWires: colors are fixed at creation.
+      const wireColor = wires[wireIdx]?.getColor() || DEFAULT_WIRE_COLORS[0];
+
+      // Same data and color as last frame: nothing to rewrite.
+      const slice = wireData.subarray(start, end);
+      const drawn = this.wireDrawn[wireIdx];
+      if (drawn.color === wireColor && sameValues(drawn.data, slice)) {
+        offset = end;
+        continue;
+      }
+      drawn.data = slice.slice();
+      drawn.color = wireColor;
 
       if (pathLength >= 2) {
-        const wire = wires[wireIdx];
-        // See Renderer.drawAllWires: colors are fixed at creation.
-        const wireColor = wire?.getColor() || DEFAULT_WIRE_COLORS[0];
-
         let d = `M ${wireData[offset]} ${wireData[offset + 1]}`;
         offset += 2;
 
@@ -248,27 +282,45 @@ export class SvgRenderer implements IRenderer {
     }
   }
 
+  /**
+   * Debug overlay: a circle on every node. The circles are pooled — one
+   * element per node, reused frame to frame, only created or removed when
+   * the total node count changes — instead of rebuilt every frame.
+   */
   private drawNodeDebug(): void {
-    const wires = this.world.getWires();
+    const wires = this.world.getWiresView();
+    let used = 0;
 
-    // Read straight from WASM rather than through Wire.getNode(), which
-    // would allocate a wrapper per node per frame.
+    // Read straight from WASM rather than through Wire.getNode().
     for (const wire of wires) {
       const wireIndex = wire.getIndex();
-      const radius = wire.getRadius();
+      const r = String(wire.getRadius());
       const nodeCount = wire.getNodeCount();
 
       for (let i = 0; i < nodeCount; i++) {
-        const circle = document.createElementNS(SVG_NS, 'circle');
-        circle.setAttribute('cx', String(this.wasmWorld.get_wire_node_x(wireIndex, i)));
-        circle.setAttribute('cy', String(this.wasmWorld.get_wire_node_y(wireIndex, i)));
-        circle.setAttribute('r', String(radius));
-        circle.setAttribute('fill', 'none');
-        circle.setAttribute('stroke', '#00ffff');
-        circle.setAttribute('stroke-width', '1');
-        this.debugLayer.appendChild(circle);
+        let circle = this.nodeCircles[used];
+        if (!circle) {
+          circle = document.createElementNS(SVG_NS, 'circle') as SVGCircleElement;
+          circle.setAttribute('fill', 'none');
+          circle.setAttribute('stroke', '#00ffff');
+          circle.setAttribute('stroke-width', '1');
+          this.debugLayer.insertBefore(circle, this.radii?.group ?? null);
+          this.nodeCircles.push(circle);
+        }
+        setIfChanged(circle, 'cx', String(this.wasmWorld.get_wire_node_x(wireIndex, i)));
+        setIfChanged(circle, 'cy', String(this.wasmWorld.get_wire_node_y(wireIndex, i)));
+        setIfChanged(circle, 'r', r);
+        used++;
       }
     }
+    while (this.nodeCircles.length > used) this.nodeCircles.pop()!.remove();
+  }
+
+  /** Removes the debug overlay (node circles and radii). */
+  private clearDebug(): void {
+    this.debugLayer.replaceChildren();
+    this.nodeCircles = [];
+    this.radii = null;
   }
 
   private makeDashedCircle(cx: number, cy: number, r: number, stroke: string): SVGCircleElement {
@@ -297,37 +349,58 @@ export class SvgRenderer implements IRenderer {
     return t;
   }
 
-  /** Draws the mouse/pointer interaction radii around (mouseX, mouseY), in world coordinates. */
+  /**
+   * Draws the mouse/pointer interaction radii around (mouseX, mouseY), in
+   * world coordinates — one reused group of elements, hidden while the
+   * pointer is off the surface.
+   */
   public drawInteractionRadii(mouseX: number, mouseY: number): void {
-    if (!this.pointer.inside) return;
+    if (!this.radii) {
+      const group = document.createElementNS(SVG_NS, 'g') as SVGGElement;
+      const dot = document.createElementNS(SVG_NS, 'circle') as SVGCircleElement;
+      dot.setAttribute('r', '3');
+      dot.setAttribute('fill', '#ffffff');
+      this.radii = {
+        group,
+        pointer: this.makeDashedCircle(0, 0, 0, '#ffff00'),
+        mouse: this.makeDashedCircle(0, 0, 0, '#ff00ff'),
+        dot,
+        pointerLabel: this.makeLabel(0, 0, ''),
+        mouseLabel: this.makeLabel(0, 0, ''),
+      };
+      const r = this.radii;
+      group.append(r.pointer, r.mouse, r.dot, r.pointerLabel, r.mouseLabel);
+      this.debugLayer.appendChild(group);
+    }
+    const r = this.radii;
+    const visible = this.pointer.inside;
+    const display = visible ? '' : 'none';
+    if (r.group.style.display !== display) r.group.style.display = display;
+    if (!visible) return;
 
     const mouseRadius = this.wasmWorld.get_mouse_radius();
     const pointerRadius = this.wasmWorld.get_pointer_radius();
-
-    this.debugLayer.appendChild(this.makeDashedCircle(mouseX, mouseY, pointerRadius, '#ffff00'));
-    this.debugLayer.appendChild(this.makeDashedCircle(mouseX, mouseY, mouseRadius, '#ff00ff'));
-
-    const dot = document.createElementNS(SVG_NS, 'circle');
-    dot.setAttribute('cx', String(mouseX));
-    dot.setAttribute('cy', String(mouseY));
-    dot.setAttribute('r', '3');
-    dot.setAttribute('fill', '#ffffff');
-    this.debugLayer.appendChild(dot);
-
-    this.debugLayer.appendChild(
-      this.makeLabel(
-        mouseX + pointerRadius * 0.7,
-        mouseY - pointerRadius * 0.7,
-        `pointer: ${pointerRadius.toFixed(1)}`
-      )
-    );
-    this.debugLayer.appendChild(
-      this.makeLabel(
-        mouseX + mouseRadius * 0.7,
-        mouseY - mouseRadius * 0.7,
-        `mouse: ${mouseRadius.toFixed(1)}`
-      )
-    );
+    const x = String(mouseX);
+    const y = String(mouseY);
+    for (const [circle, radius] of [
+      [r.pointer, pointerRadius],
+      [r.mouse, mouseRadius],
+    ] as const) {
+      setIfChanged(circle, 'cx', x);
+      setIfChanged(circle, 'cy', y);
+      setIfChanged(circle, 'r', String(radius));
+    }
+    setIfChanged(r.dot, 'cx', x);
+    setIfChanged(r.dot, 'cy', y);
+    for (const [label, radius, name] of [
+      [r.pointerLabel, pointerRadius, 'pointer'],
+      [r.mouseLabel, mouseRadius, 'mouse'],
+    ] as const) {
+      setIfChanged(label, 'x', String(mouseX + radius * 0.7));
+      setIfChanged(label, 'y', String(mouseY - radius * 0.7));
+      const text = `${name}: ${radius.toFixed(1)}`;
+      if (label.textContent !== text) label.textContent = text;
+    }
   }
 
   private frame = (): void => {
@@ -355,11 +428,10 @@ export class SvgRenderer implements IRenderer {
     this.drawAllWires();
 
     if (this.debugDrawNodes) {
-      this.debugLayer.replaceChildren();
       this.drawNodeDebug();
       this.drawInteractionRadii(this.mouseX, this.mouseY);
     } else if (this.debugLayer.childElementCount > 0) {
-      this.debugLayer.replaceChildren();
+      this.clearDebug();
     }
 
     this.rafId = requestAnimationFrame(this.frame);
@@ -389,6 +461,19 @@ export class SvgRenderer implements IRenderer {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.syncPoolSize(0);
-    this.debugLayer.replaceChildren();
+    this.clearDebug();
+    this.viewTransform = '';
   }
+}
+
+/** Whether two buffers hold the same values. */
+function sameValues(a: Float32Array, b: Float32Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/** setAttribute, skipped when the attribute already has that value. */
+function setIfChanged(el: Element, name: string, value: string): void {
+  if (el.getAttribute(name) !== value) el.setAttribute(name, value);
 }

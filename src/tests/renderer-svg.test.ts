@@ -27,6 +27,7 @@ function makeFakeWorld() {
       set_wire_end: vi.fn(),
     }),
     getWires: () => [],
+    getWiresView: () => [],
     getWireCount: () => 0,
     update: vi.fn(),
     advance: vi.fn(),

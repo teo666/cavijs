@@ -160,7 +160,7 @@ export class Renderer implements IRenderer {
   }
 
   private drawNodeDebug() {
-    const wires = this.world.getWires();
+    const wires = this.world.getWiresView();
 
     this.context.strokeStyle = '#00ffff'; // Cyan
     this.context.lineWidth = 1;
@@ -427,7 +427,7 @@ export class Renderer implements IRenderer {
   }
 
   private drawAllWires() {
-    const wires = this.world.getWires();
+    const wires = this.world.getWiresView();
     const ctx = this.context;
 
     ctx.lineCap = 'round';

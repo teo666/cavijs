@@ -10,7 +10,9 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
   fermi, handle dei nodi stabili, `Cavi.destroy()` e smontaggio dei mondi rimossi, cavi creati trascinando
   che sopravvivono a un reinserimento, colori di default fissati alla creazione, plug che si aprono su un
   jack già aperto, tipo vuoto come jolly, `World` che rifiuta modifiche fatte direttamente sul WASM,
-  `Wire.delete()`, mondi multipli isolati (anche negli shadow root), suite end-to-end Playwright.
+  `Wire.delete()`, mondi multipli isolati (anche negli shadow root), suite end-to-end Playwright,
+  `SvgRenderer` che scrive nel DOM solo ciò che cambia (da 420–620 modifiche al secondo a zero con i cavi
+  fermi), `World.getWiresView()` senza copia per i renderer.
 - **`cavi`:** `step()` separato da `build_render_data(alpha)`, parametri del passo configurabili, cavi che
   partono dritti, cavo tenuto (`pointer_radius`), sospensione, lancio al rilascio, distanza tra i nodi
   separata dal raggio, `intersect` vero, README.
@@ -56,9 +58,7 @@ Tutto fatto.
 
 ## Prestazioni
 
-- [ ] `SvgRenderer` riscrive `d`, `stroke` e `stroke-width` di ogni cavo a ogni frame anche se non
-      cambiano, e in debug ricrea tutti i cerchi dei nodi.
-- [ ] `World.getWires()` copia l'array, e i renderer lo chiamano a ogni frame.
+Tutto fatto.
 
 ## Packaging e distribuzione
 

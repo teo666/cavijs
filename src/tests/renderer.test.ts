@@ -44,6 +44,7 @@ function makeFakeWorld(scale = 1) {
       set_mouse: vi.fn(),
     }),
     getWires: () => [],
+    getWiresView: () => [],
     getWireCount: () => 0,
     update: vi.fn(),
     advance: vi.fn(),

@@ -227,10 +227,19 @@ export class World {
   }
 
   /**
-   * Get all wires
+   * Get all wires — a copy, safe to keep and modify.
    */
   public getWires(): Wire[] {
     return [...this.wires];
+  }
+
+  /**
+   * All wires without copying them — the live list, for code that reads it
+   * every frame (renderers). Don't keep it across frames or modify it: it
+   * changes as wires are added and deleted.
+   */
+  public getWiresView(): readonly Wire[] {
+    return this.wires;
   }
 
   /**

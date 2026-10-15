@@ -60,7 +60,8 @@ destroy(): void
 isDestroyed(): boolean
 getRenderer(): IRenderer | null
 getWireByIndex(index: number): Wire | null
-getWires(): Wire[]
+getWires(): Wire[]                      // una copia
+getWiresView(): readonly Wire[]         // la lista viva, senza copia: per chi legge a ogni frame (renderer)
 getWireCount(): number
 update(): void                          // esattamente un passo fisico
 addFrameTask(task: FrameTask): () => void  // registra lavoro DOM per frame, ritorna una funzione per rimuoverlo

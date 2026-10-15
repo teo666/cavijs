@@ -60,7 +60,8 @@ destroy(): void
 isDestroyed(): boolean
 getRenderer(): IRenderer | null
 getWireByIndex(index: number): Wire | null
-getWires(): Wire[]
+getWires(): Wire[]                      // a copy
+getWiresView(): readonly Wire[]         // the live list, no copy: for per-frame readers (renderers)
 getWireCount(): number
 update(): void                          // exactly one physics step
 addFrameTask(task: FrameTask): () => void  // registers per-frame DOM work, returns an unregister function
