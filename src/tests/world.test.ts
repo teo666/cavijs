@@ -160,3 +160,51 @@ describe('default wire colors', () => {
     ]);
   });
 });
+
+describe('World — wires added or deleted behind its back', () => {
+  it('refuses to add a wire once the WASM world was changed directly', () => {
+    const world = new World();
+    world.addWire(0, 0, 100, 0, 4, 20, 4);
+    world.getWasmWorld().add_wire_with_count(0, 50, 100, 50, 4, 20, 4, 1);
+    expect(() => world.addWire(0, 100, 100, 100, 4, 20, 4)).toThrow(/getWasmWorld/);
+  });
+
+  it('refuses to delete once the WASM world was changed directly', () => {
+    const world = new World();
+    const a = world.addWire(0, 0, 100, 0, 4, 20, 4);
+    world.addWire(0, 50, 100, 50, 4, 20, 4);
+    world.getWasmWorld().delete_wire(0);
+    expect(() => world.deleteWire(a)).toThrow(/getWasmWorld/);
+  });
+});
+
+describe('Wire.delete / deleteWire(wire)', () => {
+  it('deletes the right wire whatever its current index', () => {
+    const world = new World();
+    const a = world.addWire(0, 0, 100, 0, 4, 20, 4);
+    const b = world.addWire(0, 50, 100, 50, 5, 20, 4);
+    const c = world.addWire(0, 100, 100, 100, 6, 20, 4);
+
+    a.delete();
+    world.deleteWire(c); // now at index 1
+
+    expect(world.getWires()).toEqual([b]);
+    expect(b.getIndex()).toBe(0);
+    expect(b.getNodeCount()).toBe(5);
+    expect([a.getIndex(), c.getIndex()]).toEqual([-1, -1]);
+  });
+
+  it('is a no-op for a wire already deleted, or of another world', () => {
+    const world = new World();
+    const other = new World();
+    const a = world.addWire(0, 0, 100, 0, 4, 20, 4);
+    const foreign = other.addWire(0, 0, 100, 0, 4, 20, 4);
+
+    a.delete();
+    a.delete();
+    world.deleteWire(foreign);
+
+    expect(world.getWireCount()).toBe(0);
+    expect(other.getWireCount()).toBe(1);
+  });
+});

@@ -1,5 +1,6 @@
 import type { WireMeta } from './types';
 import type { WasmWorld } from 'cavi';
+import type { World } from './world';
 import { Node } from './node';
 
 /**
@@ -20,11 +21,23 @@ export class Wire {
    */
   private nodes: (Node | undefined)[] = [];
 
-  constructor(world?: WasmWorld, wireIndex?: number) {
+  /** The World that created this wire (see delete). */
+  private owner: World | null = null;
+
+  constructor(world?: WasmWorld, wireIndex?: number, owner?: World) {
     if (world !== undefined && wireIndex !== undefined) {
       this.world = world;
       this.wireIndex = wireIndex;
     }
+    this.owner = owner ?? null;
+  }
+
+  /**
+   * Deletes this wire from its world (World.deleteWire), without having to
+   * know its current index. No-op once deleted.
+   */
+  public delete(): void {
+    if (this.wireIndex >= 0) this.owner?.deleteWire(this);
   }
 
   /**

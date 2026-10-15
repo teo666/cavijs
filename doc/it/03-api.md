@@ -15,7 +15,7 @@ destroy(): void                         // smonta la simulazione per sempre (ved
 isDestroyed(): boolean
 getRenderer(): IRenderer | null
 addWire(x1, y1, x2, y2, nodes, tension, radius, type): Wire
-deleteWire(index: number): void
+deleteWire(wire: Wire | number): void  // per handle (preferibile) o indice attuale
 clearAllWires(): void
 setAcceleration(x: number, y: number): void
 getAcceleration(): { x: number, y: number }
@@ -49,9 +49,9 @@ static whenReady(el: Element, fn: (cavi: Cavi) => void): void
 Avvolge `WasmWorld`; espone la gestione dei cavi e i parametri globali.
 
 ```typescript
-getWasmWorld(): WasmWorld
+getWasmWorld(): WasmWorld               // per renderer e parametri: aggiungere/togliere cavi e nodi solo tramite World/Wire
 addWire(x1, y1, x2, y2, nodes, tension, radius, renderType): Wire
-deleteWire(index: number): void
+deleteWire(wire: Wire | number): void  // per handle (preferibile) o indice attuale
 clearAllWires(): void
 setAcceleration(x: number, y: number): void
 getAcceleration(): { x: number, y: number }
@@ -96,6 +96,7 @@ Il costruttore di `World` imposta `response_coef` a `0.0` di default (risposta a
 Controparte TypeScript di un cavo WASM. Aggiunge un dizionario `meta: WireMeta` che vive puramente in JS (mai inviato a WASM) per dati di rendering/estensione come il colore.
 
 ```typescript
+delete(): void                          // cancella questo cavo dal suo mondo, qualunque sia il suo indice
 addNode(x: number, y: number, fixed?: boolean): void
 addNodeAt(index: number, x: number, y: number, fixed?: boolean): void
 removeNode(index: number): boolean        // false se lascerebbe meno di 2 nodi

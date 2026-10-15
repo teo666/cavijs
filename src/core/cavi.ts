@@ -195,10 +195,10 @@ export class Cavi {
   }
 
   /**
-   * Delete a Wire by index
+   * Delete a wire, by handle or by current index — see World.deleteWire
    */
-  public deleteWire(index: number): void {
-    this.world.deleteWire(index);
+  public deleteWire(wire: Wire | number): void {
+    this.world.deleteWire(wire);
   }
 
   /**

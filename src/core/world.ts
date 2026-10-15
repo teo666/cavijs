@@ -63,10 +63,30 @@ export class World {
   }
 
   /**
-   * Get the underlying WASM World instance
+   * The underlying WASM world — for renderers (the zero-copy render buffer)
+   * and engine parameters this class doesn't wrap. Add and remove wires
+   * only through World (addWire/deleteWire) and nodes only through Wire:
+   * World pairs its Wire handles with the engine's wires by position, so a
+   * wire added or deleted on the WASM world directly would shift that
+   * pairing — colors and metadata ending up on the wrong cables. addWire
+   * and deleteWire detect it and throw (see _assertInSync).
    */
   public getWasmWorld(): WasmWorld {
     return this.wasmWorld;
+  }
+
+  /**
+   * Throws if the engine's wire count no longer matches this World's own
+   * list — wires were added or deleted on getWasmWorld() directly.
+   */
+  private _assertInSync(): void {
+    const engine = this.wasmWorld.wire_count();
+    if (engine !== this.wires.length) {
+      throw new Error(
+        `cavijs: the WASM world has ${engine} wires but World knows ${this.wires.length}: ` +
+          `wires were added or deleted on getWasmWorld() directly. Use World.addWire/deleteWire.`
+      );
+    }
   }
 
   /**
@@ -82,9 +102,10 @@ export class World {
     radius: number,
     renderType: number = 1
   ): Wire {
-    const wireIndex = this.wasmWorld.wire_count();
+    this._assertInSync();
+    const wireIndex = this.wires.length;
     this.wasmWorld.add_wire_with_count(x1, y1, x2, y2, nodes, tension, radius, renderType);
-    const wire = new Wire(this.wasmWorld, wireIndex);
+    const wire = new Wire(this.wasmWorld, wireIndex, this);
     // A default color of its own, fixed at creation: picked by position at
     // draw time instead, every later wire changed color when one was deleted.
     // Callers with a color of their own (<cavi-wire>) just overwrite it.
@@ -94,10 +115,14 @@ export class World {
   }
 
   /**
-   * Delete a Wire by its index
+   * Delete a wire — by handle (preferred: indices shift as wires are
+   * deleted) or by its current index. No-op for a wire already deleted, or
+   * of another world.
    */
-  public deleteWire(index: number): void {
+  public deleteWire(wire: Wire | number): void {
+    const index = typeof wire === 'number' ? wire : this.wires.indexOf(wire);
     if (index >= 0 && index < this.wires.length) {
+      this._assertInSync();
       this.wasmWorld.delete_wire(index);
       const [removed] = this.wires.splice(index, 1);
       // Invalidate the deleted handle and shift every later one down in

@@ -15,7 +15,7 @@ destroy(): void                         // tears the simulation down for good (s
 isDestroyed(): boolean
 getRenderer(): IRenderer | null
 addWire(x1, y1, x2, y2, nodes, tension, radius, type): Wire
-deleteWire(index: number): void
+deleteWire(wire: Wire | number): void  // by handle (preferred) or current index
 clearAllWires(): void
 setAcceleration(x: number, y: number): void
 getAcceleration(): { x: number, y: number }
@@ -49,9 +49,9 @@ static whenReady(el: Element, fn: (cavi: Cavi) => void): void
 Wraps `WasmWorld`; exposes cable management and global parameters.
 
 ```typescript
-getWasmWorld(): WasmWorld
+getWasmWorld(): WasmWorld               // for renderers and parameters: add/remove wires and nodes only through World/Wire
 addWire(x1, y1, x2, y2, nodes, tension, radius, renderType): Wire
-deleteWire(index: number): void
+deleteWire(wire: Wire | number): void  // by handle (preferred) or current index
 clearAllWires(): void
 setAcceleration(x: number, y: number): void
 getAcceleration(): { x: number, y: number }
@@ -96,6 +96,7 @@ getFriction(): number
 TypeScript counterpart of a WASM wire. Adds a `meta: WireMeta` dictionary that lives purely in JS (never sent to WASM) for rendering/extension data such as color.
 
 ```typescript
+delete(): void                          // deletes this wire from its world, whatever its current index
 addNode(x: number, y: number, fixed?: boolean): void
 addNodeAt(index: number, x: number, y: number, fixed?: boolean): void
 removeNode(index: number): boolean        // false if it would leave fewer than 2 nodes

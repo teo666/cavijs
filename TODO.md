@@ -9,7 +9,8 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
   plug, interpolazione tra i passi fisici, cavo tenuto durante il trascinamento, sospensione dei cavi
   fermi, handle dei nodi stabili, `Cavi.destroy()` e smontaggio dei mondi rimossi, cavi creati trascinando
   che sopravvivono a un reinserimento, colori di default fissati alla creazione, plug che si aprono su un
-  jack già aperto, tipo vuoto come jolly.
+  jack già aperto, tipo vuoto come jolly, `World` che rifiuta modifiche fatte direttamente sul WASM,
+  `Wire.delete()`.
 - **`cavi`:** `step()` separato da `build_render_data(alpha)`, parametri del passo configurabili, cavi che
   partono dritti, cavo tenuto (`pointer_radius`), sospensione, lancio al rilascio, distanza tra i nodi
   separata dal raggio, `intersect` vero, README.
@@ -17,11 +18,10 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
 ## Ordine consigliato
 
 1. Le verifiche a mano qui sotto, poi il rilascio di `cavi`: sblocca il merge su `main` e la CI.
-2. L'ultima correzione di "Correttezza" (`getWasmWorld()` pubblico).
-3. La CI, appena la dipendenza torna su una versione pubblicata.
-4. "Più mondi nella stessa pagina" e "Packaging", solo se servono (più mondi per pagina, pubblicazione
+2. La CI, appena la dipendenza torna su una versione pubblicata.
+3. "Più mondi nella stessa pagina" e "Packaging", solo se servono (più mondi per pagina, pubblicazione
    di cavijs su npm).
-5. Il resto quando capita.
+4. Il resto quando capita.
 
 ## Da verificare a mano
 
@@ -49,9 +49,7 @@ Cose che i test non possono dire.
 
 ## Correttezza
 
-- [ ] **`getWasmWorld()` è pubblico**: chi aggiunge o toglie cavi direttamente sul WASM fa divergere la
-      lista JS da quella del motore, e i colori finiscono sui cavi sbagliati. Aggiungere un controllo in
-      `addWire` e un `Wire.delete()` / `deleteWire(wire)` per non dover passare indici.
+Tutto fatto.
 
 ## Più mondi nella stessa pagina
 
