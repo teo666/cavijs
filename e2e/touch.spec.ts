@@ -9,10 +9,6 @@ import { center, collectErrors, frames, lastCableJacks, openWorld, wireCount } f
 
 test.use({ hasTouch: true });
 
-test.beforeEach(async ({ page }) => {
-  await openWorld(page, 'demo-jack-plug.html');
-});
-
 type TouchType = 'touchStart' | 'touchMove' | 'touchEnd';
 
 /** One CDP session per page: a touch only continues on the session that started it. */
@@ -67,65 +63,126 @@ function wireJacks(page: Page, id: string): Promise<(string | null)[]> {
   );
 }
 
-test('press on a jack, drag to another, lift: a new cable between them', async ({ page }) => {
-  const errors = collectErrors(page);
-  const before = await wireCount(page);
+test.describe('standard controller (demo-jack-plug)', () => {
+  test.beforeEach(async ({ page }) => {
+    await openWorld(page, 'demo-jack-plug.html');
+  });
 
-  await touchDrag(page, await center(page, '#jack4'), await center(page, '#jack2'));
+  test('press on a jack, drag to another, lift: a new cable between them', async ({ page }) => {
+    const errors = collectErrors(page);
+    const before = await wireCount(page);
 
-  expect(await wireCount(page)).toBe(before + 1);
-  expect(await lastCableJacks(page)).toEqual(['jack2', 'jack4']);
-  expect(errors).toEqual([]);
-});
+    await touchDrag(page, await center(page, '#jack4'), await center(page, '#jack2'));
 
-test('lifting the finger over empty space ends the gesture there', async ({ page }) => {
-  const before = await wireCount(page);
-  const start = await center(page, '#jack4');
+    expect(await wireCount(page)).toBe(before + 1);
+    expect(await lastCableJacks(page)).toEqual(['jack2', 'jack4']);
+    expect(errors).toEqual([]);
+  });
 
-  await touchDrag(page, start, { x: start.x + 60, y: start.y + 120 });
+  test('lifting the finger over empty space ends the gesture there', async ({ page }) => {
+    const before = await wireCount(page);
+    const start = await center(page, '#jack4');
 
-  // Default drop behavior: the new cable falls away unplugged.
-  expect(await wireCount(page)).toBe(before + 1);
-  expect(await lastCableJacks(page)).toEqual([null, null]);
-});
+    await touchDrag(page, start, { x: start.x + 60, y: start.y + 120 });
 
-test('long press on a jack fans its plugs out; dragging one moves it to another jack', async ({
-  page,
-}) => {
-  const errors = collectErrors(page);
-  const before = await wireCount(page);
-  expect(await wireJacks(page, 'wire1')).toEqual(['jack1', 'jack2']);
+    // Default drop behavior: the new cable falls away unplugged.
+    expect(await wireCount(page)).toBe(before + 1);
+    expect(await lastCableJacks(page)).toEqual([null, null]);
+  });
 
-  // Held still on jack2 (on its docked plug, which covers it) past the long press.
-  await touch(page, 'touchStart', await center(page, '#jack2'));
-  await expect.poll(() => isSpread(page, 'jack2')).toBe(true);
-  await touch(page, 'touchEnd');
-  await frames(page, 30);
-  expect(await isSpread(page, 'jack2')).toBe(true); // still open with the finger lifted
-
-  // The spread-out plug of wire1 now has a spot of its own.
-  const plug = page.locator('#wire1 cavi-plug[node="14"]');
-  await touchDrag(
+  test('long press on a jack fans its plugs out; dragging one moves it to another jack', async ({
     page,
-    await center(page, '#wire1 cavi-plug[node="14"]'),
-    await center(page, '#jack4')
-  );
+  }) => {
+    const errors = collectErrors(page);
+    const before = await wireCount(page);
+    expect(await wireJacks(page, 'wire1')).toEqual(['jack1', 'jack2']);
 
-  expect(await wireJacks(page, 'wire1')).toEqual(['jack1', 'jack4']);
-  expect(await wireCount(page)).toBe(before); // moved, no new cable
-  await expect.poll(() => plug.getAttribute('plugged')).toBe('true');
-  await expect.poll(() => isSpread(page, 'jack2')).toBe(false);
-  expect(errors).toEqual([]);
+    // Held still on jack2 (on its docked plug, which covers it) past the long press.
+    await touch(page, 'touchStart', await center(page, '#jack2'));
+    await expect.poll(() => isSpread(page, 'jack2')).toBe(true);
+    await touch(page, 'touchEnd');
+    await frames(page, 30);
+    expect(await isSpread(page, 'jack2')).toBe(true); // still open with the finger lifted
+
+    // The spread-out plug of wire1 now has a spot of its own.
+    const plug = page.locator('#wire1 cavi-plug[node="14"]');
+    await touchDrag(
+      page,
+      await center(page, '#wire1 cavi-plug[node="14"]'),
+      await center(page, '#jack4')
+    );
+
+    expect(await wireJacks(page, 'wire1')).toEqual(['jack1', 'jack4']);
+    expect(await wireCount(page)).toBe(before); // moved, no new cable
+    await expect.poll(() => plug.getAttribute('plugged')).toBe('true');
+    await expect.poll(() => isSpread(page, 'jack2')).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
+  test('a press that moves right away still starts a new cable from a jack with cables', async ({
+    page,
+  }) => {
+    const before = await wireCount(page);
+
+    await touchDrag(page, await center(page, '#jack2'), await center(page, '#jack4'));
+
+    expect(await wireCount(page)).toBe(before + 1);
+    expect(await lastCableJacks(page)).toEqual(['jack2', 'jack4']);
+    expect(await wireJacks(page, 'wire1')).toEqual(['jack1', 'jack2']);
+  });
 });
 
-test('a press that moves right away still starts a new cable from a jack with cables', async ({
-  page,
-}) => {
-  const before = await wireCount(page);
+test.describe('d3 controller (demo-d3-interaction)', () => {
+  test.beforeEach(async ({ page }) => {
+    await openWorld(page, 'demo-d3-interaction.html');
+  });
 
-  await touchDrag(page, await center(page, '#jack2'), await center(page, '#jack4'));
+  /** Center of the (first) plug plugged into the jack `id`. */
+  function plugIn(page: Page, id: string): Promise<{ x: number; y: number }> {
+    return page.evaluate((jackId) => {
+      const jack = document.getElementById(jackId) as unknown as { plugs: readonly HTMLElement[] };
+      const r = jack.plugs[0]!.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }, id);
+  }
 
-  expect(await wireCount(page)).toBe(before + 1);
-  expect(await lastCableJacks(page)).toEqual(['jack2', 'jack4']);
-  expect(await wireJacks(page, 'wire1')).toEqual(['jack1', 'jack2']);
+  function plugCount(page: Page, id: string): Promise<number> {
+    return page.evaluate(
+      (jackId) => (document.getElementById(jackId) as unknown as { plugCount: number }).plugCount,
+      id
+    );
+  }
+
+  test('long press on a jack fans its plugs out; dragging one moves it to another jack', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    const before = await wireCount(page);
+    expect(await plugCount(page, 'j-a')).toBe(1);
+
+    await touch(page, 'touchStart', await center(page, '#j-a'));
+    await expect.poll(() => isSpread(page, 'j-a')).toBe(true);
+    await touch(page, 'touchEnd');
+    await frames(page, 30);
+    expect(await isSpread(page, 'j-a')).toBe(true);
+
+    await touchDrag(page, await plugIn(page, 'j-a'), await center(page, '#j-f'));
+
+    expect(await plugCount(page, 'j-a')).toBe(0);
+    expect(await plugCount(page, 'j-f')).toBe(1);
+    expect(await wireCount(page)).toBe(before);
+    expect(errors).toEqual([]);
+  });
+
+  test('a press that moves right away still starts a new cable from a jack with cables', async ({
+    page,
+  }) => {
+    const before = await wireCount(page);
+
+    await touchDrag(page, await center(page, '#j-a'), await center(page, '#j-f'));
+
+    expect(await wireCount(page)).toBe(before + 1);
+    expect(await lastCableJacks(page)).toEqual(['j-a', 'j-f']);
+    expect(await plugCount(page, 'j-a')).toBe(2);
+  });
 });

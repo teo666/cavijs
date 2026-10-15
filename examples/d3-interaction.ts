@@ -4,6 +4,7 @@ import { Cavi } from '../src/core/cavi';
 import type { IInteractionController } from '../src/core/types';
 import { Jack, type CableSession } from '../src/component/jack';
 import { Plug } from '../src/component/plug';
+import { LONG_PRESS_MS, LONG_PRESS_SLOP } from '../src/interaction/interaction';
 
 /**
  * Alternative to StandardInteractionController (src/interaction/
@@ -36,6 +37,12 @@ import { Plug } from '../src/component/plug';
  *   phase is a few document-level listeners picked up after d3-drag's own
  *   `end` (see _beginCarry). Touch always stays 'hold', same as there.
  *
+ * Touch has no hover, so a long press on a jack that already has plugs opens
+ * its fan instead, as in StandardInteractionController (same LONG_PRESS_MS
+ * and LONG_PRESS_SLOP): the fan stays open (Jack.holdSpread) until the next
+ * press, so a drag on one of its plugs moves it; moved first, the press
+ * starts a new cable; a short tap does nothing.
+ *
  * Escape cancels the gesture in either mode, as in
  * StandardInteractionController: a new cable is removed, a relocated plug
  * goes back into its jack. d3-drag cannot stop a gesture it is running, so
@@ -64,8 +71,10 @@ type DragSubject = (
   cavi?: Cavi | null;
   /** The jack a relocated plug was pulled out of, set in `start` — where Escape puts it back. */
   origin?: Jack | null;
-  /** Cancelled with Escape: d3-drag's remaining events for it are ignored. */
+  /** Cancelled with Escape, or turned into a long press: d3-drag's remaining events for it are ignored. */
   aborted?: boolean;
+  /** A touch press on a jack with plugs, not yet a long press nor a drag: the long-press timer. */
+  pending?: ReturnType<typeof setTimeout>;
 };
 
 /**
@@ -97,6 +106,8 @@ export class D3InteractionController implements IInteractionController {
   private _carry: DragSubject | null = null;
   /** The gesture d3-drag is running (button or finger down), if any. */
   private _live: DragSubject | null = null;
+  /** The jack whose fan a touch long press opened, held until the next press. */
+  private _heldSpread: Jack | null = null;
 
   constructor(options: D3InteractionOptions = {}) {
     this.mode = options.mode ?? 'hold';
@@ -108,6 +119,9 @@ export class D3InteractionController implements IInteractionController {
     this._cavi = cavi;
 
     document.addEventListener('pointermove', this._handleHoverMove);
+    // Capture, and pointerdown (before d3-drag's own touchstart/mousedown):
+    // any press closes a fan held open by a long press first.
+    document.addEventListener('pointerdown', this._handlePress, true);
     // Capture: seen before the keyboard controller next to this one.
     document.addEventListener('keydown', this._handleEscape, true);
 
@@ -148,18 +162,18 @@ export class D3InteractionController implements IInteractionController {
         subject.originY = y;
         subject.cavi = this._cavi;
         this._live = subject;
-        Jack.setDragActive(true, subject.cavi);
-        if (subject.kind === 'plug') {
-          subject.origin = subject.plug.jack;
-          subject.plug.beginDrag();
-          subject.plug.updateDragPosition(x, y);
-        } else {
-          // null when the jack has no room left (canAcceptMore() — see
-          // Jack.createCable) — the gesture still runs to completion below,
-          // it just never touches a session, same silent no-op
-          // StandardInteractionController falls back to.
-          subject.session = subject.jack.createCable(x, y);
+        // A finger on a jack that already has plugs: wait and see whether
+        // it becomes a long press (opens the fan) or a drag (a new cable).
+        if (subject.kind === 'cable' && isTouch(event.sourceEvent) && subject.jack.plugCount > 0) {
+          const jack = subject.jack;
+          subject.pending = setTimeout(() => {
+            subject.pending = undefined;
+            subject.aborted = true;
+            this._setHeldSpread(jack);
+          }, LONG_PRESS_MS);
+          return;
         }
+        this._begin(subject, x, y);
       })
       .on('drag', (event: D3DragEvent<HTMLElement, unknown, DragSubject>) => {
         const subject = event.subject;
@@ -167,6 +181,12 @@ export class D3InteractionController implements IInteractionController {
         const { x, y } = clientPointFromSourceEvent(event.sourceEvent);
         const dx = x - subject.originX;
         const dy = y - subject.originY;
+        if (subject.pending !== undefined) {
+          if (dx * dx + dy * dy <= LONG_PRESS_SLOP * LONG_PRESS_SLOP) return;
+          clearTimeout(subject.pending);
+          subject.pending = undefined;
+          this._begin(subject, subject.originX, subject.originY);
+        }
         if (dx * dx + dy * dy > CARRY_CLICK_DISTANCE * CARRY_CLICK_DISTANCE) {
           subject.moved = true;
         }
@@ -175,7 +195,15 @@ export class D3InteractionController implements IInteractionController {
       .on('end', (event: D3DragEvent<HTMLElement, unknown, DragSubject>) => {
         const subject = event.subject;
         if (this._live === subject) this._live = null;
+        if (subject.pending !== undefined) {
+          // A short tap on a jack with plugs: nothing.
+          clearTimeout(subject.pending);
+          subject.pending = undefined;
+          return;
+        }
         if (subject.aborted) return;
+        // A lifted finger no longer points anywhere (see _handleHoverMove).
+        if (isTouch(event.sourceEvent)) Jack.setPointerHoverPosition(null, null, subject.cavi);
         // Touch never carries: a finger lifted off the screen has no
         // position left to follow (same exception as StandardInteractionController).
         if (this.mode === 'carry' && event.sourceEvent instanceof MouseEvent && !subject.moved) {
@@ -194,7 +222,15 @@ export class D3InteractionController implements IInteractionController {
     const cavi = this._cavi;
     this._cavi = null;
     document.removeEventListener('pointermove', this._handleHoverMove);
+    document.removeEventListener('pointerdown', this._handlePress, true);
     document.removeEventListener('keydown', this._handleEscape, true);
+    const live = this._live;
+    if (live?.pending !== undefined) {
+      clearTimeout(live.pending);
+      live.pending = undefined;
+      live.aborted = true;
+    }
+    this._setHeldSpread(null);
     // Unbinds every "*.drag" namespaced listener d3-drag itself installed
     // via the .call() above — the same cleanup .call(drag) would need if
     // you wanted to stop reusing this._behavior on a fresh selection.
@@ -211,6 +247,39 @@ export class D3InteractionController implements IInteractionController {
     // preview in whatever state it was in at the moment of detach.
     Jack.setPointerHoverPosition(null, null, cavi);
   }
+
+  /** Starts what `subject` does: picks its plug up, or creates its cable. */
+  private _begin(subject: DragSubject, x: number, y: number): void {
+    Jack.setDragActive(true, subject.cavi);
+    if (subject.kind === 'plug') {
+      subject.origin = subject.plug.jack;
+      subject.plug.beginDrag();
+      subject.plug.updateDragPosition(x, y);
+    } else {
+      // null when the jack has no room left (canAcceptMore() — see
+      // Jack.createCable) — the gesture still runs to completion below,
+      // it just never touches a session, same silent no-op
+      // StandardInteractionController falls back to.
+      subject.session = subject.jack.createCable(x, y);
+    }
+  }
+
+  /** Keeps `jack`'s fan open (Jack.holdSpread), letting go of the one held before. */
+  private _setHeldSpread(jack: Jack | null): void {
+    if (this._heldSpread === jack) return;
+    this._heldSpread?.holdSpread(false);
+    this._heldSpread = jack;
+    jack?.holdSpread(true);
+  }
+
+  /**
+   * Any press closes a fan held open by a long press. If it lands on one of
+   * that fan's plugs, the plug is still spread out (the fan only recompacts
+   * after a delay), so `.subject()` picks it up.
+   */
+  private _handlePress = (): void => {
+    this._setHeldSpread(null);
+  };
 
   private _move(subject: DragSubject, x: number, y: number): void {
     if (subject.kind === 'plug') {
@@ -256,7 +325,8 @@ export class D3InteractionController implements IInteractionController {
   private _handleEscape = (e: KeyboardEvent): void => {
     if (e.key !== 'Escape') return;
     const subject = this._carry ?? this._live;
-    if (!subject || subject.aborted) return;
+    // A pending touch press has nothing to undo yet.
+    if (!subject || subject.aborted || subject.pending !== undefined) return;
     e.preventDefault();
     e.stopPropagation();
     if (subject === this._carry) this._endCarry();
@@ -316,6 +386,15 @@ export class D3InteractionController implements IInteractionController {
   }
 
   private _handleHoverMove = (e: PointerEvent): void => {
+    // A finger only "hovers" while it drags something (for the full-jack
+    // preview): otherwise it would fan out whatever jack it rests on, and
+    // leave it open once lifted.
+    if (e.pointerType === 'touch' && !Jack.isDragActive(this._cavi)) return;
     Jack.setPointerHoverPosition(e.clientX, e.clientY, this._cavi);
   };
+}
+
+/** Whether d3-drag's source event comes from a finger. */
+function isTouch(sourceEvent: Event): boolean {
+  return typeof TouchEvent !== 'undefined' && sourceEvent instanceof TouchEvent;
 }
