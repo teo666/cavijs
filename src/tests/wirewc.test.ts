@@ -234,8 +234,7 @@ function makeWireEl(attrs: Record<string, string> = {}): CaviWireElement {
  * class rather than hardcoded, so tuning the threshold doesn't silently
  * turn these tests into a check of the old value.
  */
-const OUTSIDE_FRAMES = (CaviWireElement as unknown as { OUTSIDE_FRAMES_BEFORE_CLEANUP: number })
-  .OUTSIDE_FRAMES_BEFORE_CLEANUP;
+const OUTSIDE_FRAMES = CaviWireElement.OUTSIDE_FRAMES_BEFORE_CLEANUP;
 
 /**
  * Runs `frames` frames of every frame task registered with the wire's
@@ -248,7 +247,7 @@ const OUTSIDE_FRAMES = (CaviWireElement as unknown as { OUTSIDE_FRAMES_BEFORE_CL
  * default here runs exactly the number of frames that threshold needs.
  */
 function runCleanupCheck(wireEl: CaviWireElement, frames: number = OUTSIDE_FRAMES): void {
-  const cavi = (wireEl as unknown as { _cavi: FakeCavi })._cavi;
+  const cavi = Cavi.for(wireEl) as unknown as FakeCavi;
   const elements = [cavi.getContainer()];
   const surface = (cavi as unknown as { getSurface?(): HTMLElement }).getSurface?.();
   if (surface) elements.push(surface);

@@ -20,7 +20,8 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
   nello stesso jack, `<cavi-controls>` spostato negli esempi, documentazione allineata al codice, file
   inutili rimossi, `tsconfig` più severo, test su path SVG, `sizeCanvasToHost`, errore di caricamento del
   WASM (`cavierror`) e touch, plug già collegati spostabili col touch (pressione lunga sul jack che apre il
-  ventaglio), finti oggetti dei test controllati sulle classi vere, workflow di CI.
+  ventaglio), finti oggetti dei test controllati sulle classi vere, workflow di CI, Escape nel controller
+  d3 dell'esempio, test che passano solo dall'API pubblica.
 - **`cavi`:** `step()` separato da `build_render_data(alpha)`, parametri del passo configurabili, cavi che
   partono dritti, cavo tenuto (`pointer_radius`), sospensione, lancio al rilascio, distanza tra i nodi
   separata dal raggio, `intersect` vero, README, panic leggibili in console (`set_panic_hook` usato).
@@ -81,8 +82,7 @@ Tutto fatto.
 
 ## API e usabilità
 
-- [ ] Il controller d3 dell'esempio (`examples/d3-interaction.ts`) non ha ancora Escape. La tastiera ce l'ha
-      già: l'esempio gli affianca `KeyboardInteractionController`.
+Tutto fatto.
 
 ## Manutenzione
 
@@ -91,5 +91,3 @@ Tutto fatto.
       `link:../cavi/pkg` compila anche `teo666/cavi`: impostare la variabile di repository `CAVI_REF`
       (oggi `render-interpolation`) e, se `cavi` è privato, il segreto `CAVI_TOKEN`. Il workflow delle
       Pages (`deploy-pages.yml`) invece fallisce finché la dipendenza non torna su npm.
-- [ ] Alcuni test unitari leggono o scrivono membri privati (`_spread`, `_applySpreadPositions`, ...):
-      funzionano, ma si rompono a ogni rinomina interna.

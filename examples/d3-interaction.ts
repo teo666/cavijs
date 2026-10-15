@@ -35,6 +35,11 @@ import { Plug } from '../src/component/plug';
  *   always uses for mouse/pen. d3-drag has no notion of this, so the carry
  *   phase is a few document-level listeners picked up after d3-drag's own
  *   `end` (see _beginCarry). Touch always stays 'hold', same as there.
+ *
+ * Escape cancels the gesture in either mode, as in
+ * StandardInteractionController: a new cable is removed, a relocated plug
+ * goes back into its jack. d3-drag cannot stop a gesture it is running, so
+ * an aborted one is just marked, and its remaining drag/end events ignored.
  */
 
 export type D3InteractionMode = 'hold' | 'carry';
@@ -57,6 +62,10 @@ type DragSubject = (
   moved: boolean;
   /** The world the gesture belongs to, set in `start` — it may end after detach. */
   cavi?: Cavi | null;
+  /** The jack a relocated plug was pulled out of, set in `start` — where Escape puts it back. */
+  origin?: Jack | null;
+  /** Cancelled with Escape: d3-drag's remaining events for it are ignored. */
+  aborted?: boolean;
 };
 
 /**
@@ -86,6 +95,8 @@ export class D3InteractionController implements IInteractionController {
   private _behavior = drag<HTMLElement, unknown, DragSubject | null>();
   /** The gesture currently being carried with no button held ('carry' mode only), if any. */
   private _carry: DragSubject | null = null;
+  /** The gesture d3-drag is running (button or finger down), if any. */
+  private _live: DragSubject | null = null;
 
   constructor(options: D3InteractionOptions = {}) {
     this.mode = options.mode ?? 'hold';
@@ -97,6 +108,8 @@ export class D3InteractionController implements IInteractionController {
     this._cavi = cavi;
 
     document.addEventListener('pointermove', this._handleHoverMove);
+    // Capture: seen before the keyboard controller next to this one.
+    document.addEventListener('keydown', this._handleEscape, true);
 
     this._behavior
       // Runs before a gesture starts: rejects right/middle-click and any
@@ -134,8 +147,10 @@ export class D3InteractionController implements IInteractionController {
         subject.originX = x;
         subject.originY = y;
         subject.cavi = this._cavi;
+        this._live = subject;
         Jack.setDragActive(true, subject.cavi);
         if (subject.kind === 'plug') {
+          subject.origin = subject.plug.jack;
           subject.plug.beginDrag();
           subject.plug.updateDragPosition(x, y);
         } else {
@@ -148,6 +163,7 @@ export class D3InteractionController implements IInteractionController {
       })
       .on('drag', (event: D3DragEvent<HTMLElement, unknown, DragSubject>) => {
         const subject = event.subject;
+        if (subject.aborted) return;
         const { x, y } = clientPointFromSourceEvent(event.sourceEvent);
         const dx = x - subject.originX;
         const dy = y - subject.originY;
@@ -158,6 +174,8 @@ export class D3InteractionController implements IInteractionController {
       })
       .on('end', (event: D3DragEvent<HTMLElement, unknown, DragSubject>) => {
         const subject = event.subject;
+        if (this._live === subject) this._live = null;
+        if (subject.aborted) return;
         // Touch never carries: a finger lifted off the screen has no
         // position left to follow (same exception as StandardInteractionController).
         if (this.mode === 'carry' && event.sourceEvent instanceof MouseEvent && !subject.moved) {
@@ -176,6 +194,7 @@ export class D3InteractionController implements IInteractionController {
     const cavi = this._cavi;
     this._cavi = null;
     document.removeEventListener('pointermove', this._handleHoverMove);
+    document.removeEventListener('keydown', this._handleEscape, true);
     // Unbinds every "*.drag" namespaced listener d3-drag itself installed
     // via the .call() above — the same cleanup .call(drag) would need if
     // you wanted to stop reusing this._behavior on a fresh selection.
@@ -218,6 +237,31 @@ export class D3InteractionController implements IInteractionController {
     }
     Jack.setDragActive(false, subject.cavi);
   }
+
+  /**
+   * Undoes a gesture (Escape): a new cable is removed, a relocated plug
+   * goes back into the jack it came from (or is dropped, if that jack has
+   * no room left).
+   */
+  private _abort(subject: DragSubject): void {
+    subject.aborted = true;
+    if (subject.kind === 'plug') {
+      subject.plug.endDragAt(subject.origin ?? null);
+    } else if (subject.session) {
+      Jack.discardCableSession(subject.session);
+    }
+    Jack.setDragActive(false, subject.cavi);
+  }
+
+  private _handleEscape = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape') return;
+    const subject = this._carry ?? this._live;
+    if (!subject || subject.aborted) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (subject === this._carry) this._endCarry();
+    this._abort(subject);
+  };
 
   /**
    * Keeps a gesture d3-drag has already ended alive with no button held:

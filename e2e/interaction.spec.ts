@@ -111,6 +111,57 @@ test.describe('d3 controller (demo-d3-interaction: press and drag)', () => {
     expect(errors).toEqual([]);
   });
 
+  test('Escape mid-drag removes the new cable; releasing afterwards does nothing', async ({
+    page,
+  }) => {
+    const before = await wireCount(page);
+    await page.mouse.move(...xy(await center(page, '#j-f')));
+    await page.mouse.down();
+    await moveTo(page, await center(page, '#j-a'), 25);
+    expect(await wireCount(page)).toBe(before + 1);
+
+    await page.keyboard.press('Escape');
+    expect(await wireCount(page)).toBe(before);
+    await page.mouse.up();
+    expect(await wireCount(page)).toBe(before);
+  });
+
+  test('Escape while carrying (carry mode) removes the new cable', async ({ page }) => {
+    await page.locator('input[name="interaction-mode"][value="carry"]').check();
+    const before = await wireCount(page);
+    await page.mouse.click(...xy(await center(page, '#j-f')));
+    await moveTo(page, await center(page, '#j-a'), 25);
+    expect(await wireCount(page)).toBe(before + 1);
+
+    await page.keyboard.press('Escape');
+    expect(await wireCount(page)).toBe(before);
+    // Nothing is carried any more: a click on a jack starts a new gesture.
+    await page.mouse.click(...xy(await center(page, '#j-f')));
+    expect(await wireCount(page)).toBe(before + 1);
+  });
+
+  test('Escape puts a relocated plug back into its jack', async ({ page }) => {
+    // The cable j-c -> j-d: hover j-c until its plug fans out, then drag it away.
+    // A handle, not a locator: the `jack` attribute goes away while it is unplugged.
+    const plug = (await page.locator('cavi-plug[jack="j-c"]').elementHandle())!;
+    await moveTo(page, await center(page, '#j-c'));
+    await expect
+      .poll(() => plug.evaluate((p) => (p as unknown as { isSpread(): boolean }).isSpread()))
+      .toBe(true);
+    const at = (await plug.boundingBox())!;
+    await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
+    await page.mouse.down();
+    await moveTo(page, { x: at.x + 150, y: at.y + 120 });
+    expect(await plug.evaluate((p) => (p as unknown as { jack: unknown }).jack)).toBeNull();
+
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+
+    expect(
+      await plug.evaluate((p) => (p as unknown as { jack: { id: string } | null }).jack?.id)
+    ).toBe('j-c');
+  });
+
   test('dragging a module carries its plugged cables along', async ({ page }) => {
     const jackBefore = await center(page, '#j-c');
     const handle = await center(page, '#unit-b .jack-unit-handle');

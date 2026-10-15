@@ -228,28 +228,30 @@ describe('Jack spread with plugs coming and going', () => {
     installFakeCavi();
     const jack = makePositionedJack('a', 0, 0);
     const first = fakePlug();
+    const second = fakePlug();
+    const placedFirst = vi.spyOn(first, 'setSpreadPosition');
+    const placedSecond = vi.spyOn(second, 'setSpreadPosition');
     jack.attach(first);
-    (jack as unknown as { _spread: boolean })._spread = true;
-    const respread = vi.spyOn(
-      jack as unknown as { _applySpreadPositions(): void },
-      '_applySpreadPositions'
-    );
+    jack.holdSpread(true);
+    expect(jack.isSpread()).toBe(true);
+    expect(placedFirst).toHaveBeenCalledTimes(1);
 
-    jack.attach(fakePlug());
-    expect(respread).toHaveBeenCalledTimes(1);
+    jack.attach(second);
+    expect(placedFirst).toHaveBeenCalledTimes(2); // laid out again for two
+    expect(placedSecond).toHaveBeenCalledTimes(1);
     jack.detach(first);
-    expect(respread).toHaveBeenCalledTimes(2);
+    expect(placedSecond).toHaveBeenCalledTimes(2); // and again for one
+    jack.holdSpread(false);
   });
 
   it('leaves a closed jack alone', () => {
     installFakeCavi();
     const jack = makePositionedJack('a', 0, 0);
-    const respread = vi.spyOn(
-      jack as unknown as { _applySpreadPositions(): void },
-      '_applySpreadPositions'
-    );
-    jack.attach(fakePlug());
-    expect(respread).not.toHaveBeenCalled();
+    const plug = fakePlug();
+    const placed = vi.spyOn(plug, 'setSpreadPosition');
+    jack.attach(plug);
+    expect(jack.isSpread()).toBe(false);
+    expect(placed).not.toHaveBeenCalled();
   });
 });
 

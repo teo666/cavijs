@@ -19,7 +19,8 @@ export class CaviWireElement extends HTMLElement {
    * _framesOutside) can be mistaken for a cable that has genuinely drifted
    * away under gravity/tension.
    */
-  private static readonly OUTSIDE_FRAMES_BEFORE_CLEANUP = 30;
+  /** How many consecutive frames an orphaned cable stays out of view before it is deleted. */
+  public static readonly OUTSIDE_FRAMES_BEFORE_CLEANUP = 30;
 
   private _wire: Wire | null = null;
   private _plugs: Plug[] = [];
