@@ -8,8 +8,8 @@
 
 - Initialize and hold the WASM module
 - Wrap the WASM `World`/`Wire`/`Node` types in ergonomic TS classes
-- Own **rendering** (a Canvas 2D renderer) and any render-only metadata (e.g. per-wire color), which intentionally is **not** stored in WASM — keeping physics and presentation independent so the renderer can be swapped or extended without touching Rust code
-- Provide interactive DOM elements — `cavi-jack` / `cavi-plug` Web Components — for connecting cables to fixed connection points, and a `cavi-controls` debug/tuning panel
+- Own **rendering** (a Canvas 2D renderer and an SVG one) and any render-only metadata (e.g. per-wire color), which intentionally is **not** stored in WASM — keeping physics and presentation independent so the renderer can be swapped or extended without touching Rust code
+- Provide custom elements — `<cavi-world>`, `<cavi-jack>`, `<cavi-wire>`, `<cavi-plug>` — for declaring a world, its connection points and its cables in HTML, interaction controllers for mouse, touch and keyboard, and a `<cavi-debug>` panel
 
 ## Architecture split
 
@@ -24,15 +24,17 @@
 - **`World`** — simulation container, thin wrapper over the WASM `WasmWorld`
 - **`Wire`** — a single cable; wraps a WASM wire and adds a metadata dictionary
 - **`Node`** — a single point on a wire
-- **`Renderer`** — Canvas 2D renderer with a built-in animation loop
-- **`CaviControls`** — a `<cavi-controls>` Web Component debug/tuning panel
+- **`Renderer`** / **`SvgRenderer`** — Canvas 2D and SVG renderers, each with its own animation loop
+- **`<cavi-world>`** / **`<cavi-wire>`** — a world and a cable declared in HTML
+- **`StandardInteractionController`** / **`KeyboardInteractionController`** — pointer and keyboard interaction, attached by `<cavi-interaction>`
+- **`<cavi-debug>`** — debug panel: statistics, event log, overlays (see [Debugging and events](./07-debug.md))
 - **`Jack`** / **`Plug`** — `<cavi-jack>` / `<cavi-plug>` Web Components modeling fixed connection points and draggable cable terminals (see [Jack & Plug](./05-jack-plug.md))
 
 ## Status
 
-- The core simulation wrapper (`Cavi`, `World`, `Wire`, `Node`, `Renderer`, `CaviControls`) is implemented and demonstrated in `src/main.ts`.
-- `Jack`/`Plug` are a newer, actively evolving feature (see `spec.md` / `spec_en.md` design notes and recent commit history: "jack plug", "better plug ui/ux", "added connection constrains") — treat their behavior as work-in-progress.
-- `src/example2.ts`, `index2.html`, `src/style2.css`, `src/wirewc.ts` appear to be an alternate/experimental entry point — check their contents before relying on them.
+- Everything above is implemented and covered by unit tests (`pnpm test`) and end-to-end tests in Chrome (`pnpm test:e2e`).
+- The demos in `examples/` show each setup; `examples/index.html` links them all (see [Getting started](./04-getting-started.md)).
+- Open work is tracked in `TODO.md`.
 
 See also:
 

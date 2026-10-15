@@ -1,8 +1,8 @@
 # Cavijs — API Reference
 
-TypeScript wrapper around the [`cavi`](../../../cavi/doc/en/03-api.md) WASM engine. Import from `cavijs` (`src/types.ts` re-exports `Node`, `Wire`, `World`, `Cavi`).
+TypeScript wrapper around the [`cavi`](../../../cavi/doc/en/03-api.md) WASM engine. Import from `cavijs`: `src/index.ts` exports every class below and registers the custom elements.
 
-## `Cavi` (`src/cavi.ts`)
+## `Cavi` (`src/core/cavi.ts`)
 
 Main facade class — the recommended entry point.
 
@@ -44,7 +44,7 @@ static whenReady(el: Element, fn: (cavi: Cavi) => void): void
 
 `Cavi.wasm: InitOutput` (static) holds the loaded WASM module, including `.memory`, used by `Renderer` for zero-copy buffer access. `Cavi.for(el)` returns the `Cavi` an element belongs to — the one whose renderer container (registered by `setRenderer`) is `el` or its nearest ancestor — so several worlds can coexist on one page; it returns `null` inside a `<cavi-world>` that is still initializing, and falls back to `Cavi.shared` (the most recently initialized world, kept for backward compatibility) outside any registered container. `Cavi.whenReady(el, fn)` runs `fn` as soon as that instance exists. See [Zoom, pan and multiple worlds](./06-zoom-multiworld.md).
 
-## `World` (`src/world.ts`)
+## `World` (`src/core/world.ts`)
 
 Wraps `WasmWorld`; exposes cable management and global parameters.
 
@@ -92,7 +92,7 @@ getFriction(): number
 
 `World`'s constructor sets `response_coef` to `0.0` by default (wire self-collision response disabled unless explicitly enabled). It keeps its own `Wire[]` array in sync with WASM wire indices: `deleteWire` shifts the index of every later `Wire` handle down **in place** (`Wire._setIndex`) and sets the deleted one to `-1`, turning it into a no-op. Every `Wire`/`Node` reference held anywhere (a `CaviWireElement`, a `CableSession`, a `Plug`'s `Node`) therefore stays valid across deletions — no rebinding needed. `World` also holds the coordinate-transform provider (`setCoordinateTransformProvider`/`getCoordinateTransform`), so a renderer always reads its own world's zoom.
 
-## `Wire` (`src/wire.ts`)
+## `Wire` (`src/core/wire.ts`)
 
 TypeScript counterpart of a WASM wire. Adds a `meta: WireMeta` dictionary that lives purely in JS (never sent to WASM) for rendering/extension data such as color.
 
@@ -138,7 +138,7 @@ A `Wire` constructed without `(world, wireIndex)` args is "detached" — all its
 
 `Cavi.destroy()` stops the renderer, frees the WASM world, unregisters the renderer container from `Cavi.for`, and clears `Cavi.shared` if it points at this instance. Every `Wire` and `Node` handle of the world is invalidated, so elements still holding one clean up without touching freed memory. The instance must not be used afterwards (`isDestroyed()` tells). `<cavi-world>` does this by itself when it is removed from the page — not when it is just moved — and builds a new world if it is inserted again later, keeping the coordinate transform registered with `setCoordinateTransform`.
 
-## `Node` (`src/node.ts`)
+## `Node` (`src/core/node.ts`)
 
 TypeScript counterpart of a WASM node — a single point in a wire (position, velocity, fixed state).
 
@@ -153,7 +153,7 @@ setMousePosition(x: number, y: number): void   // forwards to World.setMouse
 
 A `Node` is either "live" (constructed with `world`/`wire`/`nodeIndex`, as `Wire.getNode()` does) — `x`/`y`/`fixed` are then always read fresh from WASM through its `Wire`, so it follows the wire's index if an earlier wire is deleted — or a plain data holder (constructed with just `x`/`y`/`fixed`), used e.g. by tests. `Wire.getNode(index)` returns `null` for an out-of-range index.
 
-## `Renderer` (`src/renderer.ts`)
+## `Renderer` (`src/renderer/renderer.ts`)
 
 Canvas 2D renderer implementing `IRenderer`.
 
@@ -188,7 +188,7 @@ stop(): void                  // stops the loop, removes the pointer listener, c
 - Steps the physics with `world.advance(elapsed)` every frame: a fixed `getStepRate()` steps per second (default 60) whatever the display's refresh rate, so cables move at the same speed on 60, 120 or 144 Hz screens. Long gaps (a background tab) are not replayed. Callers should **not** also call `Cavi.update()`/`World.update()` per frame if using `Renderer.render()`'s loop
 - `setDebugDrawNodes(true)` (global option, defaults to `false`) enables a debug overlay that draws the circumference of every node of every wire (read straight from WASM, not by parsing the path buffer) at its real physical position, with radius equal to `Wire.getRadius()` — useful for checking node positions independently of the rendered path (segments/Bezier)
 
-## `IRenderer` (`src/types.ts`)
+## `IRenderer` (`src/core/types.ts`)
 
 ```typescript
 interface IRenderer {
@@ -203,7 +203,7 @@ interface IRenderer {
 
 Implement this to build a custom renderer (e.g. WebGL, SVG) — `Cavi.setRenderer()` / `World.setRenderer()` accept anything satisfying it.
 
-## `IInteractionController` (`src/types.ts`)
+## `IInteractionController` (`src/core/types.ts`)
 
 ```typescript
 interface IInteractionController {
@@ -214,25 +214,19 @@ interface IInteractionController {
 
 Contract for anything that drives user interaction (drag, click, touch...) with `Jack`/`Plug` — pluggable the same way as `IRenderer`. See [Jack & Plug Components](./05-jack-plug.md#interaction-standardinteractioncontroller-and-cavi-interaction) for the standard implementations (`StandardInteractionController` for the pointer, `KeyboardInteractionController` for the keyboard), and how `<cavi-interaction>` attaches a list of them (`controllers`, `no-keyboard`).
 
-## `CaviControls` (`src/controls.ts`)
+## `SvgRenderer` (`src/renderer/renderer-svg.ts`)
 
-A `<cavi-controls>` Web Component providing a debug/tuning GUI panel (Shadow DOM), styled as a dark scrollable card.
-
-```typescript
-setCavi(cavi: Cavi): void   // binds the panel to a Cavi instance and starts stats polling
-```
-
-**Displays (auto-refreshed every 100ms):** FPS, wire count, total points across all wires, WASM buffer size (KB), mouse X/Y, acceleration X/Y.
-
-**Provides controls for:** mouse radius, pointer radius, response coefficient, friction, acceleration X/Y, per-wire node count, plus actions (add random wire, clear all wires, add nodes to a wire) — see `src/controls.ts` for the exact control IDs/wiring.
+A drop-in alternative to `Renderer` implementing the same `IRenderer`: each wire is an SVG `<path>`, kept from frame to frame and rewritten only when the cable moved or changed. It creates its own `<svg>` inside the container (or uses `options.svg`), and supports `options.surface` like `Renderer` (see [Zoom, pan and multiple worlds](./06-zoom-multiworld.md)). `<cavi-world>` always uses the canvas `Renderer`, so `SvgRenderer` is set up by hand (see `examples/main-svg.ts`).
 
 ```typescript
-import { CaviControls } from 'cavijs';
-
-const controls = document.createElement('cavi-controls') as CaviControls;
-document.body.appendChild(controls);
-controls.setCavi(cavi);
+constructor(container: HTMLElement, world: World, options?: RendererOptions & { svg?: SVGSVGElement })
 ```
+
+## `<cavi-debug>` (`src/debug/debugwc.ts`)
+
+A debug panel for any world on the page: live statistics, the event log, and toggles for the debug overlays. See [Debugging and events](./07-debug.md).
+
+The demo pages `demo-basic.html` and `demo-svg.html` use their own control panel, `<cavi-controls>` (`examples/controls.ts`). It is example code, not part of the library.
 
 ## Full usage example
 

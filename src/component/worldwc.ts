@@ -180,11 +180,6 @@ export class CaviWorldElement extends HTMLElement {
       this.appendChild(document.createElement('cavi-interaction'));
     }
 
-    // Parity with the manual controlsElement.setCavi(cavi) call in main.ts.
-    const controls = this.querySelector('cavi-controls') as
-      (HTMLElement & { setCavi(c: Cavi): void }) | null;
-    controls?.setCavi(cavi);
-
     renderer.render();
   }
 

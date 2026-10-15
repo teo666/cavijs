@@ -12,10 +12,16 @@ The TS project contain following classes:
 - **World** - Simulation container
 - **Wire** - Individual wire representation
 - **Node** - Individual node/point in a wire
-- **Socket** - Connection point (future implementation)
-- **Jack** - Connector (future implementation)
 - **Renderer** - Canvas-based rendering implementation
 - **SvgRenderer** - SVG-based rendering implementation, drop-in alternative to Renderer
+
+And these custom elements:
+
+- **`<cavi-world>`** - a world declared in HTML: creates the `Cavi`, its canvas and renderer
+- **`<cavi-jack>`** / **`<cavi-plug>`** - fixed connection points, and the cable ends that plug into them
+- **`<cavi-wire>`** - a cable declared in HTML, with its two plugs
+- **`<cavi-interaction>`** - attaches the interaction controllers: `StandardInteractionController` (mouse, touch) and `KeyboardInteractionController` (Tab, Space/Enter, Escape)
+- **`<cavi-debug>`** - debug panel: statistics, event log, overlays
 
 ## Architecture
 
@@ -295,41 +301,11 @@ The end-to-end tests (`e2e/`) start their own Vite server and use the locally in
 
 The WASM engine comes from the `cavi` package; after modifying its Rust code, rebuild it there with `wasm-pack build --target web`.
 
-## CaviControls Component
+## Control panels
 
-CaviControls is a web component that provides a GUI control panel for the Cavi simulation.
+`<cavi-debug>` is the library's debug panel for any world on the page: live statistics, the event log, and toggles for the debug overlays (see `doc/en/07-debug.md`).
 
-**Features:**
-
-- Real-time statistics display (FPS, wire count, total points, buffer size, mouse position, acceleration)
-- Interactive controls for mouse radius, pointer radius, response coefficient, and friction
-- Acceleration controls (X and Y axes)
-- Per-wire node count adjustment
-- Actions: Add random wire, clear all wires, add nodes to specific wires
-- Auto-updating stats (refreshes every 100ms)
-- Scrollable interface with custom styling
-
-**Usage:**
-
-```typescript
-import { CaviControls } from 'cavijs';
-
-// Create and add controls to DOM
-const controls = document.createElement('cavi-controls') as CaviControls;
-document.body.appendChild(controls);
-
-// Link with Cavi instance
-controls.setCavi(cavi);
-```
-
-**Statistics Display:**
-
-- **FPS**: Current rendering performance
-- **Wires**: Number of wires in simulation
-- **Total Points**: Sum of all nodes across all wires
-- **Buffer Size**: WASM memory buffer size in KB
-- **Mouse X/Y**: Current mouse position
-- **Accel X/Y**: Current acceleration values
+`demo-basic.html` and `demo-svg.html` have their own panel, `<cavi-controls>` (`examples/controls.ts`), with sliders for the physics and buttons to add or clear wires. It is example code: it drives the `Cavi` those demos build by hand, not any world.
 
 ## Development
 
@@ -363,8 +339,9 @@ Wire metadata allows attaching arbitrary rendering information without modifying
 - `src/` — the library itself, nothing else. Organized by concern:
   - `src/core/` — `Cavi`, `World`, `Wire`, `Node`, and the shared `types.ts` (`IRenderer`, `IInteractionController`, `WireMeta`, ...)
   - `src/renderer/` — `Renderer` (canvas), `SvgRenderer` (SVG), `StandardResizeController`
-  - `src/interaction/` — `StandardInteractionController`
-  - `src/component/` — the custom elements: `<cavi-jack>`, `<cavi-plug>`, `<cavi-wire>`, `<cavi-world>`, `<cavi-controls>`, `<cavi-interaction>`
+  - `src/interaction/` — `StandardInteractionController` (pointer), `KeyboardInteractionController` (keyboard)
+  - `src/component/` — the custom elements: `<cavi-jack>`, `<cavi-plug>`, `<cavi-wire>`, `<cavi-world>`, `<cavi-interaction>`
+  - `src/debug/` — `<cavi-debug>`, statistics and event formatting
   - `src/index.ts` — the public entry point, re-exporting the above
   - `src/tests/` — all `*.test.ts` files
 - `examples/` — every demo page and its driving script, kept out of `src/` since none of it is library code. Vite's `root` points here (see `vite.config.ts`), so `npm run dev` serves `examples/index.html` at `/`.
@@ -375,7 +352,7 @@ The `examples/demo-*.html` pages (built via `vite.config.ts`'s `build.rollupOpti
 
 | Demo                                   | Script                               | Renderer                                | Description                                                                                                           |
 | -------------------------------------- | ------------------------------------ | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `examples/demo-basic.html`             | `examples/main.ts`                   | `Renderer` (canvas)                     | Minimal setup, a few static wires                                                                                     |
+| `examples/demo-basic.html`             | `examples/main.ts`                   | `Renderer` (canvas)                     | Minimal setup, a few static wires, with the demos' own control panel (`examples/controls.ts`)                         |
 | `examples/demo-svg.html`               | `examples/main-svg.ts`               | `SvgRenderer`                           | Same minimal setup, using the SVG renderer                                                                            |
 | `examples/demo-jack-plug.html`         | `examples/example2.ts`               | `Renderer` (canvas, via `<cavi-world>`) | Hand-authored `<cavi-jack>`/`<cavi-wire>` markup                                                                      |
 | `examples/demo-noop-interaction.html`  | `examples/exampleNoopInteraction.ts` | `Renderer` (canvas, via `<cavi-world>`) | Custom no-op `IInteractionController` example                                                                         |
@@ -384,5 +361,6 @@ The `examples/demo-*.html` pages (built via `vite.config.ts`'s `build.rollupOpti
 | `examples/demo-patchbay-zoom.html`     | `examples/demo-patchbay-zoom.ts`     | `Renderer` (canvas, via `<cavi-world>`) | Full-screen d3-zoom pan/zoom with CSS-positioned jacks and a draggable module, using `surface`                        |
 | `examples/demo-patchbay-zoom-svg.html` | `examples/demo-patchbay-zoom-svg.ts` | `SvgRenderer`                           | Same full-screen zoom demo on the SVG renderer                                                                        |
 | `examples/demo-d3-interaction.html`    | `examples/demo-d3-interaction.ts`    | `Renderer` (canvas, via `<cavi-world>`) | Custom `IInteractionController` built on d3-drag, several draggable modules under d3-zoom                             |
+| `examples/demo-two-worlds.html`        | `examples/demo-two-worlds.ts`        | `Renderer` (canvas, via `<cavi-world>`) | Two worlds on one page, one inside a shadow root, with the same jack ids                                              |
 
 `examples/index.html` links every demo. Run `npm run dev` and open any of these pages to try them.

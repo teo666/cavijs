@@ -90,8 +90,8 @@ export class Renderer implements IRenderer {
     this.pointer = new PointerTracker(world, container, () => this.canvas);
   }
 
-  // Last pointer position, in world coordinates. Public: <cavi-controls>
-  // and <cavi-debug> read them duck-typed off the active renderer (same as
+  // Last pointer position, in world coordinates. Public: <cavi-debug> (and
+  // the examples' <cavi-controls>) read them duck-typed off the active renderer (same as
   // SvgRenderer).
   public get mouseX(): number {
     return this.pointer.x;

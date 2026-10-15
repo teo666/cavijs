@@ -49,9 +49,9 @@ export interface RendererOptions {
  * instance (and, transitively, the live Jack/Plug registries), `detach`
  * tears them down. Jack/Plug themselves stay pure domain/data elements and
  * never assume any particular controller is attached — see
- * StandardInteractionController (src/interaction.ts) for the default
+ * StandardInteractionController (src/interaction/interaction.ts) for the default
  * pointer/mouse/touch implementation, and <cavi-interaction>
- * (src/interactionwc.ts) for how it's wired up declaratively.
+ * (src/component/interactionwc.ts) for how it's wired up declaratively.
  */
 export interface IInteractionController {
   attach: (cavi: Cavi) => void;
@@ -63,8 +63,8 @@ export interface IInteractionController {
  * sized to its container and announces layout changes — pluggable the same
  * way IInteractionController is: `attach` starts watching `container` (and
  * sizes `canvas` to match it), `detach` tears that down. See
- * StandardResizeController (src/resize.ts) for the default ResizeObserver
- * implementation, and CaviWorldElement (src/worldwc.ts) for how it's wired
+ * StandardResizeController (src/renderer/resize.ts) for the default ResizeObserver
+ * implementation, and CaviWorldElement (src/component/worldwc.ts) for how it's wired
  * up by default.
  */
 export interface IResizeController {

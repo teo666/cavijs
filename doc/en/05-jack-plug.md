@@ -2,7 +2,7 @@
 
 `Jack` (`<cavi-jack>`) and `Plug` (`<cavi-plug>`) model connection points and cable terminals — e.g. for diagrams where cables ("wires", see `<cavi-wire>`) connect into fixed sockets, with a compatibility rule based on a single string type (e.g. `"audio"`, `"midi"`, `"scsi"`).
 
-> This feature is newer than the core `Cavi`/`World`/`Wire` API and evolving — treat details here as a snapshot of `src/jack.ts` / `src/plug.ts` / `src/wirewc.ts` / `src/interaction.ts` / `src/interactionwc.ts` as currently implemented.
+> This feature is newer than the core `Cavi`/`World`/`Wire` API and evolving — treat details here as a snapshot of `src/component/jack.ts` / `src/component/plug.ts` / `src/component/wirewc.ts` / `src/interaction/interaction.ts` / `src/component/interactionwc.ts` as currently implemented.
 
 ## Concept
 
@@ -20,7 +20,7 @@
 
 This means a `<cavi-jack>`/`<cavi-plug>` placed on a page with no interaction controller attached **don't react at all** to mouse/touch — they remain fully manipulable via code (the APIs described in this document), but only "bite" once something attaches a controller. `<cavi-world>` does this automatically (see below), so this detail is invisible in common usage.
 
-## `Jack` (`src/jack.ts`)
+## `Jack` (`src/component/jack.ts`)
 
 A custom element (`cavi-jack`) with Shadow DOM.
 
@@ -97,7 +97,7 @@ A jack with one or more plugs already attached has them sitting exactly at its c
 - While spread, a plug attached or removed makes the jack lay its plugs out again, so a plug dropped onto an open jack fans out with the others instead of staying docked at its center.
 - The mechanic is skipped entirely for a jack with no plugs, and while any drag is in progress (`Jack.setDragActive(true)`), so it never fights an active gesture.
 
-## `Plug` (`src/plug.ts`)
+## `Plug` (`src/component/plug.ts`)
 
 A custom element (`cavi-plug`) with Shadow DOM.
 
@@ -144,7 +144,7 @@ A custom element (`cavi-plug`) with Shadow DOM.
 
 ## Interaction: `StandardInteractionController` and `<cavi-interaction>`
 
-As shown above, Jack/Plug listen for nothing on their own — real interaction (mouse, touch, pen, keyboard) is the responsibility of an external `IInteractionController` (`src/types.ts`):
+As shown above, Jack/Plug listen for nothing on their own — real interaction (mouse, touch, pen, keyboard) is the responsibility of an external `IInteractionController` (`src/core/types.ts`):
 
 ```typescript
 interface IInteractionController {
@@ -153,11 +153,11 @@ interface IInteractionController {
 }
 ```
 
-**`StandardInteractionController`** (`src/interaction.ts`) is the standard implementation, and reproduces exactly the dragging behavior described in this document: a single instance installs two listeners at the `document` level (`pointerdown`, `pointermove`) and, for every recognized gesture, drives Jack/Plug exclusively through their public APIs described above — never touching internal state. Every gesture is plain left-click (or a touch tap) — there is no right-click or modifier-key branch, and mouse/pen always use click-to-carry (touch keeps press-and-drag).
+**`StandardInteractionController`** (`src/interaction/interaction.ts`) is the standard implementation, and reproduces exactly the dragging behavior described in this document: a single instance installs two listeners at the `document` level (`pointerdown`, `pointermove`) and, for every recognized gesture, drives Jack/Plug exclusively through their public APIs described above — never touching internal state. Every gesture is plain left-click (or a touch tap) — there is no right-click or modifier-key branch, and mouse/pen always use click-to-carry (touch keeps press-and-drag).
 
 **`KeyboardInteractionController`** (`src/interaction/keyboard.ts`) handles the keyboard, [described below](#keyboard-keyboardinteractioncontroller). It is a separate controller rather than part of the pointer one, so it also works next to any other pointer controller (the d3 example uses it that way).
 
-**`<cavi-interaction>`** (`src/interactionwc.ts`) is the web component that wires them up declaratively. It holds a **list** of controllers, `controllers`: by default a `StandardInteractionController` and a `KeyboardInteractionController`, or just the former with the `no-keyboard` attribute. On connect (after the `caviready` event, like `<cavi-wire>`) it calls `attach(cavi)` on each of them; on disconnect, `detach()` on each. The list can be replaced **before** the element is connected to the document; `controller = c` is short for `controllers = [c]`:
+**`<cavi-interaction>`** (`src/component/interactionwc.ts`) is the web component that wires them up declaratively. It holds a **list** of controllers, `controllers`: by default a `StandardInteractionController` and a `KeyboardInteractionController`, or just the former with the `no-keyboard` attribute. On connect (after the `caviready` event, like `<cavi-wire>`) it calls `attach(cavi)` on each of them; on disconnect, `detach()` on each. The list can be replaced **before** the element is connected to the document; `controller = c` is short for `controllers = [c]`:
 
 ```typescript
 import { KeyboardInteractionController } from 'cavijs';
@@ -193,7 +193,7 @@ Jacks are focusable (`tabindex="0"`, `role="button"`, an `aria-label` from their
 - A pointer press anywhere cancels a keyboard gesture first, so a keyboard gesture never runs alongside a pointer one. Space/Enter does nothing while a pointer gesture is in progress in that world (`Jack.isDragActive`).
 - **`detach()`** removes its listeners and cancels a gesture in progress.
 
-## `<cavi-wire>` — `type` propagation and terminal nodes (`src/wirewc.ts`)
+## `<cavi-wire>` — `type` propagation and terminal nodes (`src/component/wirewc.ts`)
 
 - The `type` attribute on `<cavi-wire>` is read once during setup and propagated to every child `<cavi-plug>` via `plug.setType(type)`.
 - Only `<cavi-plug node="...">` elements with index `0` or `nodeCount - 1` (the two terminal nodes) are wired up; an intermediate index logs a `console.warn` and the plug is skipped — intermediate nodes are not supported yet.

@@ -17,7 +17,7 @@ import type { CaviWireElement } from './wirewc';
  * (src/interaction/interaction.ts) for the default mouse/touch/click
  * implementation, KeyboardInteractionController (src/interaction/
  * keyboard.ts) for the keyboard,
- * and <cavi-interaction> (src/interactionwc.ts) for how it's wired up
+ * and <cavi-interaction> (src/component/interactionwc.ts) for how it's wired up
  * declaratively.
  */
 export class Plug extends HTMLElement {

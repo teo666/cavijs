@@ -8,8 +8,8 @@ Il compito di `cavi` è gestire la fisica dei cavi e l'interazione col mouse, pr
 
 - Inizializzare e mantenere il modulo WASM
 - Avvolgere i tipi WASM `World`/`Wire`/`Node` in classi TS ergonomiche
-- Possedere il **rendering** (un renderer Canvas 2D) ed eventuali metadati solo-rendering (es. colore per cavo), che deliberatamente **non** sono memorizzati in WASM — mantenendo fisica e presentazione indipendenti così il renderer può essere sostituito o esteso senza toccare il codice Rust
-- Fornire elementi DOM interattivi — i Web Component `cavi-jack` / `cavi-plug` — per collegare i cavi a punti di connessione fissi, e un pannello di debug/tuning `cavi-controls`
+- Possedere il **rendering** (un renderer Canvas 2D e uno SVG) ed eventuali metadati solo-rendering (es. colore per cavo), che deliberatamente **non** sono memorizzati in WASM — mantenendo fisica e presentazione indipendenti così il renderer può essere sostituito o esteso senza toccare il codice Rust
+- Fornire custom element — `<cavi-world>`, `<cavi-jack>`, `<cavi-wire>`, `<cavi-plug>` — per dichiarare in HTML un mondo, i suoi punti di connessione e i suoi cavi, controller di interazione per mouse, touch e tastiera, e un pannello `<cavi-debug>`
 
 ## Divisione dell'architettura
 
@@ -24,15 +24,17 @@ Il compito di `cavi` è gestire la fisica dei cavi e l'interazione col mouse, pr
 - **`World`** — contenitore della simulazione, wrapper sottile sopra `WasmWorld`
 - **`Wire`** — un singolo cavo; avvolge un cavo WASM e aggiunge un dizionario di metadati
 - **`Node`** — un singolo punto di un cavo
-- **`Renderer`** — renderer Canvas 2D con loop di animazione integrato
-- **`CaviControls`** — pannello di debug/tuning Web Component `<cavi-controls>`
+- **`Renderer`** / **`SvgRenderer`** — renderer Canvas 2D e SVG, ciascuno con il proprio loop di animazione
+- **`<cavi-world>`** / **`<cavi-wire>`** — un mondo e un cavo dichiarati in HTML
+- **`StandardInteractionController`** / **`KeyboardInteractionController`** — interazione da puntatore e da tastiera, collegate da `<cavi-interaction>`
+- **`<cavi-debug>`** — pannello di debug: statistiche, log degli eventi, overlay (vedi [Debug ed eventi](./07-debug.md))
 - **`Jack`** / **`Plug`** — Web Component `<cavi-jack>` / `<cavi-plug>` che modellano punti di connessione fissi e terminali di cavo trascinabili (vedi [Jack & Plug](./05-jack-plug.md))
 
 ## Stato
 
-- Il wrapper principale della simulazione (`Cavi`, `World`, `Wire`, `Node`, `Renderer`, `CaviControls`) è implementato e dimostrato in `src/main.ts`.
-- `Jack`/`Plug` sono una funzionalità più recente, in evoluzione attiva (vedi le note di design in `spec.md` / `spec_en.md` e la cronologia commit recente: "jack plug", "better plug ui/ux", "added connection constrains") — considerarne il comportamento come lavoro in corso.
-- `src/example2.ts`, `index2.html`, `src/style2.css`, `src/wirewc.ts` sembrano essere un punto di ingresso alternativo/sperimentale — verificarne il contenuto prima di farci affidamento.
+- Tutto quanto sopra è implementato e coperto da test unitari (`pnpm test`) e da test end-to-end in Chrome (`pnpm test:e2e`).
+- Le demo in `examples/` mostrano ogni configurazione; `examples/index.html` le elenca tutte (vedi [Guida introduttiva](./04-getting-started.md)).
+- Il lavoro ancora aperto è in `TODO.md`.
 
 Vedi anche:
 

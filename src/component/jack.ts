@@ -19,7 +19,7 @@ const CABLE_SNAP_DISTANCE = 20;
  * A cable-creation drag in progress, returned by Jack.createCable() and
  * threaded through Jack.updateCableSession/finishCableSession/
  * cancelCableSession by whoever drives the gesture (by default,
- * StandardInteractionController — see src/interaction.ts). Plain data, not
+ * StandardInteractionController — see src/interaction/interaction.ts). Plain data, not
  * owned by any Jack instance, so the gesture's state can live entirely
  * outside the domain classes.
  */
@@ -48,9 +48,9 @@ export interface CableSession {
  * feedback — see _refreshFullState), but it never listens for pointer or
  * keyboard events itself and does not decide *how* a user interacts with
  * it. That is the job of whatever IInteractionController is attached to
- * the page — see StandardInteractionController (src/interaction.ts) for
+ * the page — see StandardInteractionController (src/interaction/interaction.ts) for
  * the default mouse/touch/click implementation, and <cavi-interaction>
- * (src/interactionwc.ts) for how it's wired up declaratively.
+ * (src/component/interactionwc.ts) for how it's wired up declaratively.
  */
 /**
  * Pointer and drag state of one world's interaction, fed by its interaction

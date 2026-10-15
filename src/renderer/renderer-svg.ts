@@ -8,7 +8,7 @@ import { PointerTracker } from './pointer';
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /**
- * SVG-based alternative to Renderer (src/renderer.ts): draws one <path> per
+ * SVG-based alternative to Renderer (src/renderer/renderer.ts): draws one <path> per
  * wire instead of stroking a canvas. Self-contained by design — unlike
  * Renderer (which expects a consumer, e.g. worldwc.ts, to keep the
  * #wireCanvas sized for it), this class creates its own #wireSvg if none
@@ -92,7 +92,7 @@ export class SvgRenderer implements IRenderer {
     this.attachResizeObserver();
   }
 
-  // Duck-typed members controls.ts and <cavi-debug> read directly off a
+  // Duck-typed members <cavi-debug> (and the examples' controls.ts) read directly off a
   // renderer instance — last pointer position, in world coordinates.
   public get mouseX(): number {
     return this.pointer.x;
@@ -136,7 +136,7 @@ export class SvgRenderer implements IRenderer {
     resizeSvg();
     this.resizeObserver = new ResizeObserver((entries) => {
       resizeSvg();
-      // Same event contract as StandardResizeController (src/resize.ts), so
+      // Same event contract as StandardResizeController (src/renderer/resize.ts), so
       // consumers (e.g. repositionJacksFromSlots in patchbay-shared.ts) can
       // listen for 'cavi-resize' on the container regardless of which
       // IRenderer is active.

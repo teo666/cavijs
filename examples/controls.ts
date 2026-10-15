@@ -1,9 +1,12 @@
-import type { World } from '../core/world';
-import type { Cavi } from '../core/cavi';
+import type { World } from '../src/core/world';
+import type { Cavi } from '../src/core/cavi';
 
 /**
- * CaviControls is a web component that provides a GUI for controlling
- * the Cavi simulation. It's scrollable and can be easily instantiated in HTML.
+ * <cavi-controls>: the control panel of demo-basic.html and demo-svg.html
+ * (sliders for the world's physics, per-wire node counts, add/clear
+ * buttons). Demo code, not part of the library — it drives one Cavi built
+ * by hand, and knows the three wires those demos create. For inspecting
+ * any world, the library has <cavi-debug>.
  */
 export class CaviControls extends HTMLElement {
   private cavi: Cavi | null = null;
@@ -14,16 +17,20 @@ export class CaviControls extends HTMLElement {
   constructor() {
     super();
     this.shadowRoot = this.attachShadow({ mode: 'open' });
-  }
-
-  connectedCallback() {
+    // Rendered once, so moving this element in the DOM keeps its sliders
+    // and their listeners.
     this.render();
   }
 
+  connectedCallback() {
+    this.startStatsUpdate();
+  }
+
   /**
-   * Set the Cavi instance
+   * Set the Cavi instance. Once: the listeners are bound to it.
    */
   public setCavi(cavi: Cavi): void {
+    if (this.cavi) return;
     this.cavi = cavi;
     this.world = cavi.getWorld();
     this.setupEventListeners();
@@ -31,10 +38,10 @@ export class CaviControls extends HTMLElement {
   }
 
   /**
-   * Start updating stats
+   * Updates the stats every 100ms while on the page and given a Cavi.
    */
   private startStatsUpdate(): void {
-    // Update stats every 100ms
+    if (this.statsUpdateInterval !== null || !this.cavi || !this.isConnected) return;
     this.statsUpdateInterval = window.setInterval(() => {
       this.updateStats();
     }, 100);
@@ -104,6 +111,7 @@ export class CaviControls extends HTMLElement {
   disconnectedCallback(): void {
     if (this.statsUpdateInterval !== null) {
       window.clearInterval(this.statsUpdateInterval);
+      this.statsUpdateInterval = null;
     }
   }
 
@@ -294,6 +302,14 @@ export class CaviControls extends HTMLElement {
                     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
                 }
 
+                .message {
+                    min-height: 1em;
+                    margin: 4px 0 0;
+                    font-size: 12px;
+                    color: #e74c3c;
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                }
+
                 .stat-value {
                     font-size: 14px;
                     font-weight: bold;
@@ -444,6 +460,7 @@ export class CaviControls extends HTMLElement {
                         <input type="number" id="addNodePosition" min="0" value="1" step="1">
                     </div>
                     <button id="addNodeBtn" class="success">Add Node</button>
+                    <p class="message" id="addNodeMessage" role="status"></p>
                 </div>
             </div>
         `;
@@ -542,9 +559,10 @@ export class CaviControls extends HTMLElement {
     // Add Wire Button
     const addWireBtn = this.shadowRoot.getElementById('addWireBtn');
     addWireBtn?.addEventListener('click', () => {
-      // Get canvas dimensions (assuming 1000x600 default)
-      const canvasWidth = 1000;
-      const canvasHeight = 600;
+      // Somewhere inside the world's container (world coordinates are its pixels).
+      const box = this.cavi!.getContainer()?.getBoundingClientRect();
+      const canvasWidth = Math.max(box?.width ?? 1000, 300);
+      const canvasHeight = Math.max(box?.height ?? 600, 300);
 
       const x1 = Math.random() * (canvasWidth - 200) + 100;
       const y1 = Math.random() * (canvasHeight - 200) + 100;
@@ -557,12 +575,22 @@ export class CaviControls extends HTMLElement {
       this.cavi!.addWire(x1, y1, x2, y2, nodeCount, 10, radius, renderType);
     });
 
-    // Clear Button
-    const clearBtn = this.shadowRoot.getElementById('clearBtn');
+    // Clear Button: a second click within 3 s confirms.
+    const clearBtn = this.shadowRoot.getElementById('clearBtn') as HTMLButtonElement | null;
+    let confirmTimer: number | null = null;
     clearBtn?.addEventListener('click', () => {
-      if (confirm('Are you sure you want to clear all wires?')) {
-        this.cavi!.clearAllWires();
+      if (confirmTimer === null) {
+        clearBtn.textContent = 'Click again to clear';
+        confirmTimer = window.setTimeout(() => {
+          confirmTimer = null;
+          clearBtn.textContent = 'Clear All Wires';
+        }, 3000);
+        return;
       }
+      window.clearTimeout(confirmTimer);
+      confirmTimer = null;
+      clearBtn.textContent = 'Clear All Wires';
+      this.cavi!.clearAllWires();
     });
 
     // Add Node Button
@@ -574,23 +602,24 @@ export class CaviControls extends HTMLElement {
       'addNodePosition'
     ) as HTMLInputElement;
 
+    const addNodeMessage = this.shadowRoot.getElementById('addNodeMessage')!;
+
     addNodeBtn?.addEventListener('click', () => {
       const wireIndex = parseInt(addNodeWireIndexInput.value);
       const nodePosition = parseInt(addNodePositionInput.value);
+      addNodeMessage.textContent = '';
 
       // Validate wire index
       const wire = this.cavi!.getWireByIndex(wireIndex);
       if (!wire) {
-        alert(
-          `Wire ${wireIndex} does not exist. Please select a valid wire index (0-${wasmWorld.wire_count() - 1}).`
-        );
+        addNodeMessage.textContent = `No wire ${wireIndex}: there are ${wasmWorld.wire_count()}.`;
         return;
       }
 
       // Get node count for validation
       const nodeCount = wire.getNodeCount();
       if (nodePosition < 0 || nodePosition >= nodeCount) {
-        alert(`Invalid node position. Must be between 0 and ${nodeCount - 1}.`);
+        addNodeMessage.textContent = `Position must be between 0 and ${nodeCount - 1}.`;
         return;
       }
 

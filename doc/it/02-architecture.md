@@ -4,27 +4,42 @@
 
 ```
 src/
-├── main.ts        punto di ingresso della demo (usato da index.html)
-├── cavi.ts         Cavi — classe facade
-├── world.ts        World — avvolge WasmWorld
-├── wire.ts          Wire — avvolge un cavo WASM + metadati
-├── node.ts          Node — avvolge un nodo WASM
-├── renderer.ts       Renderer — rendering Canvas 2D + loop di animazione
-├── controls.ts        CaviControls — Web Component pannello di debug <cavi-controls>
-├── jack.ts            Jack — Web Component <cavi-jack>
-├── plug.ts            Plug — Web Component <cavi-plug>
-├── types.ts           interfacce condivise (IRenderer, WireMeta) + re-export
-├── example2.ts, wirewc.ts, style2.css   entry point sperimentale/alternativo (index2.html)
-└── style.css          stile della demo principale
+├── index.ts                  punto di ingresso pubblico: esporta, registra i custom element
+├── core/
+│   ├── cavi.ts               Cavi — facade (init WASM, cavi, renderer, Cavi.for)
+│   ├── world.ts              World — avvolge WasmWorld, passi a frequenza fissa, frame task
+│   ├── wire.ts, node.ts      handle di Wire / Node
+│   ├── coords.ts             coordinate viewport <-> mondo, CoordinateTransform
+│   ├── events.ts             eventi di dominio (cavi-wire-add, cavi-plug-attach, ...)
+│   ├── frame.ts              FrameTask (lavoro per frame, letture e scritture)
+│   └── types.ts              IRenderer, IInteractionController, IResizeController, ...
+├── renderer/
+│   ├── renderer.ts           Renderer — Canvas 2D
+│   ├── renderer-svg.ts       SvgRenderer — SVG
+│   ├── pointer.ts            PointerTracker — alimenta il mouse della fisica
+│   └── resize.ts             StandardResizeController
+├── component/                custom element
+│   ├── worldwc.ts            <cavi-world>
+│   ├── wirewc.ts             <cavi-wire>
+│   ├── jack.ts, plug.ts      <cavi-jack>, <cavi-plug>
+│   └── interactionwc.ts      <cavi-interaction>
+├── interaction/
+│   ├── interaction.ts        StandardInteractionController — puntatore
+│   └── keyboard.ts           KeyboardInteractionController — tastiera
+├── debug/                    <cavi-debug>, statistiche, formattazione degli eventi
+└── tests/                    test unitari (vitest, jsdom, WASM vero)
+
+examples/                     pagine demo e i loro script (root di Vite)
+e2e/                          test end-to-end (Playwright, Chrome)
 ```
 
 ## Flusso dei dati
 
 ```
- index.html
+ examples/demo-basic.html
      │
      ▼
- main.ts ── Cavi.initWasm() ─────────────► carica cavi.wasm, imposta Cavi.wasm
+ examples/main.ts ── Cavi.initWasm() ─────────────► carica cavi.wasm, imposta Cavi.wasm
      │
      ├── new Cavi() ──► new World() ──► new WasmWorld()   (istanza WASM)
      │

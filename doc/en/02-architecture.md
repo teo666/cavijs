@@ -4,27 +4,42 @@
 
 ```
 src/
-├── main.ts        demo entry point (used by index.html)
-├── cavi.ts         Cavi — facade class
-├── world.ts        World — wraps WasmWorld
-├── wire.ts          Wire — wraps a WASM wire + metadata
-├── node.ts          Node — wraps a WASM node
-├── renderer.ts       Renderer — Canvas 2D rendering + animation loop
-├── controls.ts        CaviControls — <cavi-controls> debug panel Web Component
-├── jack.ts            Jack — <cavi-jack> Web Component
-├── plug.ts            Plug — <cavi-plug> Web Component
-├── types.ts           shared interfaces (IRenderer, WireMeta) + re-exports
-├── example2.ts, wirewc.ts, style2.css   experimental/alternate entry (index2.html)
-└── style.css          styling for the main demo
+├── index.ts                  public entry point: exports, registers the custom elements
+├── core/
+│   ├── cavi.ts               Cavi — facade (WASM init, wires, renderer, Cavi.for)
+│   ├── world.ts              World — wraps WasmWorld, fixed-rate stepping, frame tasks
+│   ├── wire.ts, node.ts      Wire / Node handles
+│   ├── coords.ts             viewport <-> world coordinates, CoordinateTransform
+│   ├── events.ts             domain events (cavi-wire-add, cavi-plug-attach, ...)
+│   ├── frame.ts              FrameTask (per-frame read/write work)
+│   └── types.ts              IRenderer, IInteractionController, IResizeController, ...
+├── renderer/
+│   ├── renderer.ts           Renderer — Canvas 2D
+│   ├── renderer-svg.ts       SvgRenderer — SVG
+│   ├── pointer.ts            PointerTracker — feeds the physics mouse
+│   └── resize.ts             StandardResizeController
+├── component/                custom elements
+│   ├── worldwc.ts            <cavi-world>
+│   ├── wirewc.ts             <cavi-wire>
+│   ├── jack.ts, plug.ts      <cavi-jack>, <cavi-plug>
+│   └── interactionwc.ts      <cavi-interaction>
+├── interaction/
+│   ├── interaction.ts        StandardInteractionController — pointer
+│   └── keyboard.ts           KeyboardInteractionController — keyboard
+├── debug/                    <cavi-debug>, statistics, event formatting
+└── tests/                    unit tests (vitest, jsdom, real WASM)
+
+examples/                     demo pages and their scripts (Vite's root)
+e2e/                          end-to-end tests (Playwright, Chrome)
 ```
 
 ## Data flow
 
 ```
- index.html
+ examples/demo-basic.html
      │
      ▼
- main.ts ── Cavi.initWasm() ─────────────► loads cavi.wasm, sets Cavi.wasm
+ examples/main.ts ── Cavi.initWasm() ─────────────► loads cavi.wasm, sets Cavi.wasm
      │
      ├── new Cavi() ──► new World() ──► new WasmWorld()   (WASM instance)
      │

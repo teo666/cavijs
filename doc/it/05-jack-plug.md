@@ -2,7 +2,7 @@
 
 `Jack` (`<cavi-jack>`) e `Plug` (`<cavi-plug>`) modellano punti di connessione e terminali di cavo — ad esempio per diagrammi dove i cavi ("wires", vedi `<cavi-wire>`) si collegano a prese fisse, con una regola di compatibilità basata su un singolo tipo stringa (es. `"audio"`, `"midi"`, `"scsi"`).
 
-> Questa funzionalità è più recente rispetto all'API principale `Cavi`/`World`/`Wire` ed è in evoluzione — considerare i dettagli qui come un'istantanea di `src/jack.ts` / `src/plug.ts` / `src/wirewc.ts` / `src/interaction.ts` / `src/interactionwc.ts` così come attualmente implementati.
+> Questa funzionalità è più recente rispetto all'API principale `Cavi`/`World`/`Wire` ed è in evoluzione — considerare i dettagli qui come un'istantanea di `src/component/jack.ts` / `src/component/plug.ts` / `src/component/wirewc.ts` / `src/interaction/interaction.ts` / `src/component/interactionwc.ts` così come attualmente implementati.
 
 ## Concetto
 
@@ -20,7 +20,7 @@
 
 Questo significa che un `<cavi-jack>`/`<cavi-plug>` inseriti in pagina senza alcun controller di interazione collegato **non reagiscono affatto** al mouse/touch — restano perfettamente manipolabili via codice (le API descritte in questo documento), ma "mordono" solo quando qualcosa collega un controller. `<cavi-world>` lo fa automaticamente (vedi sotto), quindi nell'uso comune questo dettaglio è invisibile.
 
-## `Jack` (`src/jack.ts`)
+## `Jack` (`src/component/jack.ts`)
 
 Un custom element (`cavi-jack`) con Shadow DOM.
 
@@ -97,7 +97,7 @@ Un jack con uno o più plug già agganciati li ha posizionati esattamente al pro
 - Mentre è aperto, un plug aggiunto o tolto fa ridisporre i plug al jack, così un plug lasciato su un jack aperto si apre insieme agli altri invece di restare al centro.
 - Il meccanismo viene saltato del tutto per un jack senza plug, e mentre è in corso un drag qualsiasi (`Jack.setDragActive(true)`), così non entra mai in conflitto con un gesto attivo.
 
-## `Plug` (`src/plug.ts`)
+## `Plug` (`src/component/plug.ts`)
 
 Un custom element (`cavi-plug`) con Shadow DOM.
 
@@ -144,7 +144,7 @@ Un custom element (`cavi-plug`) con Shadow DOM.
 
 ## Interazione: `StandardInteractionController` e `<cavi-interaction>`
 
-Jack/Plug, come visto sopra, non ascoltano da soli alcun evento — l'interazione reale (mouse, touch, penna, tastiera) è responsabilità di un `IInteractionController` esterno (`src/types.ts`):
+Jack/Plug, come visto sopra, non ascoltano da soli alcun evento — l'interazione reale (mouse, touch, penna, tastiera) è responsabilità di un `IInteractionController` esterno (`src/core/types.ts`):
 
 ```typescript
 interface IInteractionController {
@@ -153,11 +153,11 @@ interface IInteractionController {
 }
 ```
 
-**`StandardInteractionController`** (`src/interaction.ts`) è l'implementazione standard, e riproduce esattamente il comportamento di trascinamento descritto in questo documento: un'unica istanza installa due listener a livello di `document` (`pointerdown`, `pointermove`) e, per ogni gesto riconosciuto, pilota Jack/Plug esclusivamente tramite le loro API pubbliche descritte sopra — mai toccando stato interno. Ogni gesto è un semplice click sinistro (o un tap su touch) — non esiste alcun ramo per click destro o tasti modificatori, e mouse/pen usano sempre click-to-carry (il touch mantiene premi-e-trascina).
+**`StandardInteractionController`** (`src/interaction/interaction.ts`) è l'implementazione standard, e riproduce esattamente il comportamento di trascinamento descritto in questo documento: un'unica istanza installa due listener a livello di `document` (`pointerdown`, `pointermove`) e, per ogni gesto riconosciuto, pilota Jack/Plug esclusivamente tramite le loro API pubbliche descritte sopra — mai toccando stato interno. Ogni gesto è un semplice click sinistro (o un tap su touch) — non esiste alcun ramo per click destro o tasti modificatori, e mouse/pen usano sempre click-to-carry (il touch mantiene premi-e-trascina).
 
 **`KeyboardInteractionController`** (`src/interaction/keyboard.ts`) gestisce la tastiera, [descritta più sotto](#tastiera-keyboardinteractioncontroller). È un controller a parte e non un pezzo di quello del puntatore, così funziona anche accanto a qualunque altro controller del puntatore (l'esempio d3 lo usa così).
 
-**`<cavi-interaction>`** (`src/interactionwc.ts`) è il web component che li collega dichiarativamente. Contiene una **lista** di controller, `controllers`: di default uno `StandardInteractionController` e un `KeyboardInteractionController`, o solo il primo con l'attributo `no-keyboard`. Alla connessione (dopo l'evento `caviready`, come `<cavi-wire>`) chiama `attach(cavi)` su ciascuno; alla disconnessione, `detach()` su ciascuno. La lista si può sostituire **prima** che l'elemento venga connesso al documento; `controller = c` è una scorciatoia per `controllers = [c]`:
+**`<cavi-interaction>`** (`src/component/interactionwc.ts`) è il web component che li collega dichiarativamente. Contiene una **lista** di controller, `controllers`: di default uno `StandardInteractionController` e un `KeyboardInteractionController`, o solo il primo con l'attributo `no-keyboard`. Alla connessione (dopo l'evento `caviready`, come `<cavi-wire>`) chiama `attach(cavi)` su ciascuno; alla disconnessione, `detach()` su ciascuno. La lista si può sostituire **prima** che l'elemento venga connesso al documento; `controller = c` è una scorciatoia per `controllers = [c]`:
 
 ```typescript
 import { KeyboardInteractionController } from 'cavijs';
@@ -193,7 +193,7 @@ I jack sono raggiungibili con il focus (`tabindex="0"`, `role="button"`, un `ari
 - Una pressione del puntatore, ovunque, annulla prima il gesto da tastiera, così un gesto da tastiera non convive mai con uno del puntatore. Spazio/Invio non fa niente mentre in quel mondo è in corso un gesto del puntatore (`Jack.isDragActive`).
 - **`detach()`** rimuove i suoi listener e annulla un gesto in corso.
 
-## `<cavi-wire>` — propagazione del `type` e nodi terminali (`src/wirewc.ts`)
+## `<cavi-wire>` — propagazione del `type` e nodi terminali (`src/component/wirewc.ts`)
 
 - L'attributo `type` su `<cavi-wire>` viene letto una volta in fase di setup e propagato a ogni `<cavi-plug>` figlio tramite `plug.setType(type)`.
 - Solo i `<cavi-plug node="...">` con indice `0` o `nodeCount - 1` (i due nodi terminali) vengono collegati; un indice intermedio produce un `console.warn` e il plug viene ignorato — i nodi intermedi non sono ancora supportati.

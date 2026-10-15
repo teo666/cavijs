@@ -1,8 +1,8 @@
 # Cavijs — Riferimento API
 
-Wrapper TypeScript attorno al motore WASM [`cavi`](../../../cavi/doc/it/03-api.md). Import da `cavijs` (`src/types.ts` ri-esporta `Node`, `Wire`, `World`, `Cavi`).
+Wrapper TypeScript attorno al motore WASM [`cavi`](../../../cavi/doc/it/03-api.md). Import da `cavijs`: `src/index.ts` esporta tutte le classi qui sotto e registra i custom element.
 
-## `Cavi` (`src/cavi.ts`)
+## `Cavi` (`src/core/cavi.ts`)
 
 Classe facade principale — il punto di ingresso consigliato.
 
@@ -44,7 +44,7 @@ static whenReady(el: Element, fn: (cavi: Cavi) => void): void
 
 `Cavi.wasm: InitOutput` (statico) contiene il modulo WASM caricato, incluso `.memory`, usato da `Renderer` per l'accesso a copia zero al buffer. `Cavi.for(el)` restituisce il `Cavi` a cui appartiene un elemento — quello il cui container del renderer (registrato da `setRenderer`) è `el` o il suo antenato più vicino — così più mondi possono coesistere nella stessa pagina; restituisce `null` dentro un `<cavi-world>` ancora in inizializzazione, e ripiega su `Cavi.shared` (l'ultimo mondo inizializzato, mantenuto per compatibilità) fuori da qualunque container registrato. `Cavi.whenReady(el, fn)` esegue `fn` appena quell'istanza esiste. Vedi [Zoom, pan e più mondi](./06-zoom-multiworld.md).
 
-## `World` (`src/world.ts`)
+## `World` (`src/core/world.ts`)
 
 Avvolge `WasmWorld`; espone la gestione dei cavi e i parametri globali.
 
@@ -92,7 +92,7 @@ getFriction(): number
 
 Il costruttore di `World` imposta `response_coef` a `0.0` di default (risposta alla self-collision dei cavi disabilitata a meno di attivazione esplicita). Mantiene un proprio array `Wire[]` sincronizzato con gli indici dei cavi WASM: `deleteWire` scala **sul posto** l'indice di ogni handle `Wire` successivo (`Wire._setIndex`) e imposta a `-1` quello cancellato, che diventa un no-op. Ogni riferimento `Wire`/`Node` tenuto altrove (un `CaviWireElement`, una `CableSession`, il `Node` di un `Plug`) resta quindi valido dopo una cancellazione — nessun ri-aggancio necessario. `World` contiene anche il provider della trasformazione di coordinate (`setCoordinateTransformProvider`/`getCoordinateTransform`), così un renderer legge sempre lo zoom del proprio mondo.
 
-## `Wire` (`src/wire.ts`)
+## `Wire` (`src/core/wire.ts`)
 
 Controparte TypeScript di un cavo WASM. Aggiunge un dizionario `meta: WireMeta` che vive puramente in JS (mai inviato a WASM) per dati di rendering/estensione come il colore.
 
@@ -138,7 +138,7 @@ Un `Wire` costruito senza argomenti `(world, wireIndex)` è "scollegato" — tut
 
 `Cavi.destroy()` ferma il renderer, libera il mondo WASM, toglie il container del renderer da `Cavi.for` e azzera `Cavi.shared` se punta a questa istanza. Tutti gli handle `Wire` e `Node` del mondo vengono invalidati, così gli elementi che ne tengono ancora uno fanno pulizia senza toccare memoria liberata. L'istanza non va più usata (lo dice `isDestroyed()`). `<cavi-world>` lo fa da solo quando viene rimosso dalla pagina (non quando viene solo spostato) e, se viene inserito di nuovo più tardi, crea un mondo nuovo mantenendo la trasformazione di coordinate registrata con `setCoordinateTransform`.
 
-## `Node` (`src/node.ts`)
+## `Node` (`src/core/node.ts`)
 
 Controparte TypeScript di un nodo WASM — un singolo punto di un cavo (posizione, velocità, stato fisso).
 
@@ -153,7 +153,7 @@ setMousePosition(x: number, y: number): void   // inoltra a World.setMouse
 
 Un `Node` è "live" (costruito con `world`/`wire`/`nodeIndex`, come fa `Wire.getNode()`) — `x`/`y`/`fixed` sono allora sempre letti da WASM attraverso il suo `Wire`, quindi segue l'indice del cavo se un cavo precedente viene cancellato — oppure un semplice contenitore di dati (costruito solo con `x`/`y`/`fixed`), usato ad esempio nei test. `Wire.getNode(index)` restituisce `null` per un indice fuori range.
 
-## `Renderer` (`src/renderer.ts`)
+## `Renderer` (`src/renderer/renderer.ts`)
 
 Renderer Canvas 2D che implementa `IRenderer`.
 
@@ -188,7 +188,7 @@ stop(): void                  // ferma il loop, rimuove il listener del puntator
 - Fa avanzare la fisica con `world.advance(elapsed)` ad ogni frame: un numero fisso di passi al secondo (`getStepRate()`, default 60) qualunque sia la frequenza dello schermo, così i cavi si muovono alla stessa velocità a 60, 120 o 144 Hz. Le pause lunghe (una scheda in background) non vengono recuperate. Chi usa il loop di `Renderer.render()` **non** dovrebbe chiamare anche `Cavi.update()`/`World.update()` ad ogni frame
 - `setDebugDrawNodes(true)` (opzione globale, default `false`) attiva un overlay di debug che disegna la circonferenza di ogni nodo di ogni cavo (letta direttamente da WASM, non dal parsing del buffer path) alla sua posizione fisica reale, con raggio pari a `Wire.getRadius()` — utile per verificare la posizione dei nodi indipendentemente dal path renderizzato (segmenti/Bezier)
 
-## `IRenderer` (`src/types.ts`)
+## `IRenderer` (`src/core/types.ts`)
 
 ```typescript
 interface IRenderer {
@@ -203,7 +203,7 @@ interface IRenderer {
 
 Implementarla per costruire un renderer personalizzato (es. WebGL, SVG) — `Cavi.setRenderer()` / `World.setRenderer()` accettano qualsiasi cosa la soddisfi.
 
-## `IInteractionController` (`src/types.ts`)
+## `IInteractionController` (`src/core/types.ts`)
 
 ```typescript
 interface IInteractionController {
@@ -214,25 +214,19 @@ interface IInteractionController {
 
 Contratto per qualunque cosa gestisca l'interazione utente (drag, click, touch...) con `Jack`/`Plug` — pluggabile allo stesso modo di `IRenderer`. Vedi [Componenti Jack & Plug](./05-jack-plug.md#interazione-standardinteractioncontroller-e-cavi-interaction) per le implementazioni standard (`StandardInteractionController` per il puntatore, `KeyboardInteractionController` per la tastiera) e per come `<cavi-interaction>` ne collega una lista (`controllers`, `no-keyboard`).
 
-## `CaviControls` (`src/controls.ts`)
+## `SvgRenderer` (`src/renderer/renderer-svg.ts`)
 
-Un Web Component `<cavi-controls>` che fornisce un pannello GUI di debug/tuning (Shadow DOM), stilizzato come una card scura e scrollabile.
-
-```typescript
-setCavi(cavi: Cavi): void   // collega il pannello a un'istanza Cavi e avvia il polling delle statistiche
-```
-
-**Mostra (auto-aggiornato ogni 100ms):** FPS, numero di cavi, punti totali su tutti i cavi, dimensione del buffer WASM (KB), X/Y del mouse, accelerazione X/Y.
-
-**Fornisce controlli per:** raggio del mouse, raggio del puntatore, coefficiente di risposta, attrito, accelerazione X/Y, numero di nodi per cavo, oltre ad azioni (aggiungi cavo casuale, cancella tutti i cavi, aggiungi nodi a un cavo) — vedi `src/controls.ts` per gli ID/collegamenti esatti dei controlli.
+Un'alternativa a `Renderer` che implementa lo stesso `IRenderer`: ogni cavo è un `<path>` SVG, mantenuto da un frame all'altro e riscritto solo quando il cavo si è mosso o è cambiato. Crea il proprio `<svg>` dentro il container (o usa `options.svg`), e supporta `options.surface` come `Renderer` (vedi [Zoom, pan e più mondi](./06-zoom-multiworld.md)). `<cavi-world>` usa sempre il `Renderer` su canvas, quindi `SvgRenderer` si collega a mano (vedi `examples/main-svg.ts`).
 
 ```typescript
-import { CaviControls } from 'cavijs';
-
-const controls = document.createElement('cavi-controls') as CaviControls;
-document.body.appendChild(controls);
-controls.setCavi(cavi);
+constructor(container: HTMLElement, world: World, options?: RendererOptions & { svg?: SVGSVGElement })
 ```
+
+## `<cavi-debug>` (`src/debug/debugwc.ts`)
+
+Un pannello di debug per qualunque mondo della pagina: statistiche dal vivo, il log degli eventi e gli interruttori degli overlay di debug. Vedi [Debug ed eventi](./07-debug.md).
+
+Le demo `demo-basic.html` e `demo-svg.html` usano un loro pannello di controllo, `<cavi-controls>` (`examples/controls.ts`). È codice d'esempio, non fa parte della libreria.
 
 ## Esempio d'uso completo
 
