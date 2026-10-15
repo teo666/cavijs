@@ -14,7 +14,9 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
   `SvgRenderer` che scrive nel DOM solo ciò che cambia (da 420–620 modifiche al secondo a zero con i cavi
   fermi), `World.getWiresView()` senza copia per i renderer, attributi live di `<cavi-wire>` e
   `<cavi-world>` (documentati in `03-api`), tastiera ed Escape, codice duplicato e morto rimosso, modello
-  della trasformazione di coordinate documentato, log del debug che distingue i plug.
+  della trasformazione di coordinate documentato, log del debug che distingue i plug, tastiera come
+  controller separato (`KeyboardInteractionController`, più controller per `<cavi-interaction>`) che sposta
+  anche i plug già collegati, con Tab che si ferma solo sui jack compatibili.
 - **`cavi`:** `step()` separato da `build_render_data(alpha)`, parametri del passo configurabili, cavi che
   partono dritti, cavo tenuto (`pointer_radius`), sospensione, lancio al rilascio, distanza tra i nodi
   separata dal raggio, `intersect` vero, README.
@@ -75,10 +77,8 @@ Tutto fatto.
 
 ## API e usabilità
 
-- [ ] Il controller d3 dell'esempio (`examples/d3-interaction.ts`) non ha ancora Escape né la tastiera, che
-      ora ha `StandardInteractionController`.
-- [ ] Da tastiera si creano cavi nuovi, ma non si sposta un capo già collegato: servirebbe un modo per
-      scegliere un plug di un jack (per esempio con le frecce) e trascinarlo.
+- [ ] Il controller d3 dell'esempio (`examples/d3-interaction.ts`) non ha ancora Escape. La tastiera ce l'ha
+      già: l'esempio gli affianca `KeyboardInteractionController`.
 
 ## Manutenzione
 

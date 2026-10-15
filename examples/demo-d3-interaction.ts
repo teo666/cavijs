@@ -7,6 +7,7 @@ import '../src/debug/debugwc'; // registers cavi-debug
 import type { CaviInteractionElement } from '../src/component/interactionwc';
 import { Jack } from '../src/component/jack';
 import { Plug } from '../src/component/plug';
+import { KeyboardInteractionController } from '../src/interaction/keyboard';
 import {
   D3InteractionController,
   clientPointFromSourceEvent,
@@ -22,14 +23,17 @@ import {
  * run by the time this function body executes — so the only way to swap
  * controllers here is to remove that default child (this fires its
  * disconnectedCallback, cleanly detach()ing StandardInteractionController)
- * and append a fresh <cavi-interaction> with `.controller` set beforehand,
- * exactly the override pattern documented in interactionwc.ts.
+ * and append a fresh <cavi-interaction> with `.controllers` set beforehand,
+ * exactly the override pattern documented in interactionwc.ts. The
+ * standard keyboard controller goes next to the d3 one: it only drives
+ * Jack/Plug's public API, like any controller, so it works with any
+ * pointer controller.
  */
 function useD3Interaction(worldEl: CaviWorldElement): D3InteractionController {
   worldEl.querySelector('cavi-interaction')?.remove();
   const el = document.createElement('cavi-interaction') as CaviInteractionElement;
   const controller = new D3InteractionController();
-  el.controller = controller;
+  el.controllers = [controller, new KeyboardInteractionController()];
   worldEl.appendChild(el);
   return controller;
 }

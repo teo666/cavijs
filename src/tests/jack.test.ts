@@ -1240,3 +1240,61 @@ describe('Jack coordinate space under zoom/pan', () => {
     expect(session.followNode.y).toBe(40);
   });
 });
+
+describe('Jack keyboard support: plugs, isDragActive, holdSpread', () => {
+  function sized(x: number, y: number): DOMRect {
+    return { ...rect(x - 12, y - 12), width: 24, height: 24, right: x + 12, bottom: y + 12 };
+  }
+
+  /** A cable from `origin` (-100, 0) plugged into `target` (0, 0). */
+  function pluggedTarget(): { target: Jack; followNode: Node } {
+    installFakeCavi().getPlugSpreadRecompactDelayMs = () => 300;
+    const origin = makePositionedJack('origin', -100, 0, { type: 'audio' });
+    vi.spyOn(origin, 'getBoundingClientRect').mockReturnValue(sized(-100, 0));
+    const target = makePositionedJack('target', 0, 0, { type: 'audio' });
+    vi.spyOn(target, 'getBoundingClientRect').mockReturnValue(sized(0, 0));
+    const session = origin.createCable(-100, 0)!;
+    vi.spyOn(getFollowPlugEl(session.wireEl), 'getBoundingClientRect').mockReturnValue(sized(0, 0));
+    Jack.finishCableSession(session);
+    const wire = session.wire as unknown as FakeWire;
+    return { target, followNode: wire.getNode(wire.getNodeCount() - 1)! };
+  }
+
+  it('lists the plugs plugged into a jack', () => {
+    const { target } = pluggedTarget();
+    expect(target.plugs).toHaveLength(1);
+    expect(target.plugs[0].jack).toBe(target);
+    expect(makeJack().plugs).toEqual([]);
+  });
+
+  it('tells whether a drag is in progress in a world', () => {
+    const world = {} as Cavi;
+    expect(Jack.isDragActive(world)).toBe(false);
+    Jack.setDragActive(true, world);
+    expect(Jack.isDragActive(world)).toBe(true);
+    expect(Jack.isDragActive({} as Cavi)).toBe(false);
+    Jack.setDragActive(false, world);
+    expect(Jack.isDragActive(world)).toBe(false);
+  });
+
+  it('holdSpread keeps the plugs spread out with no pointer around, then lets them recompact', () => {
+    vi.useFakeTimers();
+    try {
+      const { target, followNode } = pluggedTarget();
+      target.holdSpread(true);
+      expect(target.isSpread()).toBe(true);
+      expect(Math.hypot(followNode.x, followNode.y)).toBeGreaterThan(0);
+
+      Jack.setPointerHoverPosition(9999, 9999);
+      vi.advanceTimersByTime(1000);
+      expect(target.isSpread()).toBe(true); // held: the pointer leaving changes nothing
+
+      target.holdSpread(false);
+      vi.advanceTimersByTime(301);
+      expect(target.isSpread()).toBe(false);
+      expect(followNode.x).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

@@ -1,5 +1,5 @@
 import { Cavi } from '../core/cavi';
-import { Jack, type CableSession } from '../component/jack';
+import { Jack } from '../component/jack';
 import { Plug } from '../component/plug';
 import type { IInteractionController } from '../core/types';
 
@@ -23,9 +23,9 @@ import type { IInteractionController } from '../core/types';
  * to the Jack, same as clicking the Jack itself; a spread-out Plug is
  * clicked directly since it now occupies its own screen position.
  *
- * Keyboard: jacks are focusable (see Jack). Enter or Space on a jack
- * starts a new cable; moving the focus to another jack (Tab) carries the
- * cable's free end there; Enter or Space plugs it in; Escape cancels.
+ * Pointer only: the keyboard is KeyboardInteractionController's
+ * (src/interaction/keyboard.ts), which <cavi-interaction> attaches next to
+ * this one.
  *
  * A single instance is meant to be attached to the whole document (see
  * <cavi-interaction> in interactionwc.ts) — Jack/Plug don't install any
@@ -35,8 +35,6 @@ import type { IInteractionController } from '../core/types';
 export class StandardInteractionController implements IInteractionController {
   private _attached: boolean = false;
   private _cavi: Cavi | null = null;
-  /** A cable being created from the keyboard, if any (see _handleKeyDown). */
-  private _keyboard: { session: CableSession; cavi: Cavi | null } | null = null;
 
   public attach(cavi: Cavi): void {
     if (this._attached) return;
@@ -44,8 +42,6 @@ export class StandardInteractionController implements IInteractionController {
     this._cavi = cavi;
     document.addEventListener('pointerdown', this._handlePointerDown);
     document.addEventListener('pointermove', this._handleHoverMove);
-    document.addEventListener('keydown', this._handleKeyDown);
-    document.addEventListener('focusin', this._handleFocusIn);
   }
 
   public detach(): void {
@@ -53,9 +49,6 @@ export class StandardInteractionController implements IInteractionController {
     this._attached = false;
     document.removeEventListener('pointerdown', this._handlePointerDown);
     document.removeEventListener('pointermove', this._handleHoverMove);
-    document.removeEventListener('keydown', this._handleKeyDown);
-    document.removeEventListener('focusin', this._handleFocusIn);
-    if (this._keyboard) this._endKeyboardCable(false);
     // Leaving hover state stuck would strand this world's hover-spread/
     // full-jack preview in whatever state it was in at the moment of detach.
     Jack.setPointerHoverPosition(null, null, this._cavi);
@@ -110,17 +103,9 @@ export class StandardInteractionController implements IInteractionController {
       move: (x, y) => plug.updateDragPosition(x, y),
       finish: () => plug.endDrag(),
       cancel: () => plug.cancelDrag(),
-      abort: () => {
-        // Back into the jack it was pulled out of, if it still has room —
-        // otherwise just dropped, as for an interrupted gesture.
-        if (origin?.isConnected && origin.canAcceptMore()) {
-          const c = origin.getCenter();
-          plug.updateDragPosition(c.x, c.y);
-          plug.endDrag();
-        } else {
-          plug.cancelDrag();
-        }
-      },
+      // Back into the jack it was pulled out of, if it still has room —
+      // otherwise just dropped, as for an interrupted gesture.
+      abort: () => plug.endDragAt(origin),
     });
   }
 
@@ -219,71 +204,6 @@ export class StandardInteractionController implements IInteractionController {
       target.addEventListener('pointerup', onUp);
       target.addEventListener('pointercancel', onCancel);
     }
-  }
-
-  /** The Jack of this world `e` happened on (the focused one, for key events), if any. */
-  private _jackOf(e: Event): Jack | null {
-    for (const node of e.composedPath()) {
-      if (node instanceof Jack) return Cavi.for(node) === this._cavi ? node : null;
-    }
-    return null;
-  }
-
-  /**
-   * Keyboard cable creation: Enter/Space on a focused jack starts a cable
-   * there; while one is in progress, Enter/Space on another jack plugs it
-   * in (on the same jack: cancels), Escape cancels.
-   */
-  private _handleKeyDown = (e: KeyboardEvent): void => {
-    const activate = e.key === 'Enter' || e.key === ' ';
-    if (this._keyboard) {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        this._endKeyboardCable(false);
-        return;
-      }
-      if (!activate) return;
-      const jack = this._jackOf(e);
-      if (!jack) return;
-      e.preventDefault();
-      if (jack === this._keyboard.session.jack) {
-        this._endKeyboardCable(false);
-        return;
-      }
-      this._moveKeyboardCable(jack);
-      this._endKeyboardCable(true);
-      return;
-    }
-    if (!activate || e.defaultPrevented) return;
-    const jack = this._jackOf(e);
-    if (!jack) return;
-    const c = jack.getCenter();
-    const session = jack.createCable(c.x, c.y);
-    if (!session) return;
-    e.preventDefault(); // Space would scroll the page
-    this._keyboard = { session, cavi: this._cavi };
-    Jack.setDragActive(true, this._cavi);
-  };
-
-  /** While a keyboard cable is in progress, focusing a jack carries its free end there. */
-  private _handleFocusIn = (e: FocusEvent): void => {
-    if (!this._keyboard) return;
-    const jack = this._jackOf(e);
-    if (jack && jack !== this._keyboard.session.jack) this._moveKeyboardCable(jack);
-  };
-
-  private _moveKeyboardCable(jack: Jack): void {
-    const c = jack.getCenter();
-    Jack.updateCableSession(this._keyboard!.session, c.x, c.y);
-  }
-
-  /** Ends the keyboard cable: plugs it in where its free end is (connect), or removes it. */
-  private _endKeyboardCable(connect: boolean): void {
-    const { session, cavi } = this._keyboard!;
-    this._keyboard = null;
-    if (connect) Jack.finishCableSession(session);
-    else Jack.discardCableSession(session);
-    Jack.setDragActive(false, cavi);
   }
 }
 

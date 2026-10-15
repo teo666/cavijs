@@ -14,7 +14,9 @@ import type { CaviWireElement } from './wirewc';
  * for pointer or keyboard events itself and does not decide *how* a user
  * interacts with it. That is the job of whatever IInteractionController is
  * attached to the page — see StandardInteractionController
- * (src/interaction.ts) for the default mouse/touch/click implementation,
+ * (src/interaction/interaction.ts) for the default mouse/touch/click
+ * implementation, KeyboardInteractionController (src/interaction/
+ * keyboard.ts) for the keyboard,
  * and <cavi-interaction> (src/interactionwc.ts) for how it's wired up
  * declaratively.
  */
@@ -39,6 +41,8 @@ export class Plug extends HTMLElement {
    * falling or held as before (see takeRestoreState).
    */
   private _restoreState: { x: number; y: number; fixed: boolean } | null = null;
+  /** Whether aria-label is ours to keep up to date (the author set none). */
+  private _autoLabel: boolean = false;
 
   static get observedAttributes() {
     return ['plugged', 'magnet-class', 'freeze-on-drop'];
@@ -62,6 +66,7 @@ export class Plug extends HTMLElement {
    */
   public setType(type: string): void {
     this._type = type;
+    this._refreshLabel();
   }
 
   /**
@@ -73,7 +78,22 @@ export class Plug extends HTMLElement {
   }
 
   connectedCallback() {
+    // Focusable, but out of the natural Tab order: KeyboardInteractionController
+    // puts each Plug right after its Jack. An author's own tabindex, role
+    // or label wins.
+    if (!this.hasAttribute('tabindex')) this.tabIndex = -1;
+    if (!this.hasAttribute('role')) this.setAttribute('role', 'button');
+    if (!this.hasAttribute('aria-label')) this._autoLabel = true;
+    this._refreshLabel();
     this.render();
+  }
+
+  /** "audio plug in jack4", "plug, unplugged" — see _autoLabel. */
+  private _refreshLabel(): void {
+    if (!this._autoLabel) return;
+    const what = [this._type || null, 'plug'].filter(Boolean).join(' ');
+    const where = this._jack ? ` in ${this._jack.id || 'jack'}` : ', unplugged';
+    this.setAttribute('aria-label', what + where);
   }
 
   /**
@@ -103,6 +123,11 @@ export class Plug extends HTMLElement {
     const state = this._restoreState;
     this._restoreState = null;
     return state;
+  }
+
+  /** The connection type of this Plug (see setType); '' for untyped. */
+  public get type(): string {
+    return this._type;
   }
 
   /**
@@ -299,6 +324,27 @@ export class Plug extends HTMLElement {
   }
 
   /**
+   * Ends a drag by plugging into `jack` — wherever this Plug is on screen —
+   * if `jack` is still on the page, accepts this Plug's type and has room;
+   * otherwise like cancelDrag. For a controller that already knows the
+   * target, e.g. the keyboard, or Escape putting a Plug back where it was.
+   */
+  public endDragAt(jack: Jack | null): void {
+    if (!this._node) return;
+    const ok =
+      jack !== null && jack.isConnected && jack.canAccept(this._type) && jack.canAcceptMore();
+    if (!ok) {
+      this.cancelDrag();
+      return;
+    }
+    this._dragging = false;
+    this._setHeld(false);
+    this.style.zIndex = '';
+    this._setMagnetTarget(null);
+    this._settleDrag(jack);
+  }
+
+  /**
    * Ends a drag that was interrupted (e.g. by the OS/browser): always
    * treated like a drop away from any Jack, regardless of what was under
    * the cursor — same freeze-on-drop handling as endDrag applies.
@@ -338,6 +384,7 @@ export class Plug extends HTMLElement {
     // dragging becomes as declarative as one written in HTML.
     if (jack.id) this.setAttribute('jack', jack.id);
     jack.attach(this);
+    this._refreshLabel();
     emitCaviEvent(Cavi.for(jack), jack, 'cavi-plug-attach', { plug: this, jack });
   }
 
@@ -366,6 +413,7 @@ export class Plug extends HTMLElement {
       jack.detach(this);
       this._jack = null;
       if (!keepMarkup) this.removeAttribute('jack');
+      this._refreshLabel();
       emitCaviEvent(Cavi.for(jack), jack, 'cavi-plug-detach', { plug: this, jack });
     }
   }
@@ -385,6 +433,10 @@ export class Plug extends HTMLElement {
                 transform: translate(-50%, -50%); /* Center on position */
                 cursor: grab;
                 touch-action: none; /* Prevent the browser from scrolling while dragging on touch */
+                outline: none;
+            }
+            :host(:focus-visible) {
+                box-shadow: 0 0 0 3px #4fc3f7;
             }
             :host(:active) {
                 cursor: grabbing;

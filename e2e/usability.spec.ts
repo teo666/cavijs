@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
-import { center, collectErrors, lastCableJacks, moveTo, openWorld, wireCount } from './helpers';
+import { center, lastCableJacks, moveTo, openWorld, wireCount } from './helpers';
 
-/** Escape, keyboard cable creation and live attributes, on demo-jack-plug.html. */
+/** Escape and live attributes, on demo-jack-plug.html (the keyboard: keyboard.spec.ts). */
 
 test.beforeEach(async ({ page }) => {
   await openWorld(page, 'demo-jack-plug.html');
@@ -57,42 +57,6 @@ test.describe('Escape', () => {
     await page.keyboard.press('Escape');
 
     expect(await lastCableJacks(page)).toEqual(['jack5', 'jack7']);
-  });
-});
-
-test.describe('keyboard', () => {
-  test('jacks are focusable buttons with a label', async ({ page }) => {
-    const jack = page.locator('#jack4');
-    await expect(jack).toHaveAttribute('tabindex', '0');
-    await expect(jack).toHaveAttribute('role', 'button');
-    await expect(jack).toHaveAttribute('aria-label', 'audio jack jack4');
-  });
-
-  test('Enter on a jack, Tab to another, Enter plugs a new cable in', async ({ page }) => {
-    const errors = collectErrors(page);
-    const before = await wireCount(page);
-
-    await page.locator('#jack2').focus();
-    await page.keyboard.press('Enter');
-    await page.keyboard.press('Tab'); // jack3 (midi: no match)
-    await page.keyboard.press('Tab'); // jack4 (audio)
-    await expect(page.locator('#jack4')).toBeFocused();
-    await page.keyboard.press('Enter');
-
-    expect(await wireCount(page)).toBe(before + 1);
-    expect(await lastCableJacks(page)).toEqual(['jack2', 'jack4']);
-    expect(errors).toEqual([]);
-  });
-
-  test('Space works too, and Escape cancels a keyboard cable', async ({ page }) => {
-    const before = await wireCount(page);
-    await page.locator('#jack4').focus();
-    await page.keyboard.press(' ');
-    expect(await wireCount(page)).toBe(before + 1);
-
-    await page.keyboard.press('Escape');
-
-    expect(await wireCount(page)).toBe(before);
   });
 });
 

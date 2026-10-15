@@ -212,7 +212,7 @@ interface IInteractionController {
 }
 ```
 
-Contract for anything that drives user interaction (drag, click, touch...) with `Jack`/`Plug` — pluggable the same way as `IRenderer`. See [Jack & Plug Components](./05-jack-plug.md#interaction-standardinteractioncontroller-and-cavi-interaction) for the standard implementation (`StandardInteractionController`) and how to replace it.
+Contract for anything that drives user interaction (drag, click, touch...) with `Jack`/`Plug` — pluggable the same way as `IRenderer`. See [Jack & Plug Components](./05-jack-plug.md#interaction-standardinteractioncontroller-and-cavi-interaction) for the standard implementations (`StandardInteractionController` for the pointer, `KeyboardInteractionController` for the keyboard), and how `<cavi-interaction>` attaches a list of them (`controllers`, `no-keyboard`).
 
 ## `CaviControls` (`src/controls.ts`)
 

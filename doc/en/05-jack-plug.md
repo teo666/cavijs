@@ -154,13 +154,19 @@ interface IInteractionController {
 
 **`StandardInteractionController`** (`src/interaction.ts`) is the standard implementation, and reproduces exactly the dragging behavior described in this document: a single instance installs two listeners at the `document` level (`pointerdown`, `pointermove`) and, for every recognized gesture, drives Jack/Plug exclusively through their public APIs described above — never touching internal state. Every gesture is plain left-click (or a touch tap) — there is no right-click or modifier-key branch, and mouse/pen always use click-to-carry (touch keeps press-and-drag).
 
-**`<cavi-interaction>`** (`src/interactionwc.ts`) is the web component that wires it up declaratively: on connect (after the `caviready` event, like `<cavi-wire>`) it calls `controller.attach(cavi)`; on disconnect it calls `controller.detach()`. Its public `controller` property (defaulting to a fresh `StandardInteractionController`) can be replaced **before** the element is connected to the document:
+**`KeyboardInteractionController`** (`src/interaction/keyboard.ts`) handles the keyboard, [described below](#keyboard-keyboardinteractioncontroller). It is a separate controller rather than part of the pointer one, so it also works next to any other pointer controller (the d3 example uses it that way).
+
+**`<cavi-interaction>`** (`src/interactionwc.ts`) is the web component that wires them up declaratively. It holds a **list** of controllers, `controllers`: by default a `StandardInteractionController` and a `KeyboardInteractionController`, or just the former with the `no-keyboard` attribute. On connect (after the `caviready` event, like `<cavi-wire>`) it calls `attach(cavi)` on each of them; on disconnect, `detach()` on each. The list can be replaced **before** the element is connected to the document; `controller = c` is short for `controllers = [c]`:
 
 ```typescript
+import { KeyboardInteractionController } from 'cavijs';
+
 const el = document.createElement('cavi-interaction');
-el.controller = new MyCustomController(); // must implement IInteractionController
+el.controllers = [new MyPointerController(), new KeyboardInteractionController()];
 container.appendChild(el);
 ```
+
+A world still has one `<cavi-interaction>` at most: a second one stays inactive, with a warning, since two pointer controllers would both handle every click.
 
 **`<cavi-world>`** (see [Overview](./01-overview.md)) automatically creates one if the author doesn't place one explicitly among its own children — so pages using `<cavi-world>` stay interactive out of the box, exactly like the canvas. To fully disable the standard interaction, place a `<cavi-interaction>` manually with a no-op controller, or one that implements only the desired UX.
 
@@ -173,8 +179,18 @@ container.appendChild(el);
 - **Dragging an existing `Plug`**: a primary-button `pointerdown` on a plug that is either unattached or currently spread out (`plug.isSpread() === true`) calls `plug.beginDrag()` — a plug only becomes individually clickable once its jack's hover-spread mechanic has fanned it away from the jack's center.
 - **Hover tracking**: every `document`-level `pointermove` feeds `Jack.setPointerHoverPosition()`, driving both the "full jack" preview and every jack's hover-spread mechanic.
 - **Escape** cancels the gesture in progress: a new cable is removed (`Jack.discardCableSession`), as if it never existed, instead of being dropped as an orphan; a relocated plug goes back into the jack it came from (if that jack still has room).
-- **Keyboard**: jacks are focusable (`tabindex="0"`, `role="button"`, an `aria-label` from their type and id — an author's own values win). Enter or Space on a jack starts a new cable; moving the focus to another jack (Tab, Shift+Tab) carries the free end there; Enter or Space plugs it in; Escape, or Enter on the starting jack, cancels it.
-- **`detach()`**: removes its listeners, cancels a keyboard cable in progress, and clears the tracked hover position of its world, so no jack is left stuck in a stale "forbidden" preview or mid-spread.
+- **`detach()`**: removes its listeners and clears the tracked hover position of its world, so no jack is left stuck in a stale "forbidden" preview or mid-spread.
+
+### Keyboard: `KeyboardInteractionController`
+
+Jacks are focusable (`tabindex="0"`, `role="button"`, an `aria-label` from their type and id). Plugs are too, but out of the natural Tab order (`tabindex="-1"`, an `aria-label` such as "audio plug in jack4", kept up to date as the plug moves). An author's own values win in both cases.
+
+- **Tab** visits each jack and then the plugs plugged into it, before the next jack; **Shift+Tab** goes the same way back. The jack of a focused plug fans its plugs out (`Jack.holdSpread`), so it is visible which cable the focus is on.
+- **Space or Enter** on a jack starts a new cable from it; on a plug, picks the plug up (`plug.beginDrag()`).
+- While carrying, **Tab** (Shift+Tab backwards) only stops on the jacks that can take what is carried: the right type (`canAccept`) and room left (`canAcceptMore`), checked again on every press, plus the jack it came from. The free end moves onto the focused jack. Space or Enter plugs it in there (`Jack.finishCableSession`, or `plug.endDragAt(jack)`). On the jack it came from, it puts the plug back, or removes the new cable.
+- **Escape** cancels: a new cable is removed, a plug goes back into its jack, and the focus returns to where the gesture started.
+- A pointer press anywhere cancels a keyboard gesture first, so a keyboard gesture never runs alongside a pointer one. Space/Enter does nothing while a pointer gesture is in progress in that world (`Jack.isDragActive`).
+- **`detach()`** removes its listeners and cancels a gesture in progress.
 
 ## `<cavi-wire>` — `type` propagation and terminal nodes (`src/wirewc.ts`)
 

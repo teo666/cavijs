@@ -95,6 +95,8 @@ export class Jack extends HTMLElement {
    * to this Jack (see StandardInteractionController).
    */
   private _spread: boolean = false;
+  /** Kept spread out regardless of the pointer (see holdSpread). */
+  private _spreadHeld: boolean = false;
   private _recompactTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Unregisters _frameTask from this Jack's world (see _startFrameSync). */
@@ -182,7 +184,7 @@ export class Jack extends HTMLElement {
 
   connectedCallback() {
     Jack._registry.add(this);
-    // Reachable from the keyboard (see StandardInteractionController:
+    // Reachable from the keyboard (see KeyboardInteractionController:
     // Enter/Space starts a cable, Tab carries it to another jack). An
     // author's own tabindex, role or label wins.
     if (!this.hasAttribute('tabindex')) this.tabIndex = 0;
@@ -269,7 +271,10 @@ export class Jack extends HTMLElement {
       measured.push({
         jack,
         blocked: jack._computeBlocked(),
-        hovering: jack._plugs.size > 0 && !jack._dragActive && jack._hoveringExpandedArea(),
+        hovering:
+          jack._plugs.size > 0 &&
+          !jack._dragActive &&
+          (jack._spreadHeld || jack._hoveringExpandedArea()),
       });
     }
     for (const { jack, blocked, hovering } of measured) {
@@ -284,6 +289,22 @@ export class Jack extends HTMLElement {
    */
   public isSpread(): boolean {
     return this._spread;
+  }
+
+  /**
+   * Keeps this Jack's Plugs spread out (on) whatever the pointer does, or
+   * lets them recompact as usual (off) — e.g. while the keyboard focus is
+   * on one of them, so it is visible which cable it belongs to.
+   */
+  public holdSpread(on: boolean): void {
+    if (this._spreadHeld === on) return;
+    this._spreadHeld = on;
+    Jack._refreshAll(this._world);
+  }
+
+  /** Whether a drag is in progress in `world` (see setDragActive). */
+  public static isDragActive(world: Cavi | null): boolean {
+    return Jack._stateFor(world).drags > 0;
   }
 
   /**
@@ -435,7 +456,7 @@ export class Jack extends HTMLElement {
       const delay = cavi?.getPlugSpreadRecompactDelayMs?.() ?? 500;
       this._recompactTimer = setTimeout(() => {
         this._recompactTimer = null;
-        if (this._hoveringExpandedArea()) return;
+        if (this._spreadHeld || this._hoveringExpandedArea()) return;
         this._spread = false;
         for (const plug of this._plugs) plug.snapToJack();
       }, delay);
@@ -827,6 +848,11 @@ export class Jack extends HTMLElement {
    */
   private _respreadIfSpread(): void {
     if (this._spread && this._plugs.size > 0) this._applySpreadPositions();
+  }
+
+  /** The Plugs plugged into this Jack, in the order they were plugged in. */
+  public get plugs(): readonly Plug[] {
+    return [...this._plugs];
   }
 
   public get plugCount(): number {

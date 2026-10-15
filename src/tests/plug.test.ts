@@ -394,3 +394,55 @@ describe('Plug coordinate space under zoom/pan', () => {
     expect(node.y).toBe(40);
   });
 });
+
+describe('Plug.endDragAt', () => {
+  it('plugs into the given jack, wherever the plug is on screen', () => {
+    const jack = makeJack('j1', 100, 100, { type: 'audio' });
+    const { plug, node } = makePlug(900, 900, 'audio');
+    plug.beginDrag();
+    plug.endDragAt(jack);
+    expect(plug.jack).toBe(jack);
+    expect(node.fixed).toBe(true);
+    expect(plug.hasAttribute('plugged')).toBe(true);
+  });
+
+  it('drops the plug like cancelDrag when the jack is full, of another type, or missing', () => {
+    const full = makeJack('full', 100, 100, { type: 'audio', 'max-plugs': '1' });
+    full.attach({ unplug: () => {} } as unknown as Plug);
+    const midi = makeJack('midi', 100, 100, { type: 'midi' });
+    for (const target of [full, midi, null]) {
+      const { plug, node } = makePlug(100, 100, 'audio');
+      plug.beginDrag();
+      plug.endDragAt(target);
+      expect(plug.jack).toBeNull();
+      expect(node.fixed).toBe(false);
+      expect(plug.hasAttribute('plugged')).toBe(false);
+    }
+  });
+});
+
+describe('Plug accessibility', () => {
+  it('is focusable but out of the Tab order, with a label that follows where it is', () => {
+    const jack = makeJack('jack4', 0, 0, { type: 'audio' });
+    const { plug } = makePlug(0, 0, 'audio');
+    expect(plug.tabIndex).toBe(-1);
+    expect(plug.getAttribute('role')).toBe('button');
+    expect(plug.getAttribute('aria-label')).toBe('audio plug, unplugged');
+    plug.attach(jack);
+    expect(plug.getAttribute('aria-label')).toBe('audio plug in jack4');
+    plug.detach();
+    expect(plug.getAttribute('aria-label')).toBe('audio plug, unplugged');
+  });
+
+  it("keeps the author's own tabindex, role and label", () => {
+    const el = document.createElement('cavi-plug') as Plug;
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('role', 'switch');
+    el.setAttribute('aria-label', 'Out L');
+    document.body.appendChild(el);
+    el.setType('audio');
+    expect(el.tabIndex).toBe(0);
+    expect(el.getAttribute('role')).toBe('switch');
+    expect(el.getAttribute('aria-label')).toBe('Out L');
+  });
+});

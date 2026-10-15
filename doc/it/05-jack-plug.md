@@ -154,13 +154,19 @@ interface IInteractionController {
 
 **`StandardInteractionController`** (`src/interaction.ts`) è l'implementazione standard, e riproduce esattamente il comportamento di trascinamento descritto in questo documento: un'unica istanza installa due listener a livello di `document` (`pointerdown`, `pointermove`) e, per ogni gesto riconosciuto, pilota Jack/Plug esclusivamente tramite le loro API pubbliche descritte sopra — mai toccando stato interno. Ogni gesto è un semplice click sinistro (o un tap su touch) — non esiste alcun ramo per click destro o tasti modificatori, e mouse/pen usano sempre click-to-carry (il touch mantiene premi-e-trascina).
 
-**`<cavi-interaction>`** (`src/interactionwc.ts`) è il web component che la collega dichiarativamente: alla connessione (dopo l'evento `caviready`, come `<cavi-wire>`) chiama `controller.attach(cavi)`; alla disconnessione chiama `controller.detach()`. La sua proprietà pubblica `controller` (di default un nuovo `StandardInteractionController`) può essere sostituita **prima** che l'elemento venga connesso al documento:
+**`KeyboardInteractionController`** (`src/interaction/keyboard.ts`) gestisce la tastiera, [descritta più sotto](#tastiera-keyboardinteractioncontroller). È un controller a parte e non un pezzo di quello del puntatore, così funziona anche accanto a qualunque altro controller del puntatore (l'esempio d3 lo usa così).
+
+**`<cavi-interaction>`** (`src/interactionwc.ts`) è il web component che li collega dichiarativamente. Contiene una **lista** di controller, `controllers`: di default uno `StandardInteractionController` e un `KeyboardInteractionController`, o solo il primo con l'attributo `no-keyboard`. Alla connessione (dopo l'evento `caviready`, come `<cavi-wire>`) chiama `attach(cavi)` su ciascuno; alla disconnessione, `detach()` su ciascuno. La lista si può sostituire **prima** che l'elemento venga connesso al documento; `controller = c` è una scorciatoia per `controllers = [c]`:
 
 ```typescript
+import { KeyboardInteractionController } from 'cavijs';
+
 const el = document.createElement('cavi-interaction');
-el.controller = new MyCustomController(); // deve implementare IInteractionController
+el.controllers = [new MyPointerController(), new KeyboardInteractionController()];
 container.appendChild(el);
 ```
+
+Un mondo ha comunque al massimo un `<cavi-interaction>`: un secondo resta inattivo, con un avviso, perché due controller del puntatore gestirebbero entrambi ogni click.
 
 **`<cavi-world>`** (vedi [Panoramica](./01-overview.md)) ne crea automaticamente uno se l'autore non ne inserisce esplicitamente uno tra i propri figli — così le pagine che usano `<cavi-world>` restano interattive "di serie", esattamente come per il canvas. Per disattivare completamente l'interazione standard basta inserire manualmente un `<cavi-interaction>` vuoto con un controller no-op, o un controller che implementa solo la UX desiderata.
 
@@ -173,8 +179,18 @@ container.appendChild(el);
 - **Trascinamento di un `Plug` esistente**: un `pointerdown` col tasto primario su un plug non agganciato oppure attualmente aperto a ventaglio (`plug.isSpread() === true`) chiama `plug.beginDrag()` — un plug diventa clickabile individualmente solo una volta che il meccanismo di hover-spread del proprio jack lo ha allontanato dal centro.
 - **Tracciamento hover**: ogni `pointermove` a livello di `document` alimenta `Jack.setPointerHoverPosition()`, che pilota sia l'anteprima "jack pieno" sia il meccanismo di hover-spread di ogni jack.
 - **Escape** annulla il gesto in corso: un cavo nuovo viene rimosso (`Jack.discardCableSession`), come se non fosse mai esistito, invece di restare orfano; un plug che stavi spostando torna nel jack da cui veniva (se quel jack ha ancora posto).
-- **Tastiera**: i jack sono raggiungibili con il focus (`tabindex="0"`, `role="button"`, un `aria-label` ricavato da tipo e id; i valori dell'autore hanno la precedenza). Invio o Spazio su un jack avvia un cavo nuovo; spostare il focus su un altro jack (Tab, Maiusc+Tab) ci porta il capo libero; Invio o Spazio lo collega; Esc, o Invio sul jack di partenza, lo annulla.
-- **`detach()`**: rimuove i suoi listener, annulla un eventuale cavo da tastiera in corso e azzera la posizione del puntatore del suo mondo, così nessun jack resta bloccato in un'anteprima "vietato" o a metà apertura.
+- **`detach()`**: rimuove i suoi listener e azzera la posizione del puntatore del suo mondo, così nessun jack resta bloccato in un'anteprima "vietato" o a metà apertura.
+
+### Tastiera: `KeyboardInteractionController`
+
+I jack sono raggiungibili con il focus (`tabindex="0"`, `role="button"`, un `aria-label` ricavato da tipo e id). Anche i plug, ma fuori dall'ordine naturale del Tab (`tabindex="-1"`, un `aria-label` come "audio plug in jack4", aggiornato quando il plug si sposta). In entrambi i casi i valori dell'autore hanno la precedenza.
+
+- **Tab** passa da ogni jack e poi dai plug collegati a quel jack, prima del jack successivo; **Maiusc+Tab** fa lo stesso giro al contrario. Il jack di un plug con il focus apre a ventaglio i suoi plug (`Jack.holdSpread`), così si vede su quale cavo è il focus.
+- **Spazio o Invio** su un jack avvia un cavo nuovo; su un plug, lo prende (`plug.beginDrag()`).
+- Mentre porti qualcosa, **Tab** (Maiusc+Tab all'indietro) si ferma solo sui jack che lo possono ospitare: tipo giusto (`canAccept`) e posto libero (`canAcceptMore`), controllati di nuovo a ogni pressione, più il jack da cui è partito. Il capo libero si sposta sul jack con il focus. Spazio o Invio lo collega lì (`Jack.finishCableSession`, o `plug.endDragAt(jack)`). Sul jack di partenza, rimette a posto il plug, o rimuove il cavo nuovo.
+- **Esc** annulla: un cavo nuovo viene rimosso, un plug torna nel suo jack, e il focus torna dove il gesto era partito.
+- Una pressione del puntatore, ovunque, annulla prima il gesto da tastiera, così un gesto da tastiera non convive mai con uno del puntatore. Spazio/Invio non fa niente mentre in quel mondo è in corso un gesto del puntatore (`Jack.isDragActive`).
+- **`detach()`** rimuove i suoi listener e annulla un gesto in corso.
 
 ## `<cavi-wire>` — propagazione del `type` e nodi terminali (`src/wirewc.ts`)
 

@@ -37,6 +37,7 @@ export type { CaviStats, WireStats } from './debug/stats';
 export { CAVI_EVENT_NAMES } from './core/events';
 export type { CaviEventDetailMap, CaviEventName, CableEndResult } from './core/events';
 export { StandardInteractionController } from './interaction/interaction';
+export { KeyboardInteractionController } from './interaction/keyboard';
 export type {
   IRenderer,
   IInteractionController,
