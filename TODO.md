@@ -1,6 +1,6 @@
 # TODO
 
-Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolation` (`../cavi`).
+Stato al 16 ottobre 2026. Branch: `d3-interaction` (cavijs); `../cavi` è su `main`.
 
 ## Già fatto
 
@@ -25,12 +25,12 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
 - **`cavi`:** `step()` separato da `build_render_data(alpha)`, parametri del passo configurabili, cavi che
   partono dritti, cavo tenuto (`pointer_radius`), sospensione, lancio al rilascio, distanza tra i nodi
   separata dal raggio, `intersect` vero, README, panic leggibili in console (`set_panic_hook` usato),
-  versione 0.2.0 pubblicata su npm.
+  versione 0.2.0 pubblicata su npm e branch `render-interpolation` unito a `main` (PR #3).
 
 ## Ordine consigliato
 
-1. Il merge dei due branch su `main`, e con il push la prima esecuzione della CI (vedi "Manutenzione").
-2. Le due verifiche a occhio qui sotto.
+1. Push di `d3-interaction` e PR verso `main`: è anche la prima esecuzione della CI (vedi "Manutenzione").
+2. Le verifiche a mano qui sotto.
 3. "Packaging", solo se vuoi pubblicare cavijs su npm.
 4. Il resto quando capita.
 
@@ -45,13 +45,15 @@ reinserito. Restano i giudizi a occhio:
       cavi sembrano più lenti di prima, era lo step rate: provare `<cavi-world step-rate="120">`.
 - [ ] La forza del lancio di un cavo rilasciato nel vuoto, e quanto `pointer_radius` (20) sposta gli altri
       cavi durante un trascinamento, ti sembrano giusti?
+- [ ] Su un telefono vero: la pressione lunga su un jack (circa mezzo secondo) apre il ventaglio e si
+      riesce a spostare un plug? I test usano eventi touch simulati da Chrome, non un dito.
 
 ## Rilascio di `cavi`
 
-`cavi` 0.2.0 è pubblicato su npm e cavijs ne dipende con `^0.2.0`.
+Fatto: `cavi` 0.2.0 è su npm, il suo `main` contiene tutto, cavijs ne dipende con `^0.2.0`.
 
-- [ ] Fare il merge di `render-interpolation` su `main` in `cavi`, e di `d3-interaction` su `main` in
-      cavijs, poi il push.
+- [ ] cavijs: push di `d3-interaction` (26 commit avanti rispetto a `origin`) e PR verso `main`. Si
+      unisce senza conflitti con i 3 commit arrivati nel frattempo su `origin/main`.
 
 ## Correttezza
 
