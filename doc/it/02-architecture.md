@@ -4,27 +4,42 @@
 
 ```
 src/
-├── main.ts        punto di ingresso della demo (usato da index.html)
-├── cavi.ts         Cavi — classe facade
-├── world.ts        World — avvolge WasmWorld
-├── wire.ts          Wire — avvolge un cavo WASM + metadati
-├── node.ts          Node — avvolge un nodo WASM
-├── renderer.ts       Renderer — rendering Canvas 2D + loop di animazione
-├── controls.ts        CaviControls — Web Component pannello di debug <cavi-controls>
-├── jack.ts            Jack — Web Component <cavi-jack>
-├── plug.ts            Plug — Web Component <cavi-plug>
-├── types.ts           interfacce condivise (IRenderer, WireMeta) + re-export
-├── example2.ts, wirewc.ts, style2.css   entry point sperimentale/alternativo (index2.html)
-└── style.css          stile della demo principale
+├── index.ts                  punto di ingresso pubblico: esporta, registra i custom element
+├── core/
+│   ├── cavi.ts               Cavi — facade (init WASM, cavi, renderer, Cavi.for)
+│   ├── world.ts              World — avvolge WasmWorld, passi a frequenza fissa, frame task
+│   ├── wire.ts, node.ts      handle di Wire / Node
+│   ├── coords.ts             coordinate viewport <-> mondo, CoordinateTransform
+│   ├── events.ts             eventi di dominio (cavi-wire-add, cavi-plug-attach, ...)
+│   ├── frame.ts              FrameTask (lavoro per frame, letture e scritture)
+│   └── types.ts              IRenderer, IInteractionController, IResizeController, ...
+├── renderer/
+│   ├── renderer.ts           Renderer — Canvas 2D
+│   ├── renderer-svg.ts       SvgRenderer — SVG
+│   ├── pointer.ts            PointerTracker — alimenta il mouse della fisica
+│   └── resize.ts             StandardResizeController
+├── component/                custom element
+│   ├── worldwc.ts            <cavi-world>
+│   ├── wirewc.ts             <cavi-wire>
+│   ├── jack.ts, plug.ts      <cavi-jack>, <cavi-plug>
+│   └── interactionwc.ts      <cavi-interaction>
+├── interaction/
+│   ├── interaction.ts        StandardInteractionController — puntatore
+│   └── keyboard.ts           KeyboardInteractionController — tastiera
+├── debug/                    <cavi-debug>, statistiche, formattazione degli eventi
+└── tests/                    test unitari (vitest, jsdom, WASM vero)
+
+examples/                     pagine demo e i loro script (root di Vite)
+e2e/                          test end-to-end (Playwright, Chrome)
 ```
 
 ## Flusso dei dati
 
 ```
- index.html
+ examples/demo-basic.html
      │
      ▼
- main.ts ── Cavi.initWasm() ─────────────► carica cavi.wasm, imposta Cavi.wasm
+ examples/main.ts ── Cavi.initWasm() ─────────────► carica cavi.wasm, imposta Cavi.wasm
      │
      ├── new Cavi() ──► new World() ──► new WasmWorld()   (istanza WASM)
      │
@@ -38,7 +53,7 @@ src/
      │
      └── renderer.render()
               │  (si auto-pianifica tramite requestAnimationFrame)
-              ├── world.update() ──► WasmWorld.update()  (passo fisico, ricostruisce wire_data_buffer)
+              ├── world.advance(elapsed) ──► WasmWorld.update() × N  (passi fisici a frequenza fissa, ricostruiscono wire_data_buffer)
               ├── drawAllWires()
               │     ├── legge WasmWorld.wire_data_ptr()/wire_data_len()
               │     ├── costruisce una VISTA Float32Array direttamente sulla memoria WASM (copia zero)
@@ -63,11 +78,13 @@ src/
 
 ### Gestione del loop di rendering
 
-`Renderer.render()` guida l'intero loop: aggiorna la fisica (`world.update()`), pulisce il canvas, disegna e si ripianifica tramite `requestAnimationFrame`. Chi lo usa deve solo chiamare `renderer.render()` una volta per avviarlo.
+`Renderer.render()` guida l'intero loop: fa avanzare la fisica (`world.advance(elapsed)`), pulisce il canvas, disegna e si ripianifica tramite `requestAnimationFrame`. Chi lo usa deve solo chiamare `renderer.render()` una volta per avviarlo.
+
+Il passo del motore ha un delta di tempo fisso, quindi `World.advance` trasforma il tempo reale trascorso dal frame precedente in un numero fisso di passi al secondo (`setStepRate`, default 60) con un accumulatore: un passo per frame a 60 Hz, uno ogni due frame a 120 Hz, due per frame a 30 Hz. Poi, a ogni frame, `build_render_data(alpha)` ricostruisce il buffer di rendering con i cavi disegnati ad `alpha` del tragitto tra gli ultimi due passi (`alpha` = tempo rimasto nell'accumulatore / durata di un passo). Uno schermo più veloce della frequenza dei passi disegna così una posizione nuova a ogni frame invece di ripetere quella dell'ultimo passo, e il buffer corrisponde sempre ai cavi attuali. Il disegno resta indietro al massimo di un passo; i nodi fissi (capi collegati o trascinati) sono disegnati dove sono. Anche i plug seguono la posizione disegnata (`Node.getRenderPosition`), così restano sul cavo.
 
 ### Interazione col mouse
 
-Il costruttore di `Renderer` collega un listener `mousemove` sul contenitore. Se un estremo di un cavo viene trascinato (stato `draggedWire`/`draggedEndpoint`), chiama direttamente `set_wire_start`/`set_wire_end` sul world WASM; altrimenti inoltra semplicemente la posizione del puntatore tramite `set_mouse` per il comportamento di repulsione del mouse del motore fisico.
+Mentre è attivo, il `PointerTracker` di ogni renderer (`src/renderer/pointer.ts`) inoltra la posizione del puntatore sopra la superficie di disegno tramite `set_mouse`, per la repulsione del mouse del motore fisico. Il motore applica il mouse a ogni cavo a ogni passo, quindi quando nessun puntatore è sopra la superficie (è uscito dalla superficie o dalla finestra, o un tocco è finito) il mouse viene parcheggiato lontano, fuori portata (`World.releaseMouse`); lo stesso succede all'avvio, perché altrimenti il mouse del motore parte da (0, 0). Il trascinamento è gestito dal controller di interazione, non dal renderer.
 
 ### Web Component per i connettori
 

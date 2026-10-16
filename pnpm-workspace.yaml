@@ -1,2 +1,5 @@
 allowBuilds:
   esbuild: true
+# cavi is our own engine: a new release can be installed right away.
+minimumReleaseAgeExclude:
+  - cavi

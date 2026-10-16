@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Fake } from './fake';
+import type { Wire } from '../core/wire';
 import { Jack } from '../component/jack';
 import { Plug } from '../component/plug';
 import { Node } from '../core/node';
 import { Cavi } from '../core/cavi';
-import { StandardInteractionController } from '../interaction/interaction';
+import {
+  LONG_PRESS_MS,
+  LONG_PRESS_SLOP,
+  StandardInteractionController,
+} from '../interaction/interaction';
 import type { CaviWireElement } from '../component/wirewc';
 
 /**
@@ -58,7 +64,10 @@ function makePlug(x: number, y: number, type = 'audio'): { plug: Plug; node: Nod
   return { plug: el, node };
 }
 
-class FakeWire {
+class FakeWire implements Fake<
+  Wire,
+  'getNode' | 'getIndex' | 'getNodeCount' | 'addNodeAt' | 'setColor'
+> {
   private nodes: Node[];
   constructor(x1: number, y1: number, x2: number, y2: number, count: number) {
     this.nodes = [];
@@ -71,16 +80,30 @@ class FakeWire {
   getNode(index: number): Node | null {
     return this.nodes[index] ?? null;
   }
+  /** Deletion is a no-op on this fake's FakeCavi; any index >= 0 lets CaviWireElement release it. */
+  getIndex(): number {
+    return 0;
+  }
+
   getNodeCount(): number {
     return this.nodes.length;
   }
-  addNodeAt(index: number, x: number, y: number, fixed: boolean): void {
+  addNodeAt(index: number, x: number, y: number, fixed = false): void {
     this.nodes.splice(index, 0, new Node(x, y, fixed));
   }
   setColor(): void {}
 }
 
-class FakeCavi {
+class FakeCavi implements Fake<
+  Cavi,
+  | 'getCableDropBehavior'
+  | 'getPlugSpreadMode'
+  | 'getPlugSpreadRadiusMultiplier'
+  | 'getPlugSpreadRecompactDelayMs'
+  | 'addWire'
+  | 'getContainer'
+  | 'deleteWire'
+> {
   public getCableDropBehavior = (): 'cancel' | 'dangle' | 'detach' => 'detach';
   public getPlugSpreadMode = (): 'towardOther' | 'radial' => 'towardOther';
   public getPlugSpreadRadiusMultiplier = (): number => 1.8;
@@ -151,7 +174,7 @@ afterEach(() => {
   controller?.detach();
   document.body.innerHTML = '';
   Cavi.shared = null;
-  (Jack as unknown as { _activeDragCount: number })._activeDragCount = 0;
+  Jack._resetInteractionState();
 });
 
 function attachController(): StandardInteractionController {
@@ -404,6 +427,140 @@ describe('StandardInteractionController — spread Plug is picked directly inste
     pointerDown(plug, { clientX: 0, clientY: 0, pointerId: 2 });
 
     expect(document.querySelector('cavi-wire')).toBeNull();
+  });
+});
+
+describe("StandardInteractionController — touch long press opens a jack's fan", () => {
+  function touch(type: string, target: EventTarget, clientX: number, clientY: number): void {
+    target.dispatchEvent(
+      new PointerEvent(type, {
+        bubbles: true,
+        composed: true,
+        button: 0,
+        clientX,
+        clientY,
+        pointerId: 1,
+        pointerType: 'touch',
+      })
+    );
+  }
+
+  /** A sizeable jack (so hover-spread has a radius to fan out over) with one plug plugged in. */
+  function jackWithPlug(): { jack: Jack; plug: Plug } {
+    installFakeCavi();
+    attachController();
+    const jack = makeJack('j1', 0, 0, { type: 'audio', 'max-plugs': '2' });
+    vi.spyOn(jack, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 24));
+    const { plug } = makePlug(0, 0, 'audio');
+    plug.attach(jack);
+    vi.spyOn(plug, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 24));
+    return { jack, plug };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('held still, opens the fan and keeps it open after the finger lifts — no cable', () => {
+    vi.useFakeTimers();
+    const { jack, plug } = jackWithPlug();
+
+    // On the docked plug, which sits on its jack: same as on the jack.
+    touch('pointerdown', plug, 0, 0);
+    touch('pointermove', plug, 3, 2); // within LONG_PRESS_SLOP
+    vi.advanceTimersByTime(LONG_PRESS_MS - 1);
+    expect(jack.isSpread()).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(jack.isSpread()).toBe(true);
+
+    touch('pointerup', plug, 3, 2);
+    vi.advanceTimersByTime(5000);
+    expect(jack.isSpread()).toBe(true);
+    expect(document.querySelector('cavi-wire')).toBeNull();
+    expect(jack.plugCount).toBe(1);
+  });
+
+  it('then a press on a spread plug picks it up and drags it to another jack', () => {
+    vi.useFakeTimers();
+    const { jack, plug } = jackWithPlug();
+    const other = makeJack('j2', 200, 0, { type: 'audio' });
+    touch('pointerdown', jack, 0, 0);
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    touch('pointerup', jack, 0, 0);
+
+    touch('pointerdown', plug, 0, 0);
+    expect(jack.plugCount).toBe(0);
+    vi.spyOn(plug, 'getBoundingClientRect').mockReturnValue(rect(200, 0, 24));
+    touch('pointermove', plug, 200, 0);
+    touch('pointerup', plug, 200, 0);
+
+    expect(plug.jack).toBe(other);
+    expect(document.querySelector('cavi-wire')).toBeNull();
+  });
+
+  it('a press anywhere else closes the fan', () => {
+    vi.useFakeTimers();
+    const { jack } = jackWithPlug();
+    touch('pointerdown', jack, 0, 0);
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    touch('pointerup', jack, 0, 0);
+
+    touch('pointerdown', document.body, 300, 300);
+    touch('pointerup', document.body, 300, 300);
+    vi.advanceTimersByTime(500); // the jack's recompact delay
+    expect(jack.isSpread()).toBe(false);
+  });
+
+  it('moved before the long press fires, starts a new cable from the jack instead', () => {
+    vi.useFakeTimers();
+    const { jack, plug } = jackWithPlug();
+    const other = makeJack('j2', 200, 0, { type: 'audio' });
+
+    touch('pointerdown', plug, 0, 0);
+    touch('pointermove', plug, LONG_PRESS_SLOP + 1, 0);
+    expect(jack.plugCount).toBe(2); // the existing plug, plus the new cable's origin
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    expect(jack.isSpread()).toBe(false);
+
+    const wireEl = document.querySelector('cavi-wire') as CaviWireElement;
+    const followPlugEl = wireEl.querySelectorAll('cavi-plug')[1] as HTMLElement;
+    vi.spyOn(followPlugEl, 'getBoundingClientRect').mockReturnValue(rect(200, 0));
+    touch('pointermove', jack, 200, 0);
+    touch('pointerup', jack, 200, 0);
+    expect(other.plugCount).toBe(1);
+    expect(plug.jack).toBe(jack);
+  });
+
+  it('a short tap does nothing', () => {
+    vi.useFakeTimers();
+    const { jack } = jackWithPlug();
+
+    touch('pointerdown', jack, 0, 0);
+    touch('pointerup', jack, 0, 0);
+    vi.advanceTimersByTime(LONG_PRESS_MS * 2);
+
+    expect(jack.isSpread()).toBe(false);
+    expect(document.querySelector('cavi-wire')).toBeNull();
+  });
+
+  it('a finger resting on a jack does not fan it out like a hovering mouse would', () => {
+    const { jack } = jackWithPlug();
+    touch('pointermove', document, 0, 0);
+    expect(jack.isSpread()).toBe(false);
+  });
+
+  it('detach cancels a pending long press and closes a held fan', () => {
+    vi.useFakeTimers();
+    const { jack } = jackWithPlug();
+    touch('pointerdown', jack, 0, 0);
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+    expect(jack.isSpread()).toBe(true);
+    touch('pointerup', jack, 0, 0);
+    touch('pointerdown', jack, 0, 0); // a second long press, still pending
+
+    controller.detach();
+    vi.advanceTimersByTime(LONG_PRESS_MS + 500);
+    expect(jack.isSpread()).toBe(false);
   });
 });
 

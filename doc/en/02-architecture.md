@@ -4,27 +4,42 @@
 
 ```
 src/
-├── main.ts        demo entry point (used by index.html)
-├── cavi.ts         Cavi — facade class
-├── world.ts        World — wraps WasmWorld
-├── wire.ts          Wire — wraps a WASM wire + metadata
-├── node.ts          Node — wraps a WASM node
-├── renderer.ts       Renderer — Canvas 2D rendering + animation loop
-├── controls.ts        CaviControls — <cavi-controls> debug panel Web Component
-├── jack.ts            Jack — <cavi-jack> Web Component
-├── plug.ts            Plug — <cavi-plug> Web Component
-├── types.ts           shared interfaces (IRenderer, WireMeta) + re-exports
-├── example2.ts, wirewc.ts, style2.css   experimental/alternate entry (index2.html)
-└── style.css          styling for the main demo
+├── index.ts                  public entry point: exports, registers the custom elements
+├── core/
+│   ├── cavi.ts               Cavi — facade (WASM init, wires, renderer, Cavi.for)
+│   ├── world.ts              World — wraps WasmWorld, fixed-rate stepping, frame tasks
+│   ├── wire.ts, node.ts      Wire / Node handles
+│   ├── coords.ts             viewport <-> world coordinates, CoordinateTransform
+│   ├── events.ts             domain events (cavi-wire-add, cavi-plug-attach, ...)
+│   ├── frame.ts              FrameTask (per-frame read/write work)
+│   └── types.ts              IRenderer, IInteractionController, IResizeController, ...
+├── renderer/
+│   ├── renderer.ts           Renderer — Canvas 2D
+│   ├── renderer-svg.ts       SvgRenderer — SVG
+│   ├── pointer.ts            PointerTracker — feeds the physics mouse
+│   └── resize.ts             StandardResizeController
+├── component/                custom elements
+│   ├── worldwc.ts            <cavi-world>
+│   ├── wirewc.ts             <cavi-wire>
+│   ├── jack.ts, plug.ts      <cavi-jack>, <cavi-plug>
+│   └── interactionwc.ts      <cavi-interaction>
+├── interaction/
+│   ├── interaction.ts        StandardInteractionController — pointer
+│   └── keyboard.ts           KeyboardInteractionController — keyboard
+├── debug/                    <cavi-debug>, statistics, event formatting
+└── tests/                    unit tests (vitest, jsdom, real WASM)
+
+examples/                     demo pages and their scripts (Vite's root)
+e2e/                          end-to-end tests (Playwright, Chrome)
 ```
 
 ## Data flow
 
 ```
- index.html
+ examples/demo-basic.html
      │
      ▼
- main.ts ── Cavi.initWasm() ─────────────► loads cavi.wasm, sets Cavi.wasm
+ examples/main.ts ── Cavi.initWasm() ─────────────► loads cavi.wasm, sets Cavi.wasm
      │
      ├── new Cavi() ──► new World() ──► new WasmWorld()   (WASM instance)
      │
@@ -38,7 +53,7 @@ src/
      │
      └── renderer.render()
               │  (self-scheduling via requestAnimationFrame)
-              ├── world.update() ──► WasmWorld.update()  (physics step, rebuilds wire_data_buffer)
+              ├── world.advance(elapsed) ──► WasmWorld.update() × N  (fixed-rate physics steps, rebuild wire_data_buffer)
               ├── drawAllWires()
               │     ├── reads WasmWorld.wire_data_ptr()/wire_data_len()
               │     ├── builds a Float32Array VIEW directly into WASM memory (zero-copy)
@@ -63,11 +78,13 @@ src/
 
 ### Render loop ownership
 
-`Renderer.render()` drives the whole loop: it updates physics (`world.update()`), clears the canvas, draws, and re-schedules itself via `requestAnimationFrame`. Callers only need to call `renderer.render()` once to start it.
+`Renderer.render()` drives the whole loop: it advances physics (`world.advance(elapsed)`), clears the canvas, draws, and re-schedules itself via `requestAnimationFrame`. Callers only need to call `renderer.render()` once to start it.
+
+The engine's step has a fixed time delta, so `World.advance` turns the real time elapsed since the previous frame into a fixed number of steps per second (`setStepRate`, default 60) with an accumulator: one step per frame at 60 Hz, one every other frame at 120 Hz, two per frame at 30 Hz. Then, on every frame, `build_render_data(alpha)` rebuilds the render buffer with the cables drawn `alpha` of the way between the last two steps (`alpha` = time left in the accumulator / step duration). A display faster than the step rate therefore draws a new position on every frame instead of repeating the last step's, and the buffer always matches the current wires. Drawing trails the simulation by at most one step; fixed nodes (plugged or dragged ends) are drawn where they are. Plugs follow the drawn position too (`Node.getRenderPosition`), so they stay on the cable.
 
 ### Mouse interaction
 
-`Renderer`'s constructor attaches a `mousemove` listener on the container. If a wire endpoint is being dragged (`draggedWire`/`draggedEndpoint` state), it calls `set_wire_start`/`set_wire_end` on the WASM world directly; otherwise it just forwards the pointer position via `set_mouse` for the physics engine's mouse-repulsion behavior.
+While running, each renderer's `PointerTracker` (`src/renderer/pointer.ts`) forwards the pointer position over the drawing surface via `set_mouse`, for the physics engine's mouse-repulsion behavior. The engine applies its mouse to every cable on every step, so when no pointer hovers the surface (it left the surface or the window, or a touch ended) the mouse is parked far out of reach (`World.releaseMouse`) — also at startup, since the engine's mouse otherwise starts at (0, 0). Dragging is handled by the interaction controller, not the renderer.
 
 ### Web Components for connectors
 

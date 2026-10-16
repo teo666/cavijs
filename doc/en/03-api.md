@@ -1,8 +1,8 @@
 # Cavijs — API Reference
 
-TypeScript wrapper around the [`cavi`](../../../cavi/doc/en/03-api.md) WASM engine. Import from `cavijs` (`src/types.ts` re-exports `Node`, `Wire`, `World`, `Cavi`).
+TypeScript wrapper around the [`cavi`](../../../cavi/doc/en/03-api.md) WASM engine. Import from `cavijs`: `src/index.ts` exports every class below and registers the custom elements.
 
-## `Cavi` (`src/cavi.ts`)
+## `Cavi` (`src/core/cavi.ts`)
 
 Main facade class — the recommended entry point.
 
@@ -10,43 +10,78 @@ Main facade class — the recommended entry point.
 static initWasm(): Promise<void>          // loads the WASM module (sets Cavi.wasm)
 init(): Promise<void>
 getWorld(): World
-setRenderer(renderer: IRenderer): void
+setRenderer(renderer: IRenderer | null): void  // stops and unregisters the previous one
+destroy(): void                         // tears the simulation down for good (see below)
+isDestroyed(): boolean
 getRenderer(): IRenderer | null
 addWire(x1, y1, x2, y2, nodes, tension, radius, type): Wire
-deleteWire(index: number): void
+deleteWire(wire: Wire | number): void  // by handle (preferred) or current index
 clearAllWires(): void
 setAcceleration(x: number, y: number): void
 getAcceleration(): { x: number, y: number }
 getWireByIndex(index: number): Wire | null
 getWires(): Wire[]
-update(): void
+update(): void                          // one physics step — the render loop already steps
 setMouse(x: number, y: number): void
+releaseMouse(): void
+setStepRate(stepsPerSecond: number): void  // default 60
+getStepRate(): number
+setTimeStep(timeStep: number): void     // simulated time per engine sub-step, default 0.3
+setSubsteps(substeps: number): void     // engine sub-steps per step, default 2 (changes speed too)
+setConstraintIterations(iterations: number): void  // link relaxation passes per sub-step, default 1 (stiffness only)
+setSleepEnabled(enabled: boolean): void  // see World.setSleepEnabled
 render(): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
 getContainer(): HTMLElement | null
+getSurface(): HTMLElement | null        // the renderer's drawing surface (container unless a `surface` was given)
+setCoordinateTransformProvider(fn: (() => CoordinateTransform) | null): void
+getCoordinateTransform(): CoordinateTransform
+notifyCoordinateTransformChanged(): void  // optional: dispatches cavi-transform-change for page code
+static for(el: Element): Cavi | null   // the Cavi `el` belongs to
+static whenReady(el: Element, fn: (cavi: Cavi) => void): void
 ```
 
-`Cavi.wasm: InitOutput` (static) holds the loaded WASM module, including `.memory`, used by `Renderer` for zero-copy buffer access. `Cavi.shared` is a static slot for a shared instance (currently unused by the demo — check before relying on it).
+`Cavi.wasm: InitOutput` (static) holds the loaded WASM module, including `.memory`, used by `Renderer` for zero-copy buffer access. `Cavi.for(el)` returns the `Cavi` an element belongs to — the one whose renderer container (registered by `setRenderer`) is `el` or its nearest ancestor — so several worlds can coexist on one page; it returns `null` inside a `<cavi-world>` that is still initializing, and falls back to `Cavi.shared` (the most recently initialized world, kept for backward compatibility) outside any registered container. `Cavi.whenReady(el, fn)` runs `fn` as soon as that instance exists. See [Zoom, pan and multiple worlds](./06-zoom-multiworld.md).
 
-## `World` (`src/world.ts`)
+## `World` (`src/core/world.ts`)
 
 Wraps `WasmWorld`; exposes cable management and global parameters.
 
 ```typescript
-getWasmWorld(): WasmWorld
+getWasmWorld(): WasmWorld               // for renderers and parameters: add/remove wires and nodes only through World/Wire
 addWire(x1, y1, x2, y2, nodes, tension, radius, renderType): Wire
-deleteWire(index: number): void
+deleteWire(wire: Wire | number): void  // by handle (preferred) or current index
 clearAllWires(): void
 setAcceleration(x: number, y: number): void
 getAcceleration(): { x: number, y: number }
-setRenderer(renderer: IRenderer): void
+setRenderer(renderer: IRenderer | null): void  // stops the previous one
+destroy(): void
+isDestroyed(): boolean
 getRenderer(): IRenderer | null
 getWireByIndex(index: number): Wire | null
-getWires(): Wire[]
+getWires(): Wire[]                      // a copy
+getWiresView(): readonly Wire[]         // the live list, no copy: for per-frame readers (renderers)
 getWireCount(): number
-update(): void
+update(): void                          // exactly one physics step
+addFrameTask(task: FrameTask): () => void  // registers per-frame DOM work, returns an unregister function
+runFrameTasks(): void                   // runs every task: all reads, then all writes (the renderer calls it)
+advance(elapsedMs: number): number      // fixed-rate stepping, returns steps run
+setStepRate(stepsPerSecond: number): void
+getStepRate(): number
+setTimeStep(timeStep: number): void     // simulated time per engine sub-step, default 0.3
+setSubsteps(substeps: number): void     // engine sub-steps per step, default 2 (changes speed too)
+setConstraintIterations(iterations: number): void  // link relaxation passes per sub-step, default 1 (stiffness only)
+holdWire(wire: Wire): void              // the wire being dragged: the mouse leaves it alone
+releaseHeldWire(wire?: Wire): void       // only if `wire` is the held one, when given
+getHeldWire(): Wire | null
+setPointerRadius(radius: number): void   // the held point's reach on the other wires, default 20
+setSleepEnabled(enabled: boolean): void  // sleeping of still wires, default true
+setSleepThreshold(threshold: number): void  // default 0.01
+setSleepSteps(steps: number): void       // default 30
+getSleepingWireCount(): number
 setMouse(x: number, y: number): void
+releaseMouse(): void                    // parks the engine mouse out of reach
 getWireDataPtr(): number
 getWireDataLen(): number
 setMouseRadius(radius: number): void
@@ -55,18 +90,17 @@ setFriction(friction: number): void
 getFriction(): number
 ```
 
-`World`'s constructor sets `response_coef` to `0.0` by default (wire self-collision response disabled unless explicitly enabled). It keeps its own `Wire[]` array in sync with WASM wire indices — `deleteWire` re-creates `Wire` wrappers for every wire after the deleted index, since indices shift, also carrying that old wrapper's metadata (`meta`, e.g. `color`) over onto the new one — since it lives only in JS, never in WASM, it would otherwise silently reset (fixed here, at the `World`/`Wire` level, rather than in `CaviWireElement`/DOM, since it's a plain `World`/`Wire` concern).
+`World`'s constructor sets `response_coef` to `0.0` by default (wire self-collision response disabled unless explicitly enabled). It keeps its own `Wire[]` array in sync with WASM wire indices: `deleteWire` shifts the index of every later `Wire` handle down **in place** (`Wire._setIndex`) and sets the deleted one to `-1`, turning it into a no-op. Every `Wire`/`Node` reference held anywhere (a `CaviWireElement`, a `CableSession`, a `Plug`'s `Node`) therefore stays valid across deletions — no rebinding needed. `World` also holds the coordinate-transform provider (`setCoordinateTransformProvider`/`getCoordinateTransform`), so a renderer always reads its own world's zoom.
 
-> **Careful**: `deleteWire`/`Cavi.deleteWire` only re-create `World`'s own internal `Wire` wrappers. Any `Wire`/`Node` obtained **before** the deletion and held elsewhere (a cache, a closure, etc.) keeps its old index and silently keeps reading/writing the wrong wire once indices shift. `CaviWireElement` (`src/wirewc.ts`) already handles this for declarative and `Jack`-created cables via its own static registry plus a rebind step (`_rebindAfterIndexShift`) run right after every `deleteWire` — see the auto-cleanup section in [`Jack`/`Plug`](./05-jack-plug.md). Anything that calls `deleteWire` outside of `CaviWireElement` (e.g. directly on `World`/`Cavi`) needs to rebind any already-cached references itself.
-
-## `Wire` (`src/wire.ts`)
+## `Wire` (`src/core/wire.ts`)
 
 TypeScript counterpart of a WASM wire. Adds a `meta: WireMeta` dictionary that lives purely in JS (never sent to WASM) for rendering/extension data such as color.
 
 ```typescript
+delete(): void                          // deletes this wire from its world, whatever its current index
 addNode(x: number, y: number, fixed?: boolean): void
 addNodeAt(index: number, x: number, y: number, fixed?: boolean): void
-removeNode(index: number): void
+removeNode(index: number): boolean        // false if it would leave fewer than 2 nodes
 getNodeCount(): number
 setNodeCount(count: number): void
 getNode(index: number): Node | null
@@ -77,6 +111,11 @@ setColor(color: string): void
 getColor(): string | undefined
 setRadius(radius: number): void
 getRadius(): number
+setRenderType(renderType: number): void  // 0 = segments, 1 = bezier
+getRenderType(): number
+setLinkDistance(distance: number): void  // rest distance between nodes (setRadius no longer changes it)
+getLinkDistance(): number
+isSleeping(): boolean
 getIndex(): number
 ```
 
@@ -91,9 +130,15 @@ wire.setMetaData('pattern', 'dashed');
 
 A `Wire` constructed without `(world, wireIndex)` args is "detached" — all its methods that talk to WASM become no-ops / return defaults, which is what happens if you `new Wire()` directly instead of via `World.addWire`.
 
-`setNodeCount(count)` resizes the wire at runtime: it rebuilds the entire node vector, preserving the position and `fixed` state of the two terminal nodes and evenly redistributing intermediate nodes between them (any state on previously-existing intermediate nodes is lost). Used by [`Jack`](./05-jack-plug.md) to grow a cable while it's being dragged out of a socket — since the last node's index changes after a resize, anything holding a reference to the terminal node (e.g. a `Plug`) must rebind via `wire.getNode(wire.getNodeCount() - 1)`.
+`setNodeCount(count)` resizes the wire at runtime: it rebuilds the entire node vector, preserving the position and `fixed` state of the two terminal nodes and evenly redistributing intermediate nodes between them (any state on previously-existing intermediate nodes is lost).
 
-## `Node` (`src/node.ts`)
+`getNode(index)` returns one handle per node, and the handle follows its node when nodes are inserted or removed before it through this `Wire` (`addNodeAt`, `removeNode`, `setNodeCount`): a `Plug` bound to the terminal stays on the terminal when [`Jack`](./05-jack-plug.md) grows a cable by inserting nodes, or when nodes are added from code. The handle of a removed node (or of an intermediate node dropped by `setNodeCount`) is invalidated: its methods then do nothing. Node edits made directly on the `WasmWorld` (`getWasmWorld()`) bypass this bookkeeping.
+
+### Tearing a world down
+
+`Cavi.destroy()` stops the renderer, frees the WASM world, unregisters the renderer container from `Cavi.for`, and clears `Cavi.shared` if it points at this instance. Every `Wire` and `Node` handle of the world is invalidated, so elements still holding one clean up without touching freed memory. The instance must not be used afterwards (`isDestroyed()` tells). `<cavi-world>` does this by itself when it is removed from the page — not when it is just moved — and builds a new world if it is inserted again later, keeping the coordinate transform registered with `setCoordinateTransform`.
+
+## `Node` (`src/core/node.ts`)
 
 TypeScript counterpart of a WASM node — a single point in a wire (position, velocity, fixed state).
 
@@ -106,15 +151,17 @@ setPosition(x: number, y: number): void
 setMousePosition(x: number, y: number): void   // forwards to World.setMouse
 ```
 
-A `Node` can be either "live" (constructed with `world`/`wireIndex`/`nodeIndex`, e.g. via `Wire.getNode()`) — in which case `x`/`y` always read fresh from WASM — or a plain data holder (constructed with just `x`/`y`/`fixed`/optional `wasmNode` copy), used e.g. by `Plug` to bind to a specific node.
+A `Node` is either "live" (constructed with `world`/`wire`/`nodeIndex`, as `Wire.getNode()` does) — `x`/`y`/`fixed` are then always read fresh from WASM through its `Wire`, so it follows the wire's index if an earlier wire is deleted — or a plain data holder (constructed with just `x`/`y`/`fixed`), used e.g. by tests. `Wire.getNode(index)` returns `null` for an out-of-range index.
 
-## `Renderer` (`src/renderer.ts`)
+## `Renderer` (`src/renderer/renderer.ts`)
 
 Canvas 2D renderer implementing `IRenderer`.
 
 ```typescript
-constructor(container: HTMLElement, world: World)
-// looks up '#wireCanvas' inside `container` and gets its 2D context
+constructor(container: HTMLElement, world: World, options?: RendererOptions & { canvas?: HTMLCanvasElement })
+// uses options.canvas (any canvas, anywhere: its on-screen placement is measured every
+// frame), else '#wireCanvas' in the host (options.surface, else container),
+// creating one if missing
 
 render(): void            // main render method; includes the self-scheduling animation loop
 clear(): void
@@ -122,21 +169,26 @@ getFPS(): number
 drawInteractionRadii(x: number, y: number): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
-getContainer(): HTMLElement   // the element passed to the constructor
+getContainer(): HTMLElement   // the element passed to the constructor (world origin)
+getSurface(): HTMLElement     // options.surface, else the container
+stop(): void                  // stops the loop, removes the pointer listener, clears the canvas
 ```
 
 **Features:**
 
 - Direct WASM memory access for efficient rendering (zero-copy `Float32Array` view over `Cavi.wasm.memory.buffer`)
-- Reads wire colors from `Wire` metadata, falling back to a default palette (`['#00ff88', '#ff00ff', '#ffaa00']`) by wire index
+- Reads wire colors from `Wire` metadata. `World.addWire` gives every new wire a color from `DEFAULT_WIRE_COLORS` (`['#00ff88', '#ff00ff', '#ffaa00']`, in creation order), so deleting a wire never recolors the others
 - Supports both segment (`ctx.lineTo`) and Bezier (`ctx.bezierCurveTo`) rendering, per the `render_type` encoded in the wire data buffer
 - Built-in `requestAnimationFrame` loop with FPS tracking (updated once per second)
 - Draws mouse/pointer interaction radius indicators (dashed circles) at the current mouse position
-- Attaches its own `mousemove` listener on `container`; also drives wire-endpoint dragging (`set_wire_start`/`set_wire_end`) when `draggedWire`/`draggedEndpoint` are set (drag-start/drag-end wiring for this is not present in `Renderer` itself — see `Plug` for the drag interaction model used by the Jack/Plug components)
-- Calls `world.update()` internally every frame — callers should **not** also call `Cavi.update()`/`World.update()` per frame if using `Renderer.render()`'s loop
-- `setDebugDrawNodes(true)` (global option, defaults to `false`) enables a debug overlay that draws the circumference of every node of every wire (via `Wire.getNode()`, not path-buffer parsing) at its real physical position, with radius equal to `Wire.getRadius()` — useful for checking node positions independently of the rendered path (segments/Bezier)
+- Listens for pointer events on the document while running (removed by `stop()`) and feeds the physics mouse position in world coordinates, through the same zoom-aware `clientToWorld` used everywhere else (`PointerTracker`, `src/renderer/pointer.ts`). Whenever no pointer hovers the surface — it left the surface or the window, or a touch ended — the engine mouse is parked out of reach (`World.releaseMouse`), since the engine applies it to every cable on every step
+- `render()` is idempotent (a second call does not start a second loop) and can be called again after `stop()`
+- HiDPI: the canvas backing store is `devicePixelRatio` times its CSS size (see `sizeCanvasToHost`), and the renderer scales its drawing accordingly
+- `options.surface`: see [Zoom, pan and multiple worlds](./06-zoom-multiworld.md) — the canvas lives on an untransformed element and the renderer applies the registered zoom itself, so cables are never clipped to the container's box
+- Steps the physics with `world.advance(elapsed)` every frame: a fixed `getStepRate()` steps per second (default 60) whatever the display's refresh rate, so cables move at the same speed on 60, 120 or 144 Hz screens. Long gaps (a background tab) are not replayed. Callers should **not** also call `Cavi.update()`/`World.update()` per frame if using `Renderer.render()`'s loop
+- `setDebugDrawNodes(true)` (global option, defaults to `false`) enables a debug overlay that draws the circumference of every node of every wire (read straight from WASM, not by parsing the path buffer) at its real physical position, with radius equal to `Wire.getRadius()` — useful for checking node positions independently of the rendered path (segments/Bezier)
 
-## `IRenderer` (`src/types.ts`)
+## `IRenderer` (`src/core/types.ts`)
 
 ```typescript
 interface IRenderer {
@@ -144,12 +196,14 @@ interface IRenderer {
   setDebugDrawNodes: (enabled: boolean) => void;
   getDebugDrawNodes: () => boolean;
   getContainer: () => HTMLElement;
+  getSurface?: () => HTMLElement; // optional: defaults to getContainer()
+  stop: () => void;
 }
 ```
 
 Implement this to build a custom renderer (e.g. WebGL, SVG) — `Cavi.setRenderer()` / `World.setRenderer()` accept anything satisfying it.
 
-## `IInteractionController` (`src/types.ts`)
+## `IInteractionController` (`src/core/types.ts`)
 
 ```typescript
 interface IInteractionController {
@@ -158,27 +212,21 @@ interface IInteractionController {
 }
 ```
 
-Contract for anything that drives user interaction (drag, click, touch...) with `Jack`/`Plug` — pluggable the same way as `IRenderer`. See [Jack & Plug Components](./05-jack-plug.md#interaction-standardinteractioncontroller-and-cavi-interaction) for the standard implementation (`StandardInteractionController`) and how to replace it.
+Contract for anything that drives user interaction (drag, click, touch...) with `Jack`/`Plug` — pluggable the same way as `IRenderer`. See [Jack & Plug Components](./05-jack-plug.md#interaction-standardinteractioncontroller-and-cavi-interaction) for the standard implementations (`StandardInteractionController` for the pointer, `KeyboardInteractionController` for the keyboard), and how `<cavi-interaction>` attaches a list of them (`controllers`, `no-keyboard`).
 
-## `CaviControls` (`src/controls.ts`)
+## `SvgRenderer` (`src/renderer/renderer-svg.ts`)
 
-A `<cavi-controls>` Web Component providing a debug/tuning GUI panel (Shadow DOM), styled as a dark scrollable card.
-
-```typescript
-setCavi(cavi: Cavi): void   // binds the panel to a Cavi instance and starts stats polling
-```
-
-**Displays (auto-refreshed every 100ms):** FPS, wire count, total points across all wires, WASM buffer size (KB), mouse X/Y, acceleration X/Y.
-
-**Provides controls for:** mouse radius, pointer radius, response coefficient, friction, acceleration X/Y, per-wire node count, plus actions (add random wire, clear all wires, add nodes to a wire) — see `src/controls.ts` for the exact control IDs/wiring.
+A drop-in alternative to `Renderer` implementing the same `IRenderer`: each wire is an SVG `<path>`, kept from frame to frame and rewritten only when the cable moved or changed. It creates its own `<svg>` inside the container (or uses `options.svg`), and supports `options.surface` like `Renderer` (see [Zoom, pan and multiple worlds](./06-zoom-multiworld.md)). `<cavi-world>` always uses the canvas `Renderer`, so `SvgRenderer` is set up by hand (see `examples/main-svg.ts`).
 
 ```typescript
-import { CaviControls } from 'cavijs';
-
-const controls = document.createElement('cavi-controls') as CaviControls;
-document.body.appendChild(controls);
-controls.setCavi(cavi);
+constructor(container: HTMLElement, world: World, options?: RendererOptions & { svg?: SVGSVGElement })
 ```
+
+## `<cavi-debug>` (`src/debug/debugwc.ts`)
+
+A debug panel for any world on the page: live statistics, the event log, and toggles for the debug overlays. See [Debugging and events](./07-debug.md).
+
+The demo pages `demo-basic.html` and `demo-svg.html` use their own control panel, `<cavi-controls>` (`examples/controls.ts`). It is example code, not part of the library.
 
 ## Full usage example
 
@@ -188,8 +236,8 @@ import { Cavi, Renderer } from 'cavijs';
 await Cavi.initWasm();
 
 const cavi = new Cavi();
-const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-const renderer = new Renderer(canvas, cavi.getWorld());
+const container = document.getElementById('container') as HTMLElement;
+const renderer = new Renderer(container, cavi.getWorld()); // creates #wireCanvas if missing
 cavi.setRenderer(renderer);
 
 const wire1 = cavi.addWire(100, 100, 500, 100, 20, 10, 5, 1);
@@ -203,6 +251,44 @@ cavi.setAcceleration(0, 9.8);
 
 renderer.render(); // starts the internal animation loop
 ```
+
+## `<cavi-world>` attributes
+
+The settings attributes are live: changing one later applies it to the running world, and removing one restores its default.
+
+| Attribute                | Default       | Description                                                                                                 |
+| ------------------------ | ------------- | ----------------------------------------------------------------------------------------------------------- |
+| `gravity-x`, `gravity-y` | `0`, `5`      | Global acceleration                                                                                         |
+| `step-rate`              | `60`          | Physics steps per second, whatever the display's frame rate                                                 |
+| `sleep`                  | on            | `off` keeps simulating cables at rest instead of putting them to sleep                                      |
+| `orphan-cleanup`         | on            | `off` keeps cables with no fixed end even once out of view                                                  |
+| `cable-drop-behavior`    | `detach`      | A new cable dropped in empty space: `detach` (falls away), `dangle` (stays on its jack), `cancel` (removed) |
+| `plug-spread-mode`       | `towardOther` | How a jack's plugs fan out on hover: `towardOther` or `radial`                                              |
+| `plug-spread-radius`     | `1.8`         | How far they fan out, in jack half-sizes                                                                    |
+| `plug-spread-timeout`    | `500`         | Ms before they close again once the pointer leaves                                                          |
+| `debug-nodes`            | absent        | Draws every node and the pointer radii                                                                      |
+| `wire-shadows`           | absent        | Soft shadow under every cable (canvas renderer)                                                             |
+
+Read only when the world is set up:
+
+| Attribute              | Description                                                                                                       |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `surface="<selector>"` | An untransformed ancestor to draw on, for pan/zoom — see [Zoom, pan and multiple worlds](./06-zoom-multiworld.md) |
+| `canvas="<selector>"`  | A canvas of your own to draw into                                                                                 |
+| `no-interaction`       | No default `<cavi-interaction>`: nothing reacts to the pointer or keyboard unless you add a controller            |
+
+## `<cavi-wire>` attributes
+
+All live: changing one updates the running cable.
+
+| Attribute     | Default   | Description                                                                  |
+| ------------- | --------- | ---------------------------------------------------------------------------- |
+| `length`      | `10`      | Node count (changing it redistributes the nodes between the two ends)        |
+| `tension`     | `20`      | Rest distance between neighbouring nodes                                     |
+| `size`        | `5`       | Radius (half the thickness)                                                  |
+| `color`       | `#ffffff` | Stroke color                                                                 |
+| `type`        | `''`      | Connection type, given to its plugs; empty is a wildcard                     |
+| `render-type` | bezier    | `segments` for straight segments (the old `renderType` spelling still works) |
 
 ## `Jack` / `Plug`
 

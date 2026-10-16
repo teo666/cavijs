@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Fake } from './fake';
+import type { Wire } from '../core/wire';
 import { Jack, type CableSession } from '../component/jack';
 import { Cavi } from '../core/cavi';
+import type { FrameTask } from '../core/frame';
 import type { Plug } from '../component/plug';
 import type { CaviWireElement } from '../component/wirewc';
 import { Node } from '../core/node';
+import { IDENTITY_TRANSFORM, type CoordinateTransform } from '../core/coords';
 
 /**
  * Jack is a pure domain/data element — these tests drive it entirely
@@ -31,7 +35,7 @@ afterEach(() => {
 
 /**
  * A minimal stand-in for a Plug, exposing just enough of its interface
- * (getBoundingClientRect/setSpreadPosition/snapToJack/getOtherEndCenter)
+ * (getBoundingClientRect/setSpreadPosition/snapToJack/getOtherEndCenter/unplug)
  * for Jack's hover-spread bookkeeping (_refreshSpread) to run against it
  * without crashing, for tests that only care about capacity/full-state
  * behavior and don't need a real DOM Plug.
@@ -42,6 +46,7 @@ function fakePlug(): Plug {
     setSpreadPosition: () => {},
     snapToJack: () => {},
     getOtherEndCenter: () => null,
+    unplug: () => {},
   } as unknown as Plug;
 }
 
@@ -81,7 +86,10 @@ function makePositionedJack(
  * interpolate discarded intermediates) to drive Jack's cable-creation
  * session without needing a real WASM module in jsdom.
  */
-class FakeWire {
+class FakeWire implements Fake<
+  Wire,
+  'getNode' | 'getIndex' | 'getNodeCount' | 'setNodeCount' | 'addNodeAt' | 'setColor'
+> {
   private nodes: Node[];
 
   constructor(x1: number, y1: number, x2: number, y2: number, count: number) {
@@ -97,13 +105,18 @@ class FakeWire {
     return this.nodes[index] ?? null;
   }
 
+  /** Deletion is a no-op on this fake's FakeCavi; any index >= 0 lets CaviWireElement release it. */
+  getIndex(): number {
+    return 0;
+  }
+
   getNodeCount(): number {
     return this.nodes.length;
   }
 
   setNodeCount(count: number): void {
-    const first = this.nodes[0];
-    const last = this.nodes[this.nodes.length - 1];
+    const first = this.nodes[0]!;
+    const last = this.nodes[this.nodes.length - 1]!;
     const next: Node[] = [];
     for (let i = 0; i < count; i++) {
       const t = count === 1 ? 0 : i / (count - 1);
@@ -121,43 +134,70 @@ class FakeWire {
   }
 
   /** Mirrors WasmWire::add_node_at's real semantics: a plain Vec::insert — every other node is left untouched. */
-  addNodeAt(index: number, x: number, y: number, fixed: boolean): void {
+  addNodeAt(index: number, x: number, y: number, fixed = false): void {
     this.nodes.splice(index, 0, new Node(x, y, fixed));
   }
 
   setColor(): void {}
 }
 
-class FakeCavi {
+class FakeCavi implements Fake<
+  Cavi,
+  | 'getCableDropBehavior'
+  | 'getPlugSpreadMode'
+  | 'getPlugSpreadRadiusMultiplier'
+  | 'getPlugSpreadRecompactDelayMs'
+  | 'getCoordinateTransform'
+  | 'addWire'
+  | 'getContainer'
+  | 'deleteWire'
+  | 'getWorld'
+> {
   public lastWire: FakeWire | null = null;
   // Overridable per-test — defaults match Cavi's own defaults.
   public getCableDropBehavior = (): 'cancel' | 'dangle' | 'detach' => 'detach';
   public getPlugSpreadMode = (): 'towardOther' | 'radial' => 'towardOther';
   public getPlugSpreadRadiusMultiplier = (): number => 1.8;
   public getPlugSpreadRecompactDelayMs = (): number => 500;
+  public getCoordinateTransform = (): CoordinateTransform => IDENTITY_TRANSFORM;
 
   addWire(x1: number, y1: number, x2: number, y2: number, nodes: number): FakeWire {
     this.lastWire = new FakeWire(x1, y1, x2, y2, nodes);
     return this.lastWire;
   }
 
-  // CaviWireElement._setup() always calls this; not exercised by these
-  // cable-creation tests (auto-cleanup isn't set), so a stub suffices.
-  getContainer(): HTMLElement {
-    return document.body;
-  }
+  // The element every screen<->world conversion is anchored on (see
+  // Jack._worldContainer). document.body has an all-zero rect in jsdom, so
+  // it acts as a neutral origin; overridable per-test for the cases that
+  // care about the container actually being somewhere.
+  public getContainer = (): HTMLElement => document.body;
 
   deleteWire(): void {}
+
+  /** Stand-in for World's frame tasks — see runFrame. */
+  public frameTasks = new Set<FrameTask>();
+  getWorld() {
+    return {
+      addFrameTask: (task: FrameTask) => {
+        this.frameTasks.add(task);
+        return () => this.frameTasks.delete(task);
+      },
+    };
+  }
+}
+
+/** Runs one frame of `fake`'s frame tasks: all reads, then all writes (like World.runFrameTasks). */
+function runFrame(fake: FakeCavi): void {
+  const ctx = { viewBounds: [] };
+  const tasks = [...fake.frameTasks];
+  for (const task of tasks) task.read?.(ctx);
+  for (const task of tasks) if (fake.frameTasks.has(task)) task.write?.(ctx);
 }
 
 function installFakeCavi(): FakeCavi {
   const fake = new FakeCavi();
   Cavi.shared = fake as unknown as Cavi;
   return fake;
-}
-
-function getWireEl(): CaviWireElement {
-  return document.querySelector('cavi-wire') as CaviWireElement;
 }
 
 function getFollowPlugEl(wireEl: CaviWireElement): HTMLElement {
@@ -175,9 +215,63 @@ describe('Jack.canAccept', () => {
     expect(jack.canAccept('midi')).toBe(false);
   });
 
-  it('does not match when the jack has no type configured', () => {
-    const jack = makeJack();
-    expect(jack.canAccept('audio')).toBe(false);
+  it('treats an empty type as a wildcard, on either side', () => {
+    const untyped = makeJack();
+    expect(untyped.canAccept('audio')).toBe(true);
+    expect(untyped.canAccept('')).toBe(true);
+    expect(makeJack({ type: 'audio' }).canAccept('')).toBe(true);
+  });
+});
+
+describe('Jack spread with plugs coming and going', () => {
+  it('lays the plugs out again when one is added or removed while spread', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 0, 0);
+    const first = fakePlug();
+    const second = fakePlug();
+    const placedFirst = vi.spyOn(first, 'setSpreadPosition');
+    const placedSecond = vi.spyOn(second, 'setSpreadPosition');
+    jack.attach(first);
+    jack.holdSpread(true);
+    expect(jack.isSpread()).toBe(true);
+    expect(placedFirst).toHaveBeenCalledTimes(1);
+
+    jack.attach(second);
+    expect(placedFirst).toHaveBeenCalledTimes(2); // laid out again for two
+    expect(placedSecond).toHaveBeenCalledTimes(1);
+    jack.detach(first);
+    expect(placedSecond).toHaveBeenCalledTimes(2); // and again for one
+    jack.holdSpread(false);
+  });
+
+  it('leaves a closed jack alone', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 0, 0);
+    const plug = fakePlug();
+    const placed = vi.spyOn(plug, 'setSpreadPosition');
+    jack.attach(plug);
+    expect(jack.isSpread()).toBe(false);
+    expect(placed).not.toHaveBeenCalled();
+  });
+});
+
+describe('Jack accessibility', () => {
+  it('is a focusable button labelled by its type and id', () => {
+    const jack = makePositionedJack('in1', 0, 0, { type: 'audio' });
+    expect(jack.tabIndex).toBe(0);
+    expect(jack.getAttribute('role')).toBe('button');
+    expect(jack.getAttribute('aria-label')).toBe('audio jack in1');
+  });
+
+  it("keeps the author's own tabindex, role and label", () => {
+    const jack = makePositionedJack('x', 0, 0, {
+      tabindex: '-1',
+      role: 'switch',
+      'aria-label': 'Main out',
+    });
+    expect(jack.getAttribute('tabindex')).toBe('-1');
+    expect(jack.getAttribute('role')).toBe('switch');
+    expect(jack.getAttribute('aria-label')).toBe('Main out');
   });
 });
 
@@ -295,6 +389,28 @@ describe('Jack.createCable', () => {
     expect(document.querySelector('cavi-wire')).toBeNull();
   });
 
+  it('inserts the new <cavi-wire> into the world container, not next to the jack', () => {
+    // Regression: next to the jack, a transformed/positioned wrapper (e.g. a
+    // draggable module box) became the plugs' containing block, so their
+    // absolute left/top rendered offset by that wrapper's position.
+    const fake = installFakeCavi();
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    fake.getContainer = () => container;
+    const module = document.createElement('div');
+    module.style.transform = 'translate(100px, 50px)';
+    container.appendChild(module);
+    const jack = document.createElement('cavi-jack') as Jack;
+    jack.setAttribute('type', 'audio');
+    jack.setAttribute('x', '0');
+    jack.setAttribute('y', '0');
+    module.appendChild(jack);
+
+    const session = jack.createCable(0, 0)!;
+
+    expect(session.wireEl.parentElement).toBe(container);
+  });
+
   it('attaches the origin plug to this Jack and places the free plug at the given position', () => {
     installFakeCavi();
     const jack = makePositionedJack('origin', 50, 60, { type: 'audio' });
@@ -307,8 +423,8 @@ describe('Jack.createCable', () => {
     expect(jack.plugCount).toBe(1);
     const plugs = session.wireEl.querySelectorAll('cavi-plug');
     expect(plugs.length).toBe(2);
-    expect(plugs[0].hasAttribute('plugged')).toBe(true);
-    expect(plugs[1].hasAttribute('plugged')).toBe(false);
+    expect(plugs[0]!.hasAttribute('plugged')).toBe(true);
+    expect(plugs[1]!.hasAttribute('plugged')).toBe(false);
 
     expect(wire.getNode(0)!.x).toBe(50);
     expect(wire.getNode(0)!.y).toBe(60);
@@ -499,6 +615,22 @@ describe('Jack cable session — magnet preview and snap on finish', () => {
 });
 
 describe('Jack cable session — finish/cancel away from any jack', () => {
+  it('discardCableSession removes the new cable as if it never existed', () => {
+    installFakeCavi();
+    const origin = makePositionedJack('origin', 0, 0, { type: 'audio' });
+    const session = origin.createCable(300, 300)!;
+    const results: string[] = [];
+    document.addEventListener('cavi-cable-end', (e) =>
+      results.push((e as CustomEvent).detail.result)
+    );
+
+    Jack.discardCableSession(session);
+
+    expect(session.wireEl.isConnected).toBe(false);
+    expect(origin.plugCount).toBe(0);
+    expect(results).toEqual(['cancel']);
+  });
+
   it("finishCableSession defaults to 'detach': both ends end up unattached and unfixed", () => {
     installFakeCavi();
     const origin = makePositionedJack('origin', 0, 0, { type: 'audio' });
@@ -515,6 +647,8 @@ describe('Jack cable session — finish/cancel away from any jack', () => {
     const followNode = wire.getNode(wire.getNodeCount() - 1)!;
     expect(followNode.fixed).toBe(false);
     expect(document.querySelector('cavi-wire')).not.toBeNull(); // not removed, just detached
+    // ...but orphaned, so orphan cleanup deletes it once out of view.
+    expect(session.wireEl.isOrphan()).toBe(true);
   });
 
   it("'dangle' behavior leaves only the free end unfixed, origin stays attached", () => {
@@ -528,6 +662,7 @@ describe('Jack cable session — finish/cancel away from any jack', () => {
     Jack.finishCableSession(session);
 
     expect(origin.plugCount).toBe(1);
+    expect(session.wireEl.isOrphan()).toBe(false); // still tethered
     expect(followPlugEl.hasAttribute('plugged')).toBe(false);
     const wire = session.wire as unknown as FakeWire;
     expect(wire.getNode(0)!.fixed).toBe(true);
@@ -769,5 +904,415 @@ describe('Jack hover-spread mechanic', () => {
     expect(Math.hypot(nodeB.x, nodeB.y)).toBeGreaterThan(0);
     expect(nodeA.x).toBeCloseTo(-nodeB.x, 5);
     expect(nodeA.y).toBeCloseTo(-nodeB.y, 5);
+  });
+});
+
+describe('Jack.getWorldPosition — explicit x/y (unchanged behavior)', () => {
+  it('reproduces parseFloat(getAttribute(...)) exactly, ignoring the rendered box', () => {
+    const jack = makePositionedJack('a', 999, 999, { x: '50', y: '60' });
+    expect(jack.getWorldPosition()).toEqual({ x: 50, y: 60 });
+  });
+
+  it('defaults a missing y (or x) to 0, same as updatePosition() always has', () => {
+    const jack = makePositionedJack('a', 999, 999, { x: '50' });
+    expect(jack.getWorldPosition()).toEqual({ x: 50, y: 0 });
+  });
+
+  it('ignores a registered coordinate transform — explicit numbers are taken literally', () => {
+    const fake = installFakeCavi();
+    fake.getCoordinateTransform = () => ({ scale: 2, translateX: 100, translateY: 100 });
+    const jack = makePositionedJack('a', 999, 999, { x: '50', y: '60' });
+    expect(jack.getWorldPosition()).toEqual({ x: 50, y: 60 });
+  });
+});
+
+describe('Jack.getWorldPosition — auto-detect (no x/y attributes)', () => {
+  it('derives position from the rendered box (getBoundingClientRect) when no coordinate transform is registered', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 120, 80);
+    // makePositionedJack mocks getBoundingClientRect to a zero-size rect at
+    // (120, 80) — getCenter() of a zero-size rect is that same point.
+    expect(jack.getWorldPosition()).toEqual({ x: 120, y: 80 });
+  });
+
+  it('falls back to identity (no Cavi.shared at all) rather than throwing', () => {
+    const jack = makePositionedJack('a', 120, 80);
+    expect(jack.getWorldPosition()).toEqual({ x: 120, y: 80 });
+  });
+
+  it("un-applies a registered zoom/pan transform's scale so the result stays a stable logical value", () => {
+    const fake = installFakeCavi();
+    fake.getCoordinateTransform = () => ({ scale: 2, translateX: 10, translateY: 20 });
+    // A zoom/pan transform is applied to an ancestor shared by both this
+    // Jack and its offsetParent, so the transform's translate cancels out
+    // of (jackScreenCenter - offsetParentScreenRect) before scale is ever
+    // considered — only the scale needs dividing back out. Concretely: a
+    // Jack at world-logical (55, 40) with offsetParent's own local origin
+    // at world (0, 0), both under transform {scale:2, translateX:10,
+    // translateY:20} (screen = translate + scale*world), render on screen
+    // at jack=(10+2*55, 20+2*40)=(120,100) and offsetParent.left/top=(10,20).
+    const jack = makePositionedJack('a', 120, 100);
+    const bodyRectSpy = vi
+      .spyOn(document.body, 'getBoundingClientRect')
+      .mockReturnValue(rect(10, 20));
+    try {
+      expect(jack.getWorldPosition()).toEqual({ x: 55, y: 40 });
+    } finally {
+      // document.body is shared across every test in this file (unlike a
+      // per-test jack element) — must restore explicitly or this spy leaks
+      // into unrelated later tests.
+      bodyRectSpy.mockRestore();
+    }
+  });
+
+  it('keeps working after switching from explicit to auto mode (x/y attributes removed)', () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 200, 150, { x: '1', y: '2' });
+    expect(jack.getWorldPosition()).toEqual({ x: 1, y: 2 });
+
+    jack.removeAttribute('x');
+    jack.removeAttribute('y');
+    expect(jack.getWorldPosition()).toEqual({ x: 200, y: 150 });
+  });
+});
+
+/** Extracts just the `:host { ... }` rule body, since `.base`/`.hex`/`.inner` also use `position: absolute` for unrelated reasons. */
+function hostRuleOf(jack: Jack): string {
+  const style = jack.shadowRoot!.innerHTML;
+  return style.slice(style.indexOf(':host {'), style.indexOf('.base {'));
+}
+
+describe('Jack rendering — position mode affects :host CSS', () => {
+  it('explicit x/y mode keeps absolute positioning + centering transform', () => {
+    const jack = makePositionedJack('a', 0, 0, { x: '10', y: '20' });
+    const hostRule = hostRuleOf(jack);
+    expect(hostRule).toContain('position: absolute;');
+    expect(hostRule).toContain('transform: translate(-50%, -50%)');
+  });
+
+  it('auto mode leaves positioning entirely to the page CSS', () => {
+    const jack = makePositionedJack('a', 0, 0);
+    const hostRule = hostRuleOf(jack);
+    expect(hostRule).not.toContain('position: absolute;');
+    expect(hostRule).not.toContain('transform: translate(-50%, -50%)');
+  });
+});
+
+describe('Jack auto-position re-sync (frame task)', () => {
+  it('re-glues its plugs once the layout moves it, and only then', () => {
+    const fake = installFakeCavi();
+    const jack = makePositionedJack('a', 42, 24);
+    const snapToJack = vi.fn();
+    jack.attach({ ...fakePlug(), snapToJack } as unknown as Plug);
+
+    runFrame(fake); // first frame: glues to the measured position
+    expect(snapToJack).toHaveBeenLastCalledWith({ x: 42, y: 24 });
+    snapToJack.mockClear();
+
+    runFrame(fake); // nothing moved: no DOM writes
+    expect(snapToJack).not.toHaveBeenCalled();
+
+    // A reflow (or a transform on an ancestor) moves the jack — no resize
+    // of its own box, no event: picked up by the next frame anyway.
+    vi.spyOn(jack, 'getBoundingClientRect').mockReturnValue(rect(300, 120));
+    runFrame(fake);
+    expect(snapToJack).toHaveBeenCalledWith({ x: 300, y: 120 });
+  });
+
+  it('measures every jack before re-gluing any (no layout read after a write)', () => {
+    const fake = installFakeCavi();
+    const a = makePositionedJack('a', 0, 0);
+    const b = makePositionedJack('b', 50, 50);
+    const calls: string[] = [];
+    for (const [jack, name] of [
+      [a, 'a'],
+      [b, 'b'],
+    ] as const) {
+      vi.spyOn(jack, 'getBoundingClientRect').mockImplementation(() => {
+        calls.push(`read ${name}`);
+        return rect(10, 10);
+      });
+      jack.attach({
+        ...fakePlug(),
+        snapToJack: () => calls.push(`write ${name}`),
+      } as unknown as Plug);
+    }
+
+    runFrame(fake);
+
+    expect(calls).toEqual(['read a', 'read b', 'write a', 'write b']);
+  });
+
+  it('does nothing for a Jack with explicit x/y, or with no plugs', () => {
+    const fake = installFakeCavi();
+    const explicit = makePositionedJack('a', 0, 0, { x: '10', y: '20' });
+    const explicitRect = vi.spyOn(explicit, 'getBoundingClientRect');
+    const empty = makePositionedJack('b', 0, 0);
+    const emptyRect = vi.spyOn(empty, 'getBoundingClientRect');
+    const snapToJack = vi.fn();
+    explicit.attach({ ...fakePlug(), snapToJack } as unknown as Plug);
+    snapToJack.mockClear();
+
+    runFrame(fake);
+
+    expect(explicitRect).not.toHaveBeenCalled();
+    expect(emptyRect).not.toHaveBeenCalled();
+    expect(snapToJack).not.toHaveBeenCalled();
+  });
+
+  it('stops syncing once removed', () => {
+    const fake = installFakeCavi();
+    const jack = makePositionedJack('a', 42, 24);
+    expect(fake.frameTasks.size).toBe(1);
+    jack.remove();
+    expect(fake.frameTasks.size).toBe(0);
+  });
+});
+
+describe('Jack removed from the page', () => {
+  it('releases its plugs, so their cable ends fall free', async () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 0, 0, { type: 'audio' });
+    const plug = document.createElement('cavi-plug') as Plug;
+    document.body.appendChild(plug);
+    const node = new Node(0, 0, true);
+    plug.setNode(node);
+    plug.attach(jack);
+    plug.setAttribute('plugged', 'true');
+
+    jack.remove();
+    await Promise.resolve();
+
+    expect(plug.jack).toBeNull();
+    expect(plug.hasAttribute('plugged')).toBe(false);
+    expect(node.fixed).toBe(false);
+    expect(jack.plugCount).toBe(0);
+  });
+
+  it('keeps them plugged across a plain DOM move', async () => {
+    installFakeCavi();
+    const jack = makePositionedJack('a', 0, 0, { type: 'audio' });
+    const plug = document.createElement('cavi-plug') as Plug;
+    document.body.appendChild(plug);
+    const node = new Node(0, 0, true);
+    plug.setNode(node);
+    plug.attach(jack);
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    host.appendChild(jack); // disconnect + connect in the same task
+    await Promise.resolve();
+
+    expect(plug.jack).toBe(jack);
+    expect(node.fixed).toBe(true);
+  });
+});
+
+/**
+ * Regression coverage for the screen/world mix-up that made everything
+ * drift as soon as a consumer applied its own pan/zoom (see
+ * demo-patchbay-zoom.html): world coordinates are now defined once, as
+ * "unscaled px from the renderer container's padding-box origin", and every
+ * conversion in Jack/Plug goes through that single anchor.
+ */
+describe('Jack coordinate space under zoom/pan', () => {
+  /** A rect centered on (x, y), like a real jack's box (getCenter() reads the center). */
+  function centeredRect(x: number, y: number, size: number): DOMRect {
+    return {
+      left: x - size / 2,
+      top: y - size / 2,
+      right: x + size / 2,
+      bottom: y + size / 2,
+      width: size,
+      height: size,
+      x: x - size / 2,
+      y: y - size / 2,
+      toJSON() {
+        return this;
+      },
+    } as unknown as DOMRect;
+  }
+
+  /** A stand-in <cavi-world> container with a mocked screen rect. */
+  function makeContainer(left: number, top: number): HTMLElement {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(rect(left, top));
+    return el;
+  }
+
+  it('regression: anchors on the renderer container, not the jack offsetParent', () => {
+    // The bug this pins down: a page that nests any `position: relative`
+    // wrapper (a CSS-Grid panel, a draggable module box) between
+    // <cavi-world> and its jacks made that wrapper the jacks' offsetParent
+    // while <cavi-plug> and the canvas kept resolving against the
+    // container — so every jack in such a wrapper reported a position
+    // short by the wrapper's offset, and its cable rendered detached from
+    // it. Only the container is consulted now.
+    const fake = installFakeCavi();
+    fake.getContainer = () => makeContainer(10, 20);
+
+    const jack = makePositionedJack('a', 120, 100);
+    expect(jack.getWorldPosition()).toEqual({ x: 110, y: 80 });
+  });
+
+  it('reports the same world position at any zoom level', () => {
+    const fake = installFakeCavi();
+    const container = makeContainer(0, 0);
+    fake.getContainer = () => container;
+
+    const jack = makePositionedJack('a', 0, 0);
+    const at = (scale: number, screenX: number, screenY: number) => {
+      fake.getCoordinateTransform = () => ({ scale, translateX: 0, translateY: 0 });
+      vi.spyOn(jack, 'getBoundingClientRect').mockReturnValue(
+        centeredRect(screenX, screenY, 24 * scale)
+      );
+      return jack.getWorldPosition();
+    };
+
+    // World (55, 40) rendered at 1x, 2x and 0.5x — the same logical point
+    // every time, which is exactly what the physics engine must be fed.
+    expect(at(1, 55, 40)).toEqual({ x: 55, y: 40 });
+    expect(at(2, 110, 80)).toEqual({ x: 55, y: 40 });
+    expect(at(0.5, 27.5, 20)).toEqual({ x: 55, y: 40 });
+  });
+
+  it('regression: spreads plugs by a world-space radius, not a zoom-scaled one', () => {
+    // _applySpreadPositions derives its radius from getBoundingClientRect()
+    // (screen px, so already multiplied by the zoom) but hands the result
+    // to setSpreadPosition, which takes *world* coordinates. Left
+    // unconverted, hovering a jack at 2x flung its plugs twice as far out
+    // as it should — the most visible symptom of the whole mix-up.
+    const spreadAt = (scale: number): { x: number; y: number } => {
+      const fake = installFakeCavi();
+      const container = makeContainer(0, 0);
+      fake.getContainer = () => container;
+      fake.getCoordinateTransform = () => ({ scale, translateX: 0, translateY: 0 });
+
+      const jack = makePositionedJack('a', 0, 0, { type: 'audio' });
+      vi.spyOn(jack, 'getBoundingClientRect').mockReturnValue(centeredRect(0, 0, 24 * scale));
+
+      const setSpreadPosition = vi.fn();
+      jack.attach({ ...fakePlug(), setSpreadPosition } as unknown as Plug);
+
+      Jack.setPointerHoverPosition(0, 0); // dead center of the jack
+      expect(jack.isSpread()).toBe(true);
+      expect(setSpreadPosition).toHaveBeenCalledTimes(1);
+
+      const [x, y] = setSpreadPosition.mock.calls[0]!;
+      jack.remove();
+      return { x, y };
+    };
+
+    // 24px jack -> half-size 12 -> 12 * 1.8 (the default multiplier).
+    const expected = 21.6;
+    expect(spreadAt(1).x).toBeCloseTo(expected, 5);
+    expect(spreadAt(2).x).toBeCloseTo(expected, 5);
+    expect(spreadAt(0.5).x).toBeCloseTo(expected, 5);
+  });
+
+  it('regression: snaps by world distance, so the snap ring tracks what is drawn', () => {
+    // CABLE_SNAP_DISTANCE is 20 *world* px. Compared in raw screen px (as
+    // it used to be) the ring silently shrinks to a fraction of a jack when
+    // zoomed in — here a plug 15 world px away, which visually overlaps the
+    // jack, sits 30 screen px away at 2x and would refuse to connect.
+    const fake = installFakeCavi();
+    const container = makeContainer(0, 0);
+    fake.getContainer = () => container;
+    fake.getCoordinateTransform = () => ({ scale: 2, translateX: 0, translateY: 0 });
+
+    const jack = makePositionedJack('target', 0, 0, { type: 'audio' });
+    vi.spyOn(jack, 'getBoundingClientRect').mockReturnValue(centeredRect(0, 0, 48));
+
+    const plug = {
+      ...fakePlug(),
+      getBoundingClientRect: () => centeredRect(30, 0, 24),
+    } as unknown as Plug;
+
+    expect(Jack.findSnapTarget(plug, 'audio')).toBe(jack);
+
+    // ...and something genuinely out of world range still doesn't snap.
+    const farPlug = {
+      ...fakePlug(),
+      getBoundingClientRect: () => centeredRect(100, 0, 24),
+    } as unknown as Plug;
+    expect(Jack.findSnapTarget(farPlug, 'audio')).toBeNull();
+  });
+
+  it('places a new cable under the cursor at any zoom/pan', () => {
+    const fake = installFakeCavi();
+    // A container that has itself been panned/zoomed on screen: its client
+    // rect already carries the pan, so only the scale is left to divide out.
+    const container = makeContainer(300, -40);
+    fake.getContainer = () => container;
+    fake.getCoordinateTransform = () => ({ scale: 2, translateX: 300, translateY: -40 });
+
+    const jack = makePositionedJack('origin', 300, -40, { type: 'audio' });
+    // Cursor at world (55, 40) => screen (300 + 110, -40 + 80).
+    const session = jack.createCable(410, 40)!;
+    const wire = session.wire as unknown as FakeWire;
+
+    expect(wire.getNode(0)!.x).toBe(0); // the jack itself, world (0, 0)
+    expect(wire.getNode(0)!.y).toBe(0);
+    expect(session.followNode.x).toBe(55);
+    expect(session.followNode.y).toBe(40);
+  });
+});
+
+describe('Jack keyboard support: plugs, isDragActive, holdSpread', () => {
+  function sized(x: number, y: number): DOMRect {
+    return { ...rect(x - 12, y - 12), width: 24, height: 24, right: x + 12, bottom: y + 12 };
+  }
+
+  /** A cable from `origin` (-100, 0) plugged into `target` (0, 0). */
+  function pluggedTarget(): { target: Jack; followNode: Node } {
+    installFakeCavi().getPlugSpreadRecompactDelayMs = () => 300;
+    const origin = makePositionedJack('origin', -100, 0, { type: 'audio' });
+    vi.spyOn(origin, 'getBoundingClientRect').mockReturnValue(sized(-100, 0));
+    const target = makePositionedJack('target', 0, 0, { type: 'audio' });
+    vi.spyOn(target, 'getBoundingClientRect').mockReturnValue(sized(0, 0));
+    const session = origin.createCable(-100, 0)!;
+    vi.spyOn(getFollowPlugEl(session.wireEl), 'getBoundingClientRect').mockReturnValue(sized(0, 0));
+    Jack.finishCableSession(session);
+    const wire = session.wire as unknown as FakeWire;
+    return { target, followNode: wire.getNode(wire.getNodeCount() - 1)! };
+  }
+
+  it('lists the plugs plugged into a jack', () => {
+    const { target } = pluggedTarget();
+    expect(target.plugs).toHaveLength(1);
+    expect(target.plugs[0]!.jack).toBe(target);
+    expect(makeJack().plugs).toEqual([]);
+  });
+
+  it('tells whether a drag is in progress in a world', () => {
+    const world = {} as Cavi;
+    expect(Jack.isDragActive(world)).toBe(false);
+    Jack.setDragActive(true, world);
+    expect(Jack.isDragActive(world)).toBe(true);
+    expect(Jack.isDragActive({} as Cavi)).toBe(false);
+    Jack.setDragActive(false, world);
+    expect(Jack.isDragActive(world)).toBe(false);
+  });
+
+  it('holdSpread keeps the plugs spread out with no pointer around, then lets them recompact', () => {
+    vi.useFakeTimers();
+    try {
+      const { target, followNode } = pluggedTarget();
+      target.holdSpread(true);
+      expect(target.isSpread()).toBe(true);
+      expect(Math.hypot(followNode.x, followNode.y)).toBeGreaterThan(0);
+
+      Jack.setPointerHoverPosition(9999, 9999);
+      vi.advanceTimersByTime(1000);
+      expect(target.isSpread()).toBe(true); // held: the pointer leaving changes nothing
+
+      target.holdSpread(false);
+      vi.advanceTimersByTime(301);
+      expect(target.isSpread()).toBe(false);
+      expect(followNode.x).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

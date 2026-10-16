@@ -1,7 +1,44 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Cavi as RealCavi } from '../core/cavi';
+import type { Fake } from './fake';
+
+/**
+ * jsdom implements no ResizeObserver, and <cavi-world> creates one on
+ * connect (StandardResizeController) — without this stub every test here
+ * dies in connectedCallback before _setup() ever runs, which reads only as
+ * a puzzling "getCavi() is null".
+ */
+beforeEach(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+    }
+  );
+});
 
 vi.mock('../core/cavi', () => {
-  class FakeCavi {
+  class FakeCavi implements Fake<
+    RealCavi,
+    | 'getRenderer'
+    | 'setRenderer'
+    | 'getWorld'
+    | 'setAcceleration'
+    | 'setDebugDrawNodes'
+    | 'setWireShadows'
+    | 'setCableDropBehavior'
+    | 'setOrphanCleanup'
+    | 'setSleepEnabled'
+    | 'setStepRate'
+    | 'setPlugSpreadMode'
+    | 'setPlugSpreadRadiusMultiplier'
+    | 'setPlugSpreadRecompactDelayMs'
+    | 'setCoordinateTransformProvider'
+    | 'destroy'
+    | 'isDestroyed'
+  > {
     static shared: unknown = null;
     static initWasm = vi.fn(() => Promise.resolve());
     private renderer: unknown = null;
@@ -16,10 +53,22 @@ vi.mock('../core/cavi', () => {
     }
     setAcceleration = vi.fn();
     setDebugDrawNodes = vi.fn();
+    setWireShadows = vi.fn();
     setCableDropBehavior = vi.fn();
+    setOrphanCleanup = vi.fn();
+    setSleepEnabled = vi.fn();
+    setStepRate = vi.fn();
     setPlugSpreadMode = vi.fn();
     setPlugSpreadRadiusMultiplier = vi.fn();
     setPlugSpreadRecompactDelayMs = vi.fn();
+    setCoordinateTransformProvider = vi.fn();
+    destroyed = false;
+    destroy = vi.fn(() => {
+      this.destroyed = true;
+    });
+    isDestroyed() {
+      return this.destroyed;
+    }
   }
   return { Cavi: FakeCavi };
 });
@@ -28,7 +77,10 @@ vi.mock('../renderer/renderer', () => {
   class FakeRenderer {
     render = vi.fn();
     stop = vi.fn();
-    constructor(container: HTMLElement, world: unknown) {}
+    options: unknown;
+    constructor(_container: HTMLElement, _world: unknown, options?: unknown) {
+      this.options = options;
+    }
   }
   return { Renderer: FakeRenderer };
 });
@@ -37,7 +89,9 @@ vi.mock('../renderer/renderer', () => {
 // elements — irrelevant to worldwc's own behavior and this file only needs
 // '../core/cavi' and '../renderer/renderer' to be the fakes above.
 vi.mock('../component/jack', () => ({}));
-vi.mock('../component/interactionwc', () => ({}));
+vi.mock('../component/interactionwc', () => ({
+  CaviInteractionElement: { attachedTo: () => null },
+}));
 
 import { Cavi } from '../core/cavi';
 import type { Renderer } from '../renderer/renderer';
@@ -48,6 +102,7 @@ function flushMicrotasks(): Promise<void> {
 }
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   document.body.innerHTML = '';
   (Cavi as unknown as { shared: unknown }).shared = null;
   vi.clearAllMocks();
@@ -90,25 +145,44 @@ describe('CaviWorldElement', () => {
     expect(readyHandler).toHaveBeenCalledTimes(1);
   });
 
-  it('reads gravity-x/gravity-y/debug-nodes attributes into Cavi at setup', async () => {
+  it('reads gravity-x/gravity-y/debug-nodes/wire-shadows attributes into Cavi at setup', async () => {
     const world = document.createElement('cavi-world') as CaviWorldElement;
     world.setAttribute('gravity-x', '3');
     world.setAttribute('gravity-y', '12');
     world.setAttribute('debug-nodes', '');
+    world.setAttribute('wire-shadows', '');
     document.body.appendChild(world);
     await flushMicrotasks();
 
     const cavi = world.getCavi()!;
     expect(cavi.setAcceleration).toHaveBeenCalledWith(3, 12);
     expect(cavi.setDebugDrawNodes).toHaveBeenCalledWith(true);
+    expect(cavi.setWireShadows).toHaveBeenCalledWith(true);
   });
 
-  it('reads cable-drop-behavior/plug-spread-* attributes into Cavi at setup', async () => {
+  it('applies settings attributes changed after setup, and restores the default when removed', async () => {
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    document.body.appendChild(world);
+    await flushMicrotasks();
+    const cavi = world.getCavi()!;
+
+    world.setAttribute('step-rate', '90');
+    world.setAttribute('gravity-y', '-2');
+    expect(cavi.setStepRate).toHaveBeenLastCalledWith(90);
+    expect(cavi.setAcceleration).toHaveBeenLastCalledWith(0, -2);
+
+    world.removeAttribute('step-rate');
+    expect(cavi.setStepRate).toHaveBeenLastCalledWith(60);
+  });
+
+  it('reads cable-drop-behavior/plug-spread-*/orphan-cleanup/step-rate attributes into Cavi at setup', async () => {
     const world = document.createElement('cavi-world') as CaviWorldElement;
     world.setAttribute('cable-drop-behavior', 'cancel');
     world.setAttribute('plug-spread-mode', 'radial');
     world.setAttribute('plug-spread-radius', '2.5');
     world.setAttribute('plug-spread-timeout', '750');
+    world.setAttribute('orphan-cleanup', 'off');
+    world.setAttribute('step-rate', '120');
     document.body.appendChild(world);
     await flushMicrotasks();
 
@@ -117,6 +191,8 @@ describe('CaviWorldElement', () => {
     expect(cavi.setPlugSpreadMode).toHaveBeenCalledWith('radial');
     expect(cavi.setPlugSpreadRadiusMultiplier).toHaveBeenCalledWith(2.5);
     expect(cavi.setPlugSpreadRecompactDelayMs).toHaveBeenCalledWith(750);
+    expect(cavi.setOrphanCleanup).toHaveBeenCalledWith(false);
+    expect(cavi.setStepRate).toHaveBeenCalledWith(120);
   });
 
   it('stops the renderer loop on disconnect', async () => {
@@ -128,5 +204,155 @@ describe('CaviWorldElement', () => {
     world.remove();
 
     expect(renderer.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('destroys its world once removed, but not when just moved', async () => {
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    document.body.appendChild(world);
+    await flushMicrotasks();
+    const cavi = world.getCavi() as unknown as { destroy: () => void };
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    host.appendChild(world); // DOM move: disconnect + connect in the same task
+    await flushMicrotasks();
+    expect(cavi.destroy).not.toHaveBeenCalled();
+
+    world.remove();
+    await flushMicrotasks();
+    expect(cavi.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it('builds a new world, with the same coordinate transform, when inserted again after removal', async () => {
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    const transform = () => ({ scale: 2, translateX: 0, translateY: 0 });
+    world.setCoordinateTransform(transform);
+    document.body.appendChild(world);
+    await flushMicrotasks();
+    const first = world.getCavi();
+
+    world.remove();
+    await flushMicrotasks();
+    document.body.appendChild(world);
+    await flushMicrotasks();
+
+    const second = world.getCavi()!;
+    expect(second).not.toBe(first);
+    expect(second.setCoordinateTransformProvider).toHaveBeenCalledWith(transform);
+    expect(world.querySelectorAll('canvas').length).toBe(1);
+  });
+
+  it('resumes the render loop when reconnected after a DOM move', async () => {
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    document.body.appendChild(world);
+    await flushMicrotasks();
+
+    const renderer = world.getCavi()!.getRenderer() as Renderer;
+    const other = document.createElement('div');
+    document.body.appendChild(other);
+    other.appendChild(world);
+
+    expect(renderer.render).toHaveBeenCalledTimes(2);
+  });
+
+  it('creates only one Cavi when reconnected while WASM init is still in flight', async () => {
+    const readyHandler = vi.fn();
+    document.addEventListener('caviready', readyHandler);
+
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    document.body.appendChild(world);
+    const other = document.createElement('div');
+    document.body.appendChild(other);
+    other.appendChild(world); // before WASM init resolves
+    await flushMicrotasks();
+
+    document.removeEventListener('caviready', readyHandler);
+    expect(readyHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it('with surface="…", creates the canvas in that element and hands it to the renderer', async () => {
+    const frame = document.createElement('div');
+    frame.id = 'frame';
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    world.setAttribute('surface', '#frame');
+    frame.appendChild(world);
+    document.body.appendChild(frame);
+    await flushMicrotasks();
+
+    const canvas = frame.querySelector(':scope > #wireCanvas');
+    expect(canvas).not.toBeNull();
+    expect(world.querySelector('#wireCanvas')).toBeNull();
+    expect(frame.style.position).toBe('relative');
+    const renderer = world.getCavi()!.getRenderer() as unknown as { options: unknown };
+    expect(renderer.options).toEqual({ canvas, surface: frame });
+  });
+
+  it('removes the surface canvas when the world is removed for good', async () => {
+    const frame = document.createElement('div');
+    frame.id = 'frame';
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    world.setAttribute('surface', '#frame');
+    frame.appendChild(world);
+    document.body.appendChild(frame);
+    await flushMicrotasks();
+
+    world.remove();
+    await flushMicrotasks();
+    expect(frame.querySelector('#wireCanvas')).toBeNull();
+  });
+
+  it('keeps a coordinate transform set before the world is ready, and applies it at setup', async () => {
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    const provider = () => ({ scale: 2, translateX: 0, translateY: 0 });
+    world.setCoordinateTransform(provider);
+    document.body.appendChild(world);
+    await flushMicrotasks();
+
+    expect(world.getCavi()!.setCoordinateTransformProvider).toHaveBeenCalledWith(provider);
+  });
+
+  it('draws into the canvas named by the `canvas` attribute and never removes it', async () => {
+    const own = document.createElement('canvas');
+    own.id = 'myCanvas';
+    const frame = document.createElement('div');
+    frame.id = 'frame';
+    document.body.append(own, frame);
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    world.setAttribute('canvas', '#myCanvas');
+    world.setAttribute('surface', '#frame');
+    frame.appendChild(world);
+    await flushMicrotasks();
+
+    expect(document.querySelectorAll('canvas').length).toBe(1); // none created
+    const renderer = world.getCavi()!.getRenderer() as unknown as { options: { canvas: unknown } };
+    expect(renderer.options.canvas).toBe(own);
+
+    world.remove();
+    await flushMicrotasks();
+    expect(own.isConnected).toBe(true);
+  });
+
+  it('accepts a canvas through the `.canvas` property too', async () => {
+    const own = document.createElement('canvas');
+    document.body.appendChild(own);
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    world.canvas = own;
+    document.body.appendChild(world);
+    await flushMicrotasks();
+
+    expect(world.querySelector('canvas')).toBeNull();
+    const renderer = world.getCavi()!.getRenderer() as unknown as { options: { canvas: unknown } };
+    expect(renderer.options.canvas).toBe(own);
+  });
+
+  it('falls back to creating a canvas when the `canvas` selector matches nothing', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const world = document.createElement('cavi-world') as CaviWorldElement;
+    world.setAttribute('canvas', '#missing');
+    document.body.appendChild(world);
+    await flushMicrotasks();
+
+    expect(world.querySelector('#wireCanvas')).not.toBeNull();
+    expect(warn).toHaveBeenCalled();
   });
 });

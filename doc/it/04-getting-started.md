@@ -2,39 +2,37 @@
 
 ## Prerequisiti
 
-- Node.js — **disponibile** in questo ambiente (`node v24.19.0`, `npm 11.17.0`)
-- La dipendenza npm `cavi` (`package.json` → `"cavi": "^0.1.0"`) deve risolversi nella build WASM del progetto Rust gemello [`cavi`](../../../cavi/doc/it/01-overview.md). `cargo`/`wasm-pack` **non sono installati** in questo ambiente, quindi l'output `pkg/` di `cavi` non esiste attualmente — confermare con il proprietario del progetto come questa dipendenza dovrebbe risolversi (pubblicazione su registro npm vs. `npm link` / riferimento `file:` a una `pkg/` costruita localmente) prima di installare.
+- Node.js e [pnpm](https://pnpm.io).
+- Il pacchetto `cavi`: la build WASM del progetto Rust gemello [`cavi`](../../../cavi/doc/it/01-overview.md), installata da npm (`"cavi": "^0.2.0"`). Per lavorare insieme sul motore e su cavijs, fai puntare `package.json` a una build locale (`"cavi": "link:../cavi/pkg"`), con `../cavi` presente e compilato con `wasm-pack build --target web` (servono Rust e `wasm-pack`); finché c'è il link, la CI compila da sé `teo666/cavi`.
+- Per i test end-to-end: Google Chrome (Playwright usa quello installato, `channel: 'chrome'`, senza scaricare un browser).
 
-## Installare le dipendenze
-
-`node_modules/` non esiste attualmente in questo workspace.
+## Installazione
 
 ```bash
-npm install
+pnpm install
 ```
-
-> **Non è stato installato nulla automaticamente.** Chiedere conferma prima di eseguire `npm install` (o qualsiasi altro comando di installazione) — in particolare, confermare come deve essere reperita la dipendenza `cavi`, poiché un semplice `npm install` potrebbe fallire o scaricare una versione inattesa se `cavi` non è pubblicato su un registro raggiungibile da questo progetto.
 
 ## Script (`package.json`)
 
-| Script                 | Comando              | Scopo                                           |
-| ---------------------- | -------------------- | ----------------------------------------------- |
-| `npm run dev`          | `vite`               | Avvia il dev server di Vite (hot reload)        |
-| `npm run build`        | `tsc && vite build`  | Type-check, poi produce una build di produzione |
-| `npm run preview`      | `vite preview`       | Serve localmente la build di produzione         |
-| `npm run format`       | `prettier --write .` | Formatta il codebase                            |
-| `npm run format:check` | `prettier --check .` | Verifica la formattazione senza scrivere        |
+| Script           | A cosa serve                                                  |
+| ---------------- | ------------------------------------------------------------- |
+| `pnpm dev`       | Server di sviluppo Vite per le demo                           |
+| `pnpm build`     | Controllo dei tipi, poi build del sito delle demo in `dist/`  |
+| `pnpm build:lib` | Build della libreria: `dist-lib/cavijs.js` e i file dei tipi  |
+| `pnpm preview`   | Serve il sito delle demo compilato                            |
+| `pnpm test`      | Test unitari (vitest, jsdom, il modulo WASM vero)             |
+| `pnpm test:e2e`  | Test end-to-end: le demo in Chrome, guidate con un mouse vero |
+| `pnpm lint`      | oxlint                                                        |
+| `pnpm format`    | Formatta con Prettier (`format:check` controlla soltanto)     |
 
-## Avviare la demo
+## Avviare le demo
 
-`index.html` carica `src/main.ts`, che:
+`pnpm dev` serve `examples/` (la `root` di Vite) sotto la base `/cavijs/`: apri l'URL stampato seguito da `/cavijs/`. `examples/index.html` elenca tutte le demo:
 
-1. Inizializza il modulo WASM (`Cavi.initWasm()`)
-2. Crea un'istanza `Cavi` e un `Renderer` collegato a `#wireCanvas`
-3. Aggiunge tre cavi demo (rosso/giallo/verde, due in bezier + uno a segmenti)
-4. Imposta la gravità (`cavi.setAcceleration(0, 10.0)`)
-5. Monta un pannello di debug `<cavi-controls>` (`#controls` in `index.html`) se presente
+- `demo-basic.html` / `demo-svg.html` — un `Cavi` costruito a mano (`examples/main.ts`, `examples/main-svg.ts`), canvas o SVG, con un pannello di controllo (`<cavi-controls>`, `examples/controls.ts`).
+- `demo-jack-plug.html` — jack e cavi dichiarati in HTML dentro un `<cavi-world>`.
+- `demo-patchbay*.html` — un patchbay da synth modulare, con varianti con pan/zoom.
+- `demo-d3-interaction.html`, `demo-noop-interaction.html` — controller di interazione personalizzati.
+- `demo-two-worlds.html` — due mondi nella stessa pagina, uno in uno shadow root.
 
-Una volta installate le dipendenze, avviare il dev server con `npm run dev` e aprire l'URL locale stampato in console; il canvas dovrebbe mostrare tre cavi trascinabili soggetti a gravità con un pannello di statistiche/tuning live.
-
-Esiste anche `index2.html` / `src/example2.ts` — un entry point alternativo; ispezionarlo prima dell'uso, poiché potrebbe essere sperimentale o non mantenuto rispetto a `main.ts`.
+La tabella "Demos" del README indica lo script e il renderer di ogni pagina.

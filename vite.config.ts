@@ -7,6 +7,10 @@ export default defineConfig({
   base: '/cavijs/',
   optimizeDeps: {
     exclude: ['cavi'],
+    // Pre-bundled at server start: discovered on first page load instead,
+    // Vite reloads that page (requests answered 504 meanwhile) — which also
+    // made the first e2e run after a cache wipe fail.
+    include: ['d3-selection', 'd3-zoom', 'd3-drag'],
   },
   build: {
     outDir: '../dist',
@@ -19,15 +23,23 @@ export default defineConfig({
         basic: './examples/demo-basic.html',
         svg: './examples/demo-svg.html',
         jackPlug: './examples/demo-jack-plug.html',
+        twoWorlds: './examples/demo-two-worlds.html',
         patchbay: './examples/demo-patchbay.html',
         patchbaySvg: './examples/demo-patchbay-svg.html',
+        noopInteraction: './examples/demo-noop-interaction.html',
+        patchbayZoom: './examples/demo-patchbay-zoom.html',
+        patchbayZoomSvg: './examples/demo-patchbay-zoom-svg.html',
+        d3Interaction: './examples/demo-d3-interaction.html',
       },
     },
   },
   server: {
     host: '0.0.0.0',
     fs: {
-      allow: ['..'],
+      // Relative to `root` (examples/): the project, and the sibling `cavi`
+      // checkout for when the dependency is linked to a local build
+      // (`"cavi": "link:../cavi/pkg"`) to develop both side by side.
+      allow: ['..', '../../cavi'],
     },
   },
   assetsInclude: ['**/*.wasm'],

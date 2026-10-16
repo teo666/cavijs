@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Fake } from './fake';
+import type { Wire } from '../core/wire';
 import { Cavi } from '../core/cavi';
 import { Node } from '../core/node';
-import type { CaviWireElement } from '../component/wirewc';
 import type { Jack } from '../component/jack';
-import '../component/wirewc';
+import { CaviWireElement } from '../component/wirewc';
+import type { FrameTask, WorldRect } from '../core/frame';
 
 function rect(x: number, y: number, width: number, height: number): DOMRect {
   return {
@@ -63,7 +65,18 @@ class FakeWireStore {
 }
 
 /** Minimal stand-in for the WASM-backed Wire, enough to drive CaviWireElement's setup. */
-class FakeWire {
+class FakeWire implements Fake<
+  Wire,
+  | 'getNode'
+  | 'getNodeCount'
+  | 'getNodeX'
+  | 'getNodeY'
+  | 'getIndex'
+  | '_setIndex'
+  | 'addNodeAt'
+  | 'setColor'
+  | 'getColor'
+> {
   private store: FakeWireStore;
   private index: number;
 
@@ -80,12 +93,25 @@ class FakeWire {
     return this.store.getNodeCount(this.index);
   }
 
+  getNodeX(nodeIndex: number): number {
+    return this.getNode(nodeIndex)?.x ?? 0;
+  }
+
+  getNodeY(nodeIndex: number): number {
+    return this.getNode(nodeIndex)?.y ?? 0;
+  }
+
   getIndex(): number {
     return this.index;
   }
 
+  /** Mirrors Wire._setIndex — World.deleteWire() shifts surviving handles in place. */
+  _setIndex(index: number): void {
+    this.index = index;
+  }
+
   /** Mirrors WasmWire::add_node_at — a plain insert that leaves every other node untouched. */
-  addNodeAt(nodeIndex: number, x: number, y: number, fixed: boolean): void {
+  addNodeAt(nodeIndex: number, x: number, y: number, fixed = false): void {
     this.store.addNodeAt(this.index, nodeIndex, new Node(x, y, fixed));
   }
 
@@ -100,9 +126,19 @@ class FakeWire {
   }
 }
 
-/** Minimal stand-in for Cavi, enough to drive CaviWireElement's setup + auto-cleanup. */
-class FakeCavi {
+/** Minimal stand-in for Cavi, enough to drive CaviWireElement's setup + orphan cleanup. */
+class FakeCavi implements Fake<
+  Cavi,
+  | 'addWire'
+  | 'deleteWire'
+  | 'getWireByIndex'
+  | 'getContainer'
+  | 'getWorld'
+  | 'getCoordinateTransform'
+> {
   public deletedIndices: number[] = [];
+  /** Stand-in for World's frame tasks (see runCleanupCheck). */
+  public frameTasks = new Set<FrameTask>();
   private store = new FakeWireStore();
   private wires: FakeWire[] = [];
   private container: HTMLElement;
@@ -120,22 +156,20 @@ class FakeCavi {
 
   /**
    * Mirrors World.deleteWire()'s real reindexing: the underlying data
-   * shifts down by one, and every later wire gets a brand new wrapper
-   * object at its new index — any wrapper obtained *before* this call
-   * (e.g. cached by a CaviWireElement) keeps its old, now-wrong index.
-   * Also mirrors the metadata-carry-over fix: a fresh wrapper starts with
-   * empty meta (color lives only in JS, never in the fake "WASM" store), so
-   * it must be copied over by hand or it would silently reset.
+   * shifts down by one, the deleted handle is invalidated (-1), and every
+   * later handle has its index shifted down *in place* — so any wrapper
+   * obtained before this call (e.g. cached by a CaviWireElement) keeps
+   * pointing at the right data.
    */
-  deleteWire(index: number): void {
+  deleteWire(wire: Wire | number): void {
+    // wirewc deletes by index; a handle works too, as on the real Cavi.
+    const index = typeof wire === 'number' ? wire : this.wires.indexOf(wire as unknown as FakeWire);
     this.deletedIndices.push(index);
     this.store.deleteWire(index);
-    this.wires.splice(index, 1);
+    const [removed] = this.wires.splice(index, 1);
+    removed?._setIndex(-1);
     for (let i = index; i < this.wires.length; i++) {
-      const meta = this.wires[i].meta;
-      const wire = new FakeWire(this.store, i);
-      wire.meta = { ...meta };
-      this.wires[i] = wire;
+      this.wires[i]!._setIndex(i);
     }
   }
 
@@ -146,6 +180,30 @@ class FakeCavi {
   getContainer(): HTMLElement {
     return this.container;
   }
+
+  getWorld() {
+    return {
+      addFrameTask: (task: FrameTask) => {
+        this.frameTasks.add(task);
+        return () => this.frameTasks.delete(task);
+      },
+    };
+  }
+
+  // Jack.getWorldPosition()'s auto-detect fallback always consults this;
+  // not exercised by these tests (no coordinate transform registered), so
+  // a stub returning identity suffices.
+  getCoordinateTransform(): { scale: number; translateX: number; translateY: number } {
+    return { scale: 1, translateX: 0, translateY: 0 };
+  }
+}
+
+/** Unfixes both terminals, as if every plug had been dropped away from any jack. */
+function orphan(el: CaviWireElement): CaviWireElement {
+  const wire = el.getWire()!;
+  wire.getNode(0)!.fixed = false;
+  wire.getNode(wire.getNodeCount() - 1)!.fixed = false;
+  return el;
 }
 
 function makeContainer(x: number, y: number, width: number, height: number): HTMLElement {
@@ -171,9 +229,47 @@ function makeWireEl(attrs: Record<string, string> = {}): CaviWireElement {
   return el;
 }
 
-/** Runs the same private cleanup check the RAF loop calls every frame. */
-function runCleanupCheck(wireEl: CaviWireElement): void {
-  (wireEl as unknown as { _cleanupIfOutsideContainer(): void })._cleanupIfOutsideContainer();
+/**
+ * Mirrors CaviWireElement.OUTSIDE_FRAMES_BEFORE_CLEANUP — read off the
+ * class rather than hardcoded, so tuning the threshold doesn't silently
+ * turn these tests into a check of the old value.
+ */
+const OUTSIDE_FRAMES = CaviWireElement.OUTSIDE_FRAMES_BEFORE_CLEANUP;
+
+/**
+ * Runs `frames` frames of every frame task registered with the wire's
+ * (fake) world — all reads, then all writes, like World.runFrameTasks —
+ * with the container (and surface, if any) as view bounds, in world
+ * coordinates (identity transform: the same numbers as their rects).
+ *
+ * Cleanup deliberately requires OUTSIDE_FRAMES_BEFORE_CLEANUP *consecutive*
+ * frames out of view, so a single frame proves nothing either way — the
+ * default here runs exactly the number of frames that threshold needs.
+ */
+function runCleanupCheck(wireEl: CaviWireElement, frames: number = OUTSIDE_FRAMES): void {
+  const cavi = Cavi.for(wireEl) as unknown as FakeCavi;
+  const elements = [cavi.getContainer()];
+  const surface = (cavi as unknown as { getSurface?(): HTMLElement }).getSurface?.();
+  if (surface) elements.push(surface);
+  const viewBounds: WorldRect[] = elements.map((el) => {
+    const r = el.getBoundingClientRect();
+    return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+  });
+  for (let i = 0; i < frames; i++) {
+    const tasks = [...cavi.frameTasks];
+    for (const task of tasks) task.read?.({ viewBounds });
+    for (const task of tasks) if (cavi.frameTasks.has(task)) task.write?.({ viewBounds });
+  }
+}
+
+/** Moves the wire's two terminals, and spreads its interior nodes evenly between them. */
+function placeEnds(wireEl: CaviWireElement, x0: number, y0: number, x1: number, y1: number): void {
+  const wire = wireEl.getWire()!;
+  const last = wire.getNodeCount() - 1;
+  for (let i = 0; i <= last; i++) {
+    const t = i / last;
+    wire.getNode(i)!.setPosition(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+  }
 }
 
 afterEach(() => {
@@ -181,16 +277,14 @@ afterEach(() => {
   Cavi.shared = null;
 });
 
-describe('CaviWireElement auto-cleanup (auto-cleanup attribute)', () => {
-  it('does nothing when auto-cleanup is absent, even if every plug is outside the container', () => {
+describe('CaviWireElement orphan cleanup', () => {
+  it('does nothing while a terminal is still fixed, even if every plug is outside the container', () => {
     const container = makeContainer(0, 0, 500, 500);
     const cavi = new FakeCavi(container);
     Cavi.shared = cavi as unknown as Cavi;
 
     const wireEl = makeWireEl({ length: '4' });
-    const plugs = wireEl.querySelectorAll('cavi-plug');
-    vi.spyOn(plugs[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugs[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
 
     runCleanupCheck(wireEl);
 
@@ -203,11 +297,9 @@ describe('CaviWireElement auto-cleanup (auto-cleanup attribute)', () => {
     const cavi = new FakeCavi(container);
     Cavi.shared = cavi as unknown as Cavi;
 
-    const wireEl = makeWireEl({ length: '4', 'auto-cleanup': '' });
+    const wireEl = orphan(makeWireEl({ length: '4' }));
     const wireIndex = wireEl.getWire()!.getIndex();
-    const plugs = wireEl.querySelectorAll('cavi-plug');
-    vi.spyOn(plugs[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugs[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
 
     runCleanupCheck(wireEl);
 
@@ -215,15 +307,160 @@ describe('CaviWireElement auto-cleanup (auto-cleanup attribute)', () => {
     expect(cavi.deletedIndices).toEqual([wireIndex]);
   });
 
+  it('needs the full consecutive-frame threshold, and resets it if a plug comes back inside', () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    Cavi.shared = cavi as unknown as Cavi;
+
+    const wireEl = orphan(makeWireEl({ length: '4' }));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
+
+    // One frame short of the threshold: still alive.
+    runCleanupCheck(wireEl, OUTSIDE_FRAMES - 1);
+    expect(wireEl.isConnected).toBe(true);
+
+    // A single frame back inside restarts the count from scratch, so the
+    // next OUTSIDE_FRAMES - 1 frames outside must not be enough either.
+    placeEnds(wireEl, 100, 100, 9999, 9999);
+    runCleanupCheck(wireEl, 1);
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
+    runCleanupCheck(wireEl, OUTSIDE_FRAMES - 1);
+    expect(wireEl.isConnected).toBe(true);
+    expect(cavi.deletedIndices).toEqual([]);
+
+    // ...and the frame that finally completes the run does delete it.
+    runCleanupCheck(wireEl, 1);
+    expect(wireEl.isConnected).toBe(false);
+  });
+
+  it("does not clean up a cable that left the container but is still inside the renderer's surface", () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const surface = makeContainer(-1000, -1000, 3000, 3000);
+    const cavi = new FakeCavi(container);
+    (cavi as unknown as { getSurface(): HTMLElement }).getSurface = () => surface;
+    Cavi.shared = cavi as unknown as Cavi;
+
+    const wireEl = orphan(makeWireEl({ length: '4' }));
+    placeEnds(wireEl, 900, 900, 900, 900);
+
+    runCleanupCheck(wireEl);
+    expect(wireEl.isConnected).toBe(true);
+
+    // ...and does once it leaves the surface too.
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
+    runCleanupCheck(wireEl);
+    expect(wireEl.isConnected).toBe(false);
+  });
+
+  it('keeps a cable whose ends are out of view but whose middle hangs back into view', () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    Cavi.shared = cavi as unknown as Cavi;
+
+    const wireEl = orphan(makeWireEl({ length: '5' }));
+    // Both ends far to the left and right, the middle node in the view.
+    placeEnds(wireEl, -2000, 250, 2500, 250);
+
+    runCleanupCheck(wireEl);
+    expect(wireEl.isConnected).toBe(true);
+  });
+
+  it('runs every plug of every wire through one batched frame, not a loop of its own', () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    Cavi.shared = cavi as unknown as Cavi;
+
+    const wireEl = makeWireEl({ length: '4' });
+    expect(cavi.frameTasks.size).toBe(1);
+    placeEnds(wireEl, 10, 20, 70, 80);
+    runCleanupCheck(wireEl, 1);
+
+    const plug = wireEl.querySelectorAll('cavi-plug')[1] as HTMLElement;
+    expect([plug.style.left, plug.style.top]).toEqual(['70px', '80px']);
+
+    wireEl.remove();
+    expect(cavi.frameTasks.size).toBe(0);
+  });
+
+  it('reads the orphan state live: cleans up once the last fixed terminal is released', () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    Cavi.shared = cavi as unknown as Cavi;
+
+    const wireEl = makeWireEl({ length: '4' });
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
+
+    wireEl.getWire()!.getNode(0)!.fixed = false;
+    runCleanupCheck(wireEl);
+    expect(wireEl.isOrphan()).toBe(false); // the other end still anchors it
+    expect(wireEl.isConnected).toBe(true);
+
+    wireEl.getWire()!.getNode(3)!.fixed = false;
+    expect(wireEl.isOrphan()).toBe(true);
+    runCleanupCheck(wireEl);
+    expect(wireEl.isConnected).toBe(false);
+  });
+
+  it('restarts the count when an orphaned cable is anchored again before it is deleted', () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    Cavi.shared = cavi as unknown as Cavi;
+
+    const wireEl = orphan(makeWireEl({ length: '4' }));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
+
+    runCleanupCheck(wireEl, OUTSIDE_FRAMES - 1);
+    wireEl.getWire()!.getNode(0)!.fixed = true; // e.g. plugged back in
+    runCleanupCheck(wireEl, 1);
+    wireEl.getWire()!.getNode(0)!.fixed = false;
+    runCleanupCheck(wireEl, OUTSIDE_FRAMES - 1);
+
+    expect(wireEl.isConnected).toBe(true);
+    expect(cavi.deletedIndices).toEqual([]);
+  });
+
+  it("never cleans up when the world's orphan cleanup is off", () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    let enabled = false;
+    (cavi as unknown as { getOrphanCleanup(): boolean }).getOrphanCleanup = () => enabled;
+    Cavi.shared = cavi as unknown as Cavi;
+
+    const wireEl = orphan(makeWireEl({ length: '4' }));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
+
+    runCleanupCheck(wireEl, OUTSIDE_FRAMES * 3);
+    expect(wireEl.isConnected).toBe(true);
+
+    // Read live: turning it back on applies from the next frames.
+    enabled = true;
+    runCleanupCheck(wireEl);
+    expect(wireEl.isConnected).toBe(false);
+  });
+
+  it("emits cavi-wire-remove with reason 'cleanup'", () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    Cavi.shared = cavi as unknown as Cavi;
+    const reasons: string[] = [];
+    container.addEventListener('cavi-wire-remove', (e) =>
+      reasons.push((e as CustomEvent).detail.reason)
+    );
+
+    const wireEl = orphan(makeWireEl({ length: '4' }));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
+    runCleanupCheck(wireEl);
+
+    expect(reasons).toEqual(['cleanup']);
+  });
+
   it('does not clean up while at least one plug still overlaps the container', () => {
     const container = makeContainer(0, 0, 500, 500);
     const cavi = new FakeCavi(container);
     Cavi.shared = cavi as unknown as Cavi;
 
-    const wireEl = makeWireEl({ length: '4', 'auto-cleanup': '' });
-    const plugs = wireEl.querySelectorAll('cavi-plug');
-    vi.spyOn(plugs[0], 'getBoundingClientRect').mockReturnValue(rect(100, 100, 10, 10)); // inside
-    vi.spyOn(plugs[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10)); // outside
+    const wireEl = orphan(makeWireEl({ length: '4' }));
+    placeEnds(wireEl, 100, 100, 9999, 9999);
 
     runCleanupCheck(wireEl);
 
@@ -248,7 +485,6 @@ describe('CaviWireElement auto-cleanup (auto-cleanup attribute)', () => {
     const wireEl = document.createElement('cavi-wire') as CaviWireElement;
     wireEl.setAttribute('length', '4');
     wireEl.setAttribute('type', 'audio');
-    wireEl.setAttribute('auto-cleanup', '');
     const origin = document.createElement('cavi-plug');
     origin.setAttribute('node', '0');
     origin.setAttribute('jack', 'j1');
@@ -259,24 +495,23 @@ describe('CaviWireElement auto-cleanup (auto-cleanup attribute)', () => {
     document.body.appendChild(wireEl);
 
     expect(jack.plugCount).toBe(1);
+    orphan(wireEl);
 
-    const plugEls = wireEl.querySelectorAll('cavi-plug');
-    vi.spyOn(plugEls[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugEls[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireEl, 9999, 9999, 9999, 9999);
 
     runCleanupCheck(wireEl);
 
     expect(jack.plugCount).toBe(0);
   });
 
-  it('rebinds a surviving wire whose WASM index shifts after an earlier wire is deleted', () => {
+  it('keeps a surviving wire correct after an earlier wire is deleted and its WASM index shifts', () => {
     const container = makeContainer(0, 0, 500, 500);
     const cavi = new FakeCavi(container);
     Cavi.shared = cavi as unknown as Cavi;
 
     // wireA is created first (index 0, will be deleted), wireB second
     // (index 1, must survive with correct data after wireA is removed).
-    const wireA = makeWireEl({ length: '4', 'auto-cleanup': '' });
+    const wireA = orphan(makeWireEl({ length: '4' }));
     const wireB = makeWireEl({ length: '4' });
 
     const bIndexBefore = wireB.getWire()!.getIndex();
@@ -286,9 +521,7 @@ describe('CaviWireElement auto-cleanup (auto-cleanup attribute)', () => {
     bNode0.setPosition(111, 222);
     wireB.getWire()!.setColor('#123456');
 
-    const plugsA = wireA.querySelectorAll('cavi-plug');
-    vi.spyOn(plugsA[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugsA[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireA, 9999, 9999, 9999, 9999);
 
     runCleanupCheck(wireA);
 
@@ -298,18 +531,18 @@ describe('CaviWireElement auto-cleanup (auto-cleanup attribute)', () => {
     // wireB's own cached Wire (and its plugs' Nodes) must now reflect the
     // shifted index (0) and still return the correct, un-corrupted data —
     // not the stale index 1, which no longer maps to wireB after deletion.
+    // The handle is the very same object: shifted in place, not replaced.
     expect(wireB.getWire()!.getIndex()).toBe(0);
     expect(wireB.getWire()!.getNodeCount()).toBe(4);
     expect(wireB.getWire()!.getNode(0)!.x).toBe(111);
     expect(wireB.getWire()!.getNode(0)!.y).toBe(222);
-    // Regression: World.deleteWire() recreates wrapper objects for shifted
-    // wires — color (JS-only metadata, never stored in WASM) must be
-    // carried over onto the fresh wrapper, or it silently resets.
+    // Color is JS-only metadata (never stored in WASM) — it must survive
+    // the shift untouched.
     expect(wireB.getWire()!.getColor()).toBe('#123456');
 
-    // The plug's own bound Node must have been rebound too, not just the
-    // wire — update() (public, no-op only while dragging) re-syncs the
-    // plug's on-screen position from whatever Node it currently holds.
+    // The plug's own bound Node must follow too, not just the wire —
+    // update() (public, no-op only while dragging) re-syncs the plug's
+    // on-screen position from whatever Node it currently holds.
     const plugB0 = wireB.querySelectorAll('cavi-plug')[0] as unknown as {
       update(): void;
     } & HTMLElement;
@@ -318,12 +551,12 @@ describe('CaviWireElement auto-cleanup (auto-cleanup attribute)', () => {
     expect(plugB0.style.top).toBe('222px');
   });
 
-  it('rebinds a grown free plug to its real (shifted) terminal, not the stale creation-time index', () => {
+  it('keeps a grown free plug on its real (shifted) terminal, not the stale creation-time index', () => {
     const container = makeContainer(0, 0, 500, 500);
     const cavi = new FakeCavi(container);
     Cavi.shared = cavi as unknown as Cavi;
 
-    const wireA = makeWireEl({ length: '4', 'auto-cleanup': '' });
+    const wireA = orphan(makeWireEl({ length: '4' }));
     const wireB = makeWireEl({ length: '4' });
 
     // Simulate Jack._growCable growing wireB's free end from node 3 to
@@ -343,17 +576,99 @@ describe('CaviWireElement auto-cleanup (auto-cleanup attribute)', () => {
     const followPlugB = wireB.querySelectorAll('cavi-plug')[1] as HTMLElement;
     followPlugB.setAttribute('node', String(wireBWire.getNodeCount() - 1));
 
-    const plugsA = wireA.querySelectorAll('cavi-plug');
-    vi.spyOn(plugsA[0], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
-    vi.spyOn(plugsA[1], 'getBoundingClientRect').mockReturnValue(rect(9999, 9999, 10, 10));
+    placeEnds(wireA, 9999, 9999, 9999, 9999);
 
     runCleanupCheck(wireA);
 
     expect(wireB.getWire()!.getIndex()).toBe(0);
     expect(wireB.getWire()!.getNodeCount()).toBe(6);
-    // _rebindAfterIndexShift already calls Plug.setNode -> updatePosition
-    // synchronously, so the DOM position reflects the rebind immediately.
+    (followPlugB as unknown as { update(): void }).update();
     expect(followPlugB.style.left).toBe(`${originalX}px`);
     expect(followPlugB.style.top).toBe(`${originalY}px`);
+  });
+});
+
+describe('CaviWireElement lifecycle', () => {
+  it('removing a <cavi-wire> from the DOM deletes its WASM wire (no ghost cable left simulated)', async () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    Cavi.shared = cavi as unknown as Cavi;
+
+    const wireA = makeWireEl({ length: '4' });
+    const wireB = makeWireEl({ length: '4' });
+    const handleA = wireA.getWire()!;
+
+    wireA.remove();
+    await Promise.resolve(); // deletion is deferred by one microtask
+
+    expect(cavi.deletedIndices).toEqual([0]);
+    expect(handleA.getIndex()).toBe(-1);
+    expect(wireB.getWire()!.getIndex()).toBe(0);
+  });
+
+  it('moving a <cavi-wire> within the DOM keeps its wire: neither deleted nor duplicated', async () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    Cavi.shared = cavi as unknown as Cavi;
+    const addWire = vi.spyOn(cavi, 'addWire');
+
+    const wireEl = makeWireEl({ length: '4' });
+    const handle = wireEl.getWire();
+    const otherParent = document.createElement('div');
+    document.body.appendChild(otherParent);
+    otherParent.appendChild(wireEl);
+    await Promise.resolve();
+
+    expect(addWire).toHaveBeenCalledTimes(1);
+    expect(cavi.deletedIndices).toEqual([]);
+    expect(wireEl.getWire()).toBe(handle);
+  });
+
+  it('does not create a wire if removed before caviready fires', () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    const addWire = vi.spyOn(cavi, 'addWire');
+
+    const wireEl = makeWireEl({ length: '4' }); // Cavi.shared is null: waits for caviready
+    wireEl.remove();
+    document.dispatchEvent(new CustomEvent('caviready', { detail: { cavi } }));
+
+    expect(addWire).not.toHaveBeenCalled();
+    expect(wireEl.getWire()).toBeNull();
+  });
+});
+
+describe('CaviWireElement declarative jack wiring — auto-detected position (no x/y attributes)', () => {
+  it("seeds the wire endpoint from a jack-bound plug whose jack has no x/y, using the jack's rendered position", () => {
+    const container = makeContainer(0, 0, 500, 500);
+    const cavi = new FakeCavi(container);
+    Cavi.shared = cavi as unknown as Cavi;
+
+    // No x/y attributes: this jack is positioned purely by CSS (or, here,
+    // by a mocked rendered box) — exactly the case getWorldPosition()'s
+    // auto-detect fallback exists for.
+    const jack = document.createElement('cavi-jack') as Jack;
+    jack.id = 'j1';
+    jack.setAttribute('type', 'audio');
+    document.body.appendChild(jack);
+    vi.spyOn(jack, 'getBoundingClientRect').mockReturnValue(rect(123, 45, 0, 0));
+
+    const wireEl = document.createElement('cavi-wire') as CaviWireElement;
+    wireEl.setAttribute('length', '4');
+    wireEl.setAttribute('type', 'audio');
+    const origin = document.createElement('cavi-plug');
+    origin.setAttribute('node', '0');
+    origin.setAttribute('jack', 'j1');
+    const free = document.createElement('cavi-plug');
+    free.setAttribute('node', '3');
+    wireEl.appendChild(origin);
+    wireEl.appendChild(free);
+    document.body.appendChild(wireEl);
+
+    const wire = wireEl.getWire()!;
+    expect(wire.getNode(0)!.x).toBe(123);
+    expect(wire.getNode(0)!.y).toBe(45);
+    expect(wire.getNode(0)!.fixed).toBe(true);
+    expect(jack.plugCount).toBe(1);
   });
 });

@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: cavijs
+
+      # While package.json points at a local build of the engine
+      # ("cavi": "link:../cavi/pkg", on development branches), build it
+      # next to this repository. CAVI_REF (a repository variable) picks the
+      # cavi branch to build, main by default.
+      - name: Check how cavi is resolved
+        id: cavi
+        working-directory: cavijs
+        run: |
+          if grep -q '"cavi": "link:../cavi/pkg"' package.json; then
+            echo "local=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Checkout cavi
+        if: steps.cavi.outputs.local == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: teo666/cavi
+          ref: ${{ vars.CAVI_REF || 'main' }}
+          path: cavi
+          # Needed only if teo666/cavi is private.
+          token: ${{ secrets.CAVI_TOKEN || github.token }}
+      - name: Build cavi
+        if: steps.cavi.outputs.local == 'true'
+        working-directory: cavi
+        run: |
+          rustup target add wasm32-unknown-unknown
+          curl -sSf https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+          wasm-pack build --target web
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: cavijs/package.json
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: cavijs/pnpm-lock.yaml
+      - name: Install dependencies
+        working-directory: cavijs
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        working-directory: cavijs
+        run: pnpm lint
+      - name: Format
+        working-directory: cavijs
+        run: pnpm format:check
+      - name: Unit tests
+        working-directory: cavijs
+        run: pnpm test
+      - name: Build (type-check and demo site)
+        working-directory: cavijs
+        run: pnpm build
+      - name: Build the library
+        working-directory: cavijs
+        run: pnpm build:lib
+      # Google Chrome is preinstalled on GitHub's Ubuntu runners, which is
+      # what playwright.config.ts uses (channel: 'chrome').
+      - name: End-to-end tests
+        working-directory: cavijs
+        run: pnpm test:e2e
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            cavijs/playwright-report
+            cavijs/test-results
+          retention-days: 7

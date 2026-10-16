@@ -1,6 +1,6 @@
 import { Cavi } from '../src/core/cavi';
 import { SvgRenderer } from '../src/renderer/renderer-svg';
-import { CaviControls } from '../src/component/controls';
+import { CaviControls } from './controls';
 import './style.css';
 
 /**

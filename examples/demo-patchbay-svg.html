@@ -93,7 +93,7 @@
        * #panel is sized to its own content (min-height:100%, grows taller
        * with enough module rows) and never clips — it's also the element
        * passed to SvgRenderer/Cavi as the "container" (jack x/y coordinates,
-       * svg sizing, and CaviWireElement's auto-cleanup bounds check are
+       * svg sizing, and CaviWireElement's orphan-cleanup bounds check are
        * all relative to it, see src/example3-svg.ts). #panelScroll is the
        * one that actually clips + scrolls. Auto-cleanup deletes a cable once
        * every plug drifts outside `_container.getBoundingClientRect()` —

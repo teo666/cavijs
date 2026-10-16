@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>cavijs - Two worlds</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        background: #181818;
+        color: #ddd;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0 0 4px;
+      }
+      p.note {
+        max-width: 720px;
+        color: #999;
+        font-size: 13px;
+        line-height: 1.5;
+        margin: 0 0 20px;
+      }
+      p.note code {
+        color: #9fd8e0;
+      }
+      .worlds {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+      }
+      .label {
+        font-size: 12px;
+        color: #999;
+        margin: 0 0 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Two worlds on one page</h1>
+    <p class="note">
+      Two independent <code>&lt;cavi-world&gt;</code>s, each with its own physics, cables and
+      interaction. The second one lives inside a shadow root, and both use the same jack ids
+      (<code>in</code>, <code>out</code>, <code>aux</code>): a cable's <code>jack="id"</code> is
+      resolved among its own world's jacks only. Click a jack to pull a new cable, click another to
+      plug it in.
+    </p>
+    <div class="worlds">
+      <div>
+        <p class="label">World A (light DOM)</p>
+        <div id="world-a-slot"></div>
+      </div>
+      <div>
+        <p class="label">World B (inside a shadow root)</p>
+        <div id="shadow-host"></div>
+      </div>
+    </div>
+    <script type="module" src="./demo-two-worlds.ts"></script>
+  </body>
+</html>

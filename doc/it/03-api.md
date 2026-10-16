@@ -1,8 +1,8 @@
 # Cavijs — Riferimento API
 
-Wrapper TypeScript attorno al motore WASM [`cavi`](../../../cavi/doc/it/03-api.md). Import da `cavijs` (`src/types.ts` ri-esporta `Node`, `Wire`, `World`, `Cavi`).
+Wrapper TypeScript attorno al motore WASM [`cavi`](../../../cavi/doc/it/03-api.md). Import da `cavijs`: `src/index.ts` esporta tutte le classi qui sotto e registra i custom element.
 
-## `Cavi` (`src/cavi.ts`)
+## `Cavi` (`src/core/cavi.ts`)
 
 Classe facade principale — il punto di ingresso consigliato.
 
@@ -10,43 +10,78 @@ Classe facade principale — il punto di ingresso consigliato.
 static initWasm(): Promise<void>          // carica il modulo WASM (imposta Cavi.wasm)
 init(): Promise<void>
 getWorld(): World
-setRenderer(renderer: IRenderer): void
+setRenderer(renderer: IRenderer | null): void  // ferma e deregistra il precedente
+destroy(): void                         // smonta la simulazione per sempre (vedi sotto)
+isDestroyed(): boolean
 getRenderer(): IRenderer | null
 addWire(x1, y1, x2, y2, nodes, tension, radius, type): Wire
-deleteWire(index: number): void
+deleteWire(wire: Wire | number): void  // per handle (preferibile) o indice attuale
 clearAllWires(): void
 setAcceleration(x: number, y: number): void
 getAcceleration(): { x: number, y: number }
 getWireByIndex(index: number): Wire | null
 getWires(): Wire[]
-update(): void
+update(): void                          // un passo fisico — il loop di rendering avanza già da solo
 setMouse(x: number, y: number): void
+releaseMouse(): void
+setStepRate(stepsPerSecond: number): void  // default 60
+getStepRate(): number
+setTimeStep(timeStep: number): void     // tempo simulato per sotto-passo del motore, default 0.3
+setSubsteps(substeps: number): void     // sotto-passi del motore per passo, default 2 (cambia anche la velocità)
+setConstraintIterations(iterations: number): void  // passate di rilassamento dei vincoli per sotto-passo, default 1 (solo rigidità)
+setSleepEnabled(enabled: boolean): void  // vedi World.setSleepEnabled
 render(): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
 getContainer(): HTMLElement | null
+getSurface(): HTMLElement | null        // la superficie di disegno del renderer (il container, se non è stata data una `surface`)
+setCoordinateTransformProvider(fn: (() => CoordinateTransform) | null): void
+getCoordinateTransform(): CoordinateTransform
+notifyCoordinateTransformChanged(): void  // facoltativo: invia cavi-transform-change per il codice della pagina
+static for(el: Element): Cavi | null   // il Cavi a cui appartiene `el`
+static whenReady(el: Element, fn: (cavi: Cavi) => void): void
 ```
 
-`Cavi.wasm: InitOutput` (statico) contiene il modulo WASM caricato, incluso `.memory`, usato da `Renderer` per l'accesso a copia zero al buffer. `Cavi.shared` è uno slot statico per un'istanza condivisa (attualmente non usato dalla demo — verificare prima di farci affidamento).
+`Cavi.wasm: InitOutput` (statico) contiene il modulo WASM caricato, incluso `.memory`, usato da `Renderer` per l'accesso a copia zero al buffer. `Cavi.for(el)` restituisce il `Cavi` a cui appartiene un elemento — quello il cui container del renderer (registrato da `setRenderer`) è `el` o il suo antenato più vicino — così più mondi possono coesistere nella stessa pagina; restituisce `null` dentro un `<cavi-world>` ancora in inizializzazione, e ripiega su `Cavi.shared` (l'ultimo mondo inizializzato, mantenuto per compatibilità) fuori da qualunque container registrato. `Cavi.whenReady(el, fn)` esegue `fn` appena quell'istanza esiste. Vedi [Zoom, pan e più mondi](./06-zoom-multiworld.md).
 
-## `World` (`src/world.ts`)
+## `World` (`src/core/world.ts`)
 
 Avvolge `WasmWorld`; espone la gestione dei cavi e i parametri globali.
 
 ```typescript
-getWasmWorld(): WasmWorld
+getWasmWorld(): WasmWorld               // per renderer e parametri: aggiungere/togliere cavi e nodi solo tramite World/Wire
 addWire(x1, y1, x2, y2, nodes, tension, radius, renderType): Wire
-deleteWire(index: number): void
+deleteWire(wire: Wire | number): void  // per handle (preferibile) o indice attuale
 clearAllWires(): void
 setAcceleration(x: number, y: number): void
 getAcceleration(): { x: number, y: number }
-setRenderer(renderer: IRenderer): void
+setRenderer(renderer: IRenderer | null): void  // ferma il precedente
+destroy(): void
+isDestroyed(): boolean
 getRenderer(): IRenderer | null
 getWireByIndex(index: number): Wire | null
-getWires(): Wire[]
+getWires(): Wire[]                      // una copia
+getWiresView(): readonly Wire[]         // la lista viva, senza copia: per chi legge a ogni frame (renderer)
 getWireCount(): number
-update(): void
+update(): void                          // esattamente un passo fisico
+addFrameTask(task: FrameTask): () => void  // registra lavoro DOM per frame, ritorna una funzione per rimuoverlo
+runFrameTasks(): void                   // esegue tutti i task: prima le letture, poi le scritture (lo chiama il renderer)
+advance(elapsedMs: number): number      // passi a frequenza fissa, ritorna quanti ne ha eseguiti
+setStepRate(stepsPerSecond: number): void
+getStepRate(): number
+setTimeStep(timeStep: number): void     // tempo simulato per sotto-passo del motore, default 0.3
+setSubsteps(substeps: number): void     // sotto-passi del motore per passo, default 2 (cambia anche la velocità)
+setConstraintIterations(iterations: number): void  // passate di rilassamento dei vincoli per sotto-passo, default 1 (solo rigidità)
+holdWire(wire: Wire): void              // il cavo trascinato: il mouse non lo respinge
+releaseHeldWire(wire?: Wire): void       // solo se `wire` è quello tenuto, quando indicato
+getHeldWire(): Wire | null
+setPointerRadius(radius: number): void   // portata del punto tenuto sugli altri cavi, default 20
+setSleepEnabled(enabled: boolean): void  // sospensione dei cavi fermi, default true
+setSleepThreshold(threshold: number): void  // default 0.01
+setSleepSteps(steps: number): void       // default 30
+getSleepingWireCount(): number
 setMouse(x: number, y: number): void
+releaseMouse(): void                    // parcheggia il mouse del motore fuori portata
 getWireDataPtr(): number
 getWireDataLen(): number
 setMouseRadius(radius: number): void
@@ -55,18 +90,17 @@ setFriction(friction: number): void
 getFriction(): number
 ```
 
-Il costruttore di `World` imposta `response_coef` a `0.0` di default (risposta alla self-collision dei cavi disabilitata a meno di attivazione esplicita). Mantiene un proprio array `Wire[]` sincronizzato con gli indici dei cavi WASM — `deleteWire` ricrea i wrapper `Wire` per ogni cavo successivo a quello eliminato, poiché gli indici si spostano, riportando anche sul nuovo wrapper i metadati (`meta`, es. `color`) del vecchio — dato che vivono solo lato JS e non in WASM, andrebbero altrimenti persi silenziosamente (bug corretto qui, non nel livello `CaviWireElement`/DOM, dato che è un problema puramente di `World`/`Wire`).
+Il costruttore di `World` imposta `response_coef` a `0.0` di default (risposta alla self-collision dei cavi disabilitata a meno di attivazione esplicita). Mantiene un proprio array `Wire[]` sincronizzato con gli indici dei cavi WASM: `deleteWire` scala **sul posto** l'indice di ogni handle `Wire` successivo (`Wire._setIndex`) e imposta a `-1` quello cancellato, che diventa un no-op. Ogni riferimento `Wire`/`Node` tenuto altrove (un `CaviWireElement`, una `CableSession`, il `Node` di un `Plug`) resta quindi valido dopo una cancellazione — nessun ri-aggancio necessario. `World` contiene anche il provider della trasformazione di coordinate (`setCoordinateTransformProvider`/`getCoordinateTransform`), così un renderer legge sempre lo zoom del proprio mondo.
 
-> **Attenzione**: `deleteWire`/`Cavi.deleteWire` ricreano solo i wrapper `Wire` interni di `World`. Qualunque `Wire`/`Node` ottenuto **prima** della cancellazione e tenuto altrove (una cache, una chiusura, ecc.) mantiene il vecchio indice e continua silenziosamente a leggere/scrivere il cavo sbagliato dopo che gli indici si sono spostati. `CaviWireElement` (`src/wirewc.ts`) gestisce già questo caso per i cavi dichiarativi/creati da `Jack` tramite un proprio registro statico e un ri-aggancio (`_rebindAfterIndexShift`) eseguito subito dopo ogni `deleteWire` — vedi la sezione auto-cleanup in [`Jack`/`Plug`](./05-jack-plug.md). Chi chiama `deleteWire` al di fuori di `CaviWireElement` (es. direttamente su `World`/`Cavi`) deve gestire da sé il ri-aggancio di eventuali riferimenti già in cache.
-
-## `Wire` (`src/wire.ts`)
+## `Wire` (`src/core/wire.ts`)
 
 Controparte TypeScript di un cavo WASM. Aggiunge un dizionario `meta: WireMeta` che vive puramente in JS (mai inviato a WASM) per dati di rendering/estensione come il colore.
 
 ```typescript
+delete(): void                          // cancella questo cavo dal suo mondo, qualunque sia il suo indice
 addNode(x: number, y: number, fixed?: boolean): void
 addNodeAt(index: number, x: number, y: number, fixed?: boolean): void
-removeNode(index: number): void
+removeNode(index: number): boolean        // false se lascerebbe meno di 2 nodi
 getNodeCount(): number
 setNodeCount(count: number): void
 getNode(index: number): Node | null
@@ -77,6 +111,11 @@ setColor(color: string): void
 getColor(): string | undefined
 setRadius(radius: number): void
 getRadius(): number
+setRenderType(renderType: number): void  // 0 = segmenti, 1 = bezier
+getRenderType(): number
+setLinkDistance(distance: number): void  // distanza a riposo tra i nodi (setRadius non la cambia più)
+getLinkDistance(): number
+isSleeping(): boolean
 getIndex(): number
 ```
 
@@ -91,9 +130,15 @@ wire.setMetaData('pattern', 'dashed');
 
 Un `Wire` costruito senza argomenti `(world, wireIndex)` è "scollegato" — tutti i suoi metodi che comunicano con WASM diventano no-op / ritornano valori di default, ciò che accade se si fa `new Wire()` direttamente invece che tramite `World.addWire`.
 
-`setNodeCount(count)` ridimensiona il cavo a runtime: ricostruisce l'intero vettore di nodi, preservando posizione e stato `fixed` dei due nodi terminali e ridistribuendo linearmente i nodi intermedi tra di essi (lo stato di eventuali nodi intermedi preesistenti viene perso). Usato da [`Jack`](./05-jack-plug.md) per far crescere il cavo mentre lo si trascina fuori da una presa — dato che l'indice dell'ultimo nodo cambia dopo il resize, chi tiene un riferimento al nodo terminale (es. un `Plug`) deve ri-agganciarsi con `wire.getNode(wire.getNodeCount() - 1)`.
+`setNodeCount(count)` ridimensiona il cavo a runtime: ricostruisce l'intero vettore di nodi, preservando posizione e stato `fixed` dei due nodi terminali e ridistribuendo linearmente i nodi intermedi tra di essi (lo stato di eventuali nodi intermedi preesistenti viene perso).
 
-## `Node` (`src/node.ts`)
+`getNode(index)` restituisce un solo handle per nodo, e l'handle segue il suo nodo quando vengono inseriti o tolti nodi prima di lui tramite questo `Wire` (`addNodeAt`, `removeNode`, `setNodeCount`): un `Plug` legato al terminale resta sul terminale quando [`Jack`](./05-jack-plug.md) allunga un cavo inserendo nodi, o quando si aggiungono nodi da codice. L'handle di un nodo rimosso (o di un nodo intermedio scartato da `setNodeCount`) viene invalidato: i suoi metodi non fanno più niente. Le modifiche ai nodi fatte direttamente sul `WasmWorld` (`getWasmWorld()`) aggirano questo meccanismo.
+
+### Smontare un mondo
+
+`Cavi.destroy()` ferma il renderer, libera il mondo WASM, toglie il container del renderer da `Cavi.for` e azzera `Cavi.shared` se punta a questa istanza. Tutti gli handle `Wire` e `Node` del mondo vengono invalidati, così gli elementi che ne tengono ancora uno fanno pulizia senza toccare memoria liberata. L'istanza non va più usata (lo dice `isDestroyed()`). `<cavi-world>` lo fa da solo quando viene rimosso dalla pagina (non quando viene solo spostato) e, se viene inserito di nuovo più tardi, crea un mondo nuovo mantenendo la trasformazione di coordinate registrata con `setCoordinateTransform`.
+
+## `Node` (`src/core/node.ts`)
 
 Controparte TypeScript di un nodo WASM — un singolo punto di un cavo (posizione, velocità, stato fisso).
 
@@ -106,15 +151,17 @@ setPosition(x: number, y: number): void
 setMousePosition(x: number, y: number): void   // inoltra a World.setMouse
 ```
 
-Un `Node` può essere "live" (costruito con `world`/`wireIndex`/`nodeIndex`, es. tramite `Wire.getNode()`) — nel qual caso `x`/`y` sono sempre letti direttamente da WASM — oppure un semplice contenitore di dati (costruito solo con `x`/`y`/`fixed`/una copia opzionale di `wasmNode`), usato ad esempio da `Plug` per collegarsi a un nodo specifico.
+Un `Node` è "live" (costruito con `world`/`wire`/`nodeIndex`, come fa `Wire.getNode()`) — `x`/`y`/`fixed` sono allora sempre letti da WASM attraverso il suo `Wire`, quindi segue l'indice del cavo se un cavo precedente viene cancellato — oppure un semplice contenitore di dati (costruito solo con `x`/`y`/`fixed`), usato ad esempio nei test. `Wire.getNode(index)` restituisce `null` per un indice fuori range.
 
-## `Renderer` (`src/renderer.ts`)
+## `Renderer` (`src/renderer/renderer.ts`)
 
 Renderer Canvas 2D che implementa `IRenderer`.
 
 ```typescript
-constructor(container: HTMLElement, world: World)
-// cerca '#wireCanvas' dentro `container` e ne ottiene il contesto 2D
+constructor(container: HTMLElement, world: World, options?: RendererOptions & { canvas?: HTMLCanvasElement })
+// usa options.canvas (qualsiasi canvas, ovunque: la sua posizione a schermo viene misurata
+// a ogni frame), altrimenti '#wireCanvas' nell'host (options.surface, altrimenti container),
+// creandolo se manca
 
 render(): void            // metodo principale di rendering; include il loop di animazione auto-pianificato
 clear(): void
@@ -122,21 +169,26 @@ getFPS(): number
 drawInteractionRadii(x: number, y: number): void
 setDebugDrawNodes(enabled: boolean): void
 getDebugDrawNodes(): boolean
-getContainer(): HTMLElement   // l'elemento passato al costruttore
+getContainer(): HTMLElement   // l'elemento passato al costruttore (origine del mondo)
+getSurface(): HTMLElement     // options.surface, altrimenti il container
+stop(): void                  // ferma il loop, rimuove il listener del puntatore, pulisce il canvas
 ```
 
 **Caratteristiche:**
 
 - Accesso diretto alla memoria WASM per un rendering efficiente (vista `Float32Array` a copia zero su `Cavi.wasm.memory.buffer`)
-- Legge i colori dei cavi dai metadati di `Wire`, ricadendo su una palette di default (`['#00ff88', '#ff00ff', '#ffaa00']`) in base all'indice del cavo
+- Legge i colori dei cavi dai metadati di `Wire`. `World.addWire` assegna a ogni cavo nuovo un colore da `DEFAULT_WIRE_COLORS` (`['#00ff88', '#ff00ff', '#ffaa00']`, in ordine di creazione), così cancellare un cavo non cambia mai il colore degli altri
 - Supporta sia il rendering a segmenti (`ctx.lineTo`) sia Bezier (`ctx.bezierCurveTo`), in base al `render_type` codificato nel buffer dati dei cavi
 - Loop `requestAnimationFrame` integrato con tracciamento FPS (aggiornato una volta al secondo)
 - Disegna indicatori del raggio di interazione mouse/puntatore (cerchi tratteggiati) alla posizione corrente del mouse
-- Collega un proprio listener `mousemove` su `container`; gestisce anche il trascinamento degli estremi dei cavi (`set_wire_start`/`set_wire_end`) quando `draggedWire`/`draggedEndpoint` sono impostati (il collegamento inizio/fine drag per questo non è presente in `Renderer` stesso — vedi `Plug` per il modello di interazione drag usato dai componenti Jack/Plug)
-- Chiama internamente `world.update()` ad ogni frame — chi usa il loop di `Renderer.render()` **non** dovrebbe chiamare anche `Cavi.update()`/`World.update()` ad ogni frame
-- `setDebugDrawNodes(true)` (opzione globale, default `false`) attiva un overlay di debug che disegna la circonferenza di ogni nodo di ogni cavo (via `Wire.getNode()`, non parsing del buffer path) alla sua posizione fisica reale, con raggio pari a `Wire.getRadius()` — utile per verificare la posizione dei nodi indipendentemente dal path renderizzato (segmenti/Bezier)
+- Mentre è attivo ascolta gli eventi del puntatore sul document (rimossi da `stop()`) e passa alla fisica la posizione del mouse in coordinate del mondo, tramite lo stesso `clientToWorld` consapevole dello zoom usato ovunque (`PointerTracker`, `src/renderer/pointer.ts`). Quando nessun puntatore è sopra la superficie (è uscito dalla superficie o dalla finestra, o un tocco è finito) il mouse del motore viene parcheggiato fuori portata (`World.releaseMouse`), perché il motore lo applica a ogni cavo a ogni passo
+- `render()` è idempotente (una seconda chiamata non avvia un secondo loop) e può essere richiamato dopo `stop()`
+- HiDPI: il backing store del canvas è `devicePixelRatio` volte la sua dimensione CSS (vedi `sizeCanvasToHost`), e il renderer scala il disegno di conseguenza
+- `options.surface`: vedi [Zoom, pan e più mondi](./06-zoom-multiworld.md) — il canvas vive su un elemento non trasformato e il renderer applica da sé lo zoom registrato, così i cavi non vengono mai tagliati al box del container
+- Fa avanzare la fisica con `world.advance(elapsed)` ad ogni frame: un numero fisso di passi al secondo (`getStepRate()`, default 60) qualunque sia la frequenza dello schermo, così i cavi si muovono alla stessa velocità a 60, 120 o 144 Hz. Le pause lunghe (una scheda in background) non vengono recuperate. Chi usa il loop di `Renderer.render()` **non** dovrebbe chiamare anche `Cavi.update()`/`World.update()` ad ogni frame
+- `setDebugDrawNodes(true)` (opzione globale, default `false`) attiva un overlay di debug che disegna la circonferenza di ogni nodo di ogni cavo (letta direttamente da WASM, non dal parsing del buffer path) alla sua posizione fisica reale, con raggio pari a `Wire.getRadius()` — utile per verificare la posizione dei nodi indipendentemente dal path renderizzato (segmenti/Bezier)
 
-## `IRenderer` (`src/types.ts`)
+## `IRenderer` (`src/core/types.ts`)
 
 ```typescript
 interface IRenderer {
@@ -144,12 +196,14 @@ interface IRenderer {
   setDebugDrawNodes: (enabled: boolean) => void;
   getDebugDrawNodes: () => boolean;
   getContainer: () => HTMLElement;
+  getSurface?: () => HTMLElement; // opzionale: default getContainer()
+  stop: () => void;
 }
 ```
 
 Implementarla per costruire un renderer personalizzato (es. WebGL, SVG) — `Cavi.setRenderer()` / `World.setRenderer()` accettano qualsiasi cosa la soddisfi.
 
-## `IInteractionController` (`src/types.ts`)
+## `IInteractionController` (`src/core/types.ts`)
 
 ```typescript
 interface IInteractionController {
@@ -158,27 +212,21 @@ interface IInteractionController {
 }
 ```
 
-Contratto per qualunque cosa gestisca l'interazione utente (drag, click, touch...) con `Jack`/`Plug` — pluggabile allo stesso modo di `IRenderer`. Vedi [Componenti Jack & Plug](./05-jack-plug.md#interazione-standardinteractioncontroller-e-cavi-interaction) per l'implementazione standard (`StandardInteractionController`) e come sostituirla.
+Contratto per qualunque cosa gestisca l'interazione utente (drag, click, touch...) con `Jack`/`Plug` — pluggabile allo stesso modo di `IRenderer`. Vedi [Componenti Jack & Plug](./05-jack-plug.md#interazione-standardinteractioncontroller-e-cavi-interaction) per le implementazioni standard (`StandardInteractionController` per il puntatore, `KeyboardInteractionController` per la tastiera) e per come `<cavi-interaction>` ne collega una lista (`controllers`, `no-keyboard`).
 
-## `CaviControls` (`src/controls.ts`)
+## `SvgRenderer` (`src/renderer/renderer-svg.ts`)
 
-Un Web Component `<cavi-controls>` che fornisce un pannello GUI di debug/tuning (Shadow DOM), stilizzato come una card scura e scrollabile.
-
-```typescript
-setCavi(cavi: Cavi): void   // collega il pannello a un'istanza Cavi e avvia il polling delle statistiche
-```
-
-**Mostra (auto-aggiornato ogni 100ms):** FPS, numero di cavi, punti totali su tutti i cavi, dimensione del buffer WASM (KB), X/Y del mouse, accelerazione X/Y.
-
-**Fornisce controlli per:** raggio del mouse, raggio del puntatore, coefficiente di risposta, attrito, accelerazione X/Y, numero di nodi per cavo, oltre ad azioni (aggiungi cavo casuale, cancella tutti i cavi, aggiungi nodi a un cavo) — vedi `src/controls.ts` per gli ID/collegamenti esatti dei controlli.
+Un'alternativa a `Renderer` che implementa lo stesso `IRenderer`: ogni cavo è un `<path>` SVG, mantenuto da un frame all'altro e riscritto solo quando il cavo si è mosso o è cambiato. Crea il proprio `<svg>` dentro il container (o usa `options.svg`), e supporta `options.surface` come `Renderer` (vedi [Zoom, pan e più mondi](./06-zoom-multiworld.md)). `<cavi-world>` usa sempre il `Renderer` su canvas, quindi `SvgRenderer` si collega a mano (vedi `examples/main-svg.ts`).
 
 ```typescript
-import { CaviControls } from 'cavijs';
-
-const controls = document.createElement('cavi-controls') as CaviControls;
-document.body.appendChild(controls);
-controls.setCavi(cavi);
+constructor(container: HTMLElement, world: World, options?: RendererOptions & { svg?: SVGSVGElement })
 ```
+
+## `<cavi-debug>` (`src/debug/debugwc.ts`)
+
+Un pannello di debug per qualunque mondo della pagina: statistiche dal vivo, il log degli eventi e gli interruttori degli overlay di debug. Vedi [Debug ed eventi](./07-debug.md).
+
+Le demo `demo-basic.html` e `demo-svg.html` usano un loro pannello di controllo, `<cavi-controls>` (`examples/controls.ts`). È codice d'esempio, non fa parte della libreria.
 
 ## Esempio d'uso completo
 
@@ -188,8 +236,8 @@ import { Cavi, Renderer } from 'cavijs';
 await Cavi.initWasm();
 
 const cavi = new Cavi();
-const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-const renderer = new Renderer(canvas, cavi.getWorld());
+const container = document.getElementById('container') as HTMLElement;
+const renderer = new Renderer(container, cavi.getWorld()); // crea #wireCanvas se manca
 cavi.setRenderer(renderer);
 
 const wire1 = cavi.addWire(100, 100, 500, 100, 20, 10, 5, 1);
@@ -203,6 +251,44 @@ cavi.setAcceleration(0, 9.8);
 
 renderer.render(); // avvia il loop di animazione interno
 ```
+
+## Attributi di `<cavi-world>`
+
+Gli attributi di impostazione sono live: cambiarne uno dopo lo applica al mondo in esecuzione, e toglierlo ripristina il default.
+
+| Attributo                | Default       | Descrizione                                                                                                |
+| ------------------------ | ------------- | ---------------------------------------------------------------------------------------------------------- |
+| `gravity-x`, `gravity-y` | `0`, `5`      | Accelerazione globale                                                                                      |
+| `step-rate`              | `60`          | Passi fisici al secondo, qualunque sia la frequenza dello schermo                                          |
+| `sleep`                  | attivo        | `off` continua a simulare i cavi fermi invece di addormentarli                                             |
+| `orphan-cleanup`         | attivo        | `off` tiene i cavi senza capi fissi anche fuori vista                                                      |
+| `cable-drop-behavior`    | `detach`      | Un cavo nuovo lasciato nel vuoto: `detach` (cade), `dangle` (resta sul suo jack), `cancel` (viene rimosso) |
+| `plug-spread-mode`       | `towardOther` | Come si aprono i plug di un jack in hover: `towardOther` o `radial`                                        |
+| `plug-spread-radius`     | `1.8`         | Quanto si aprono, in mezze dimensioni del jack                                                             |
+| `plug-spread-timeout`    | `500`         | Ms prima che si richiudano quando il puntatore se ne va                                                    |
+| `debug-nodes`            | assente       | Disegna tutti i nodi e i raggi del puntatore                                                               |
+| `wire-shadows`           | assente       | Ombra morbida sotto ogni cavo (renderer canvas)                                                            |
+
+Letti solo quando il mondo viene creato:
+
+| Attributo               | Descrizione                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `surface="<selettore>"` | Un antenato non trasformato su cui disegnare, per pan/zoom — vedi [Zoom, pan e più mondi](./06-zoom-multiworld.md) |
+| `canvas="<selettore>"`  | Un canvas proprio su cui disegnare                                                                                 |
+| `no-interaction`        | Nessun `<cavi-interaction>` di default: niente reagisce a puntatore o tastiera finché non aggiungi un controller   |
+
+## Attributi di `<cavi-wire>`
+
+Tutti live: cambiarne uno aggiorna il cavo in esecuzione.
+
+| Attributo     | Default   | Descrizione                                                                     |
+| ------------- | --------- | ------------------------------------------------------------------------------- |
+| `length`      | `10`      | Numero di nodi (cambiarlo ridistribuisce i nodi tra i due capi)                 |
+| `tension`     | `20`      | Distanza a riposo tra nodi vicini                                               |
+| `size`        | `5`       | Raggio (metà dello spessore)                                                    |
+| `color`       | `#ffffff` | Colore                                                                          |
+| `type`        | `''`      | Tipo di connessione, dato ai suoi plug; vuoto fa da jolly                       |
+| `render-type` | bezier    | `segments` per segmenti dritti (la vecchia grafia `renderType` funziona ancora) |
 
 ## `Jack` / `Plug`
 
