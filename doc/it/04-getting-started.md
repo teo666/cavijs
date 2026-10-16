@@ -3,7 +3,7 @@
 ## Prerequisiti
 
 - Node.js e [pnpm](https://pnpm.io).
-- Il pacchetto `cavi`: la build WASM del progetto Rust gemello [`cavi`](../../../cavi/doc/it/01-overview.md). Sui branch di sviluppo `package.json` punta a una build locale (`"cavi": "link:../cavi/pkg"`), quindi `../cavi` deve esserci ed essere compilato con `wasm-pack build --target web` (servono Rust e `wasm-pack`). Le versioni rilasciate dipendono invece dal pacchetto pubblicato su npm.
+- Il pacchetto `cavi`: la build WASM del progetto Rust gemello [`cavi`](../../../cavi/doc/it/01-overview.md), installata da npm (`"cavi": "^0.2.0"`). Per lavorare insieme sul motore e su cavijs, fai puntare `package.json` a una build locale (`"cavi": "link:../cavi/pkg"`), con `../cavi` presente e compilato con `wasm-pack build --target web` (servono Rust e `wasm-pack`); finché c'è il link, la CI compila da sé `teo666/cavi`.
 - Per i test end-to-end: Google Chrome (Playwright usa quello installato, `channel: 'chrome'`, senza scaricare un browser).
 
 ## Installazione

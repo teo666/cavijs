@@ -24,12 +24,13 @@ Stato al 15 ottobre 2026. Branch: `d3-interaction` (cavijs) e `render-interpolat
   d3 dell'esempio, test che passano solo dall'API pubblica.
 - **`cavi`:** `step()` separato da `build_render_data(alpha)`, parametri del passo configurabili, cavi che
   partono dritti, cavo tenuto (`pointer_radius`), sospensione, lancio al rilascio, distanza tra i nodi
-  separata dal raggio, `intersect` vero, README, panic leggibili in console (`set_panic_hook` usato).
+  separata dal raggio, `intersect` vero, README, panic leggibili in console (`set_panic_hook` usato),
+  versione 0.2.0 pubblicata su npm.
 
 ## Ordine consigliato
 
-1. Le due verifiche a occhio qui sotto, poi il rilascio di `cavi`: sblocca il merge su `main`.
-2. Far girare la CI una prima volta (vedi "Manutenzione").
+1. Il merge dei due branch su `main`, e con il push la prima esecuzione della CI (vedi "Manutenzione").
+2. Le due verifiche a occhio qui sotto.
 3. "Packaging", solo se vuoi pubblicare cavijs su npm.
 4. Il resto quando capita.
 
@@ -45,17 +46,12 @@ reinserito. Restano i giudizi a occhio:
 - [ ] La forza del lancio di un cavo rilasciato nel vuoto, e quanto `pointer_radius` (20) sposta gli altri
       cavi durante un trascinamento, ti sembrano giusti?
 
-## Rilascio di `cavi` (bloccante per `main`)
+## Rilascio di `cavi`
 
-- [ ] Finire le modifiche sul branch `render-interpolation` di `../cavi`, portare la versione a 0.2.0 in
-      `Cargo.toml` (oggi dice 0.1.1, ma su npm c'è già 0.1.2), `wasm-pack build --target web` e
-      `wasm-pack publish`.
-- [ ] In cavijs rimettere la dipendenza `cavi` sulla versione pubblicata al posto di `link:../cavi/pkg`
-      (`package.json`, `pnpm-lock.yaml`). Valutare se fissarla a una versione esatta o renderla peer
-      dependency, dato che cavijs dipende dal layout di memoria del buffer. L'aggiunta di `../../cavi` a
-      `server.fs.allow` in `vite.config.ts` può restare: serve solo in sviluppo.
+`cavi` 0.2.0 è pubblicato su npm e cavijs ne dipende con `^0.2.0`.
+
 - [ ] Fare il merge di `render-interpolation` su `main` in `cavi`, e di `d3-interaction` su `main` in
-      cavijs.
+      cavijs, poi il push.
 
 ## Correttezza
 
@@ -87,7 +83,6 @@ Tutto fatto.
 ## Manutenzione
 
 - [ ] La CI (`.github/workflows/ci.yml`: lint, formato, test unitari, build, `build:lib`, end-to-end, su
-      push a `main` e sulle PR) è scritta ma non ha ancora girato. Finché `package.json` punta a
-      `link:../cavi/pkg` compila anche `teo666/cavi`: impostare la variabile di repository `CAVI_REF`
-      (oggi `render-interpolation`) e, se `cavi` è privato, il segreto `CAVI_TOKEN`. Il workflow delle
-      Pages (`deploy-pages.yml`) invece fallisce finché la dipendenza non torna su npm.
+      push a `main` e sulle PR) è scritta ma non ha ancora girato: controllare la prima esecuzione. Ora
+      che `cavi` viene da npm non servono variabili; `CAVI_REF` e `CAVI_TOKEN` servono solo se un branch
+      torna a puntare a `link:../cavi/pkg`.
