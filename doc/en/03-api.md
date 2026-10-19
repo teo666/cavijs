@@ -319,6 +319,40 @@ localStorage.setItem('cables', JSON.stringify(captureCables(cavi)));
 applyCables(cavi, JSON.parse(localStorage.getItem('cables')!));
 ```
 
+## Undo and redo: `CaviHistory`
+
+`CaviHistory` (`src/component/history.ts`) keeps undo/redo steps for one world. Each step (`HistoryEntry`) is the cables as `captureCables` reads them plus, optionally, the page's own state:
+
+```ts
+const history = new CaviHistory(worldEl.getCavi()!, {
+  // optional: what cavijs doesn't own and the cables depend on
+  app: {
+    capture: () => app.getModules(), // JSON-safe
+    restore: async (modules) => app.setModules(modules), // jacks back, same ids
+  },
+  limit: 100, // most undo steps kept (default)
+});
+
+history.commit(); // after a change of the page's own
+history.batch(() => app.removeModule(m)); // several changes, one step
+await history.undo();
+await history.redo();
+history.canUndo; // also canRedo
+history.addEventListener('change', updateButtons);
+localStorage.setItem('state', JSON.stringify(history.capture()));
+await history.load(JSON.parse(localStorage.getItem('state')!));
+```
+
+- **When a step is recorded:** at the end of every user gesture on the cables (`cavi-change`), by itself, and whenever the page calls `commit()`. Never twice the same state: a gesture that changed nothing (a plug put back where it was) records nothing. Cables are compared regardless of their order in the page. A gesture's step is recorded a microtask after `cavi-change`, once no other gesture is in progress in the world (`Jack.isDragActive`): with two fingers, the step is the state both leave.
+- **Undo, redo and load put a state back in order:** `app.restore` first, awaited, then `applyCables`, which only touches the cables that differ — so the cables find their jacks on the page. A change not recorded yet is recorded first, so it is what `undo()` undoes. Once a state is back, its entry becomes what restoring it left on the page (the page's state read back, an end whose jack didn't come back as free), so that difference never counts as a new step.
+- **They refuse (resolve to `false`) while a gesture is in progress** in the world: the controller owns that one, Escape cancels it. Calls run one after the other, so pressing Ctrl+Z three times quickly undoes three steps.
+- **The page's state is stored as JSON:** later changes to the object `capture` returned don't reach the history, and `restore` always gets a fresh copy.
+- **`batch(fn)`** records everything `fn` does as one step, folding in `commit()` calls and gestures ending meanwhile; for an `fn` returning a promise it returns a promise and records once it settles. Removing a module is the typical case: its jacks go, and the cable ends in them are let go — `captureCables` already counts an end in a removed jack as free.
+- **`load(entry)`** puts back a state from `capture()` — saved earlier, maybe in another visit — as a new step, undoable like any other. **`clear()`** forgets every step; **`destroy()`** stops listening to the world.
+- **`change`** (a plain `Event`) is dispatched whenever `canUndo`/`canRedo` may have changed.
+
+Create it once the world is ready (`caviready`): the state at that moment is the first step. `examples/demo-d3-interaction.ts` (`bindHistory`) uses it with the units' positions as the page's state, Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z, and Save/Load buttons.
+
 ## `Jack` / `Plug`
 
 See [Jack & Plug components](./05-jack-plug.md).

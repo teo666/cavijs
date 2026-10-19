@@ -282,7 +282,9 @@ Details: [doc/en/06-zoom-multiworld.md](doc/en/06-zoom-multiworld.md).
 
 `captureCables(cavi)` reads a world's cables as plain JSON-safe data — for each cable its `id`, the ids of the jacks its two ends are plugged into, and its attributes — and `applyCables(cavi, snapshot)` puts them back, touching only the cables that differ. Jacks are not saved: the page restores them first, with the same ids. `Plug.connect(jack)`/`disconnect()` plug and unplug from code, and `CaviWireElement.delete()` deletes a cable freeing its jacks right away.
 
-Details: [doc/en/03-api.md](doc/en/03-api.md#saving-and-restoring-cables).
+`CaviHistory` builds undo/redo on top: a step at the end of every gesture on the cables (the `cavi-change` event) and whenever the page commits a change of its own, with the page's own state (jacks, modules) put back before the cables. `examples/demo-d3-interaction.html` has Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Save/Load.
+
+Details: [doc/en/03-api.md](doc/en/03-api.md#saving-and-restoring-cables), [undo and redo](doc/en/03-api.md#undo-and-redo-cavihistory).
 
 ## Debug overlay and events
 

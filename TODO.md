@@ -83,10 +83,10 @@ Tutto fatto.
 - [x] Fase 1 di salva/ripristina: id stabili sui `<cavi-wire>`, `Plug.connect`/`disconnect`,
       `CaviWireElement.delete()` (jack liberati subito), `captureCables`/`applyCables` con aggiornamento
       per id (`src/component/cables.ts`), capo libero che pende dall'altro capo.
-- [ ] Fase 2: evento `cavi-change` a fine gesto (oggi `beginDrag` emette `cavi-plug-detach` subito e il
-      rilascio di un plug non emette niente), `CaviHistory` con `capture`/`restore` dell'app (prima i jack,
-      poi i cavi), `commit`, `batch`, undo/redo; annullare il gesto in corso prima di un ripristino;
-      Ctrl+Z / Ctrl+Shift+Z nell'esempio d3.
+- [x] Fase 2: evento `cavi-change` a fine gesto, `CaviHistory` (`src/component/history.ts`) con
+      `capture`/`restore` dell'app (prima i jack, poi i cavi), `commit`, `batch`, undo/redo, `load`;
+      Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z e Salva/Carica nell'esempio d3, con le posizioni delle unità come
+      stato dell'app.
 
 ## Manutenzione
 

@@ -37,6 +37,28 @@
         font-size: 13px;
         color: #bbb;
       }
+      .history-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin: 0 0 12px;
+        font-size: 13px;
+        color: #999;
+      }
+      .history-bar button {
+        font: inherit;
+        color: #ddd;
+        background: #2a2a2a;
+        border: 1px solid #444;
+        border-radius: 4px;
+        padding: 4px 10px;
+        cursor: pointer;
+      }
+      .history-bar button:disabled {
+        color: #666;
+        cursor: default;
+      }
       .mode-toggle label {
         display: flex;
         gap: 6px;
@@ -171,6 +193,21 @@
       <label
         ><input type="radio" name="interaction-mode" value="carry" /> Carry (click to pick up, click
         to drop)</label
+      >
+    </div>
+
+    <!--
+      CaviHistory (src/component/history.ts): every gesture on the cables is
+      a step, and so is dropping a unit — its offset is the page's own state,
+      saved next to the cables. See bindHistory() in demo-d3-interaction.ts.
+    -->
+    <div class="history-bar">
+      <button id="undo" type="button" title="Ctrl/Cmd+Z">Undo</button>
+      <button id="redo" type="button" title="Ctrl/Cmd+Shift+Z">Redo</button>
+      <button id="save" type="button">Save</button>
+      <button id="load" type="button">Load</button>
+      <span
+        >Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z — cables and unit positions; Save/Load use localStorage.</span
       >
     </div>
 

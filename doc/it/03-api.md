@@ -319,6 +319,40 @@ localStorage.setItem('cables', JSON.stringify(captureCables(cavi)));
 applyCables(cavi, JSON.parse(localStorage.getItem('cables')!));
 ```
 
+## Annullare e ripristinare: `CaviHistory`
+
+`CaviHistory` (`src/component/history.ts`) tiene i passi di annullamento/ripristino di un mondo. Ogni passo (`HistoryEntry`) è lo stato dei cavi come lo legge `captureCables` più, facoltativamente, lo stato della pagina:
+
+```ts
+const history = new CaviHistory(worldEl.getCavi()!, {
+  // facoltativo: ciò che cavijs non possiede e da cui dipendono i cavi
+  app: {
+    capture: () => app.getModules(), // serializzabile in JSON
+    restore: async (modules) => app.setModules(modules), // jack rimessi, stessi id
+  },
+  limit: 100, // passi di annullamento conservati al massimo (default)
+});
+
+history.commit(); // dopo una modifica fatta dalla pagina
+history.batch(() => app.removeModule(m)); // più modifiche, un solo passo
+await history.undo();
+await history.redo();
+history.canUndo; // e canRedo
+history.addEventListener('change', updateButtons);
+localStorage.setItem('state', JSON.stringify(history.capture()));
+await history.load(JSON.parse(localStorage.getItem('state')!));
+```
+
+- **Quando si registra un passo:** alla fine di ogni gesto dell'utente sui cavi (`cavi-change`), da solo, e ogni volta che la pagina chiama `commit()`. Mai due volte lo stesso stato: un gesto che non ha cambiato niente (un plug rimesso dov'era) non registra nulla. I cavi vengono confrontati indipendentemente dal loro ordine nella pagina. Il passo di un gesto viene registrato un microtask dopo `cavi-change`, quando nel mondo non c'è più nessun altro gesto in corso (`Jack.isDragActive`): con due dita, il passo è lo stato che lasciano entrambi.
+- **Undo, redo e load rimettono uno stato in ordine:** prima `app.restore`, atteso, poi `applyCables`, che tocca solo i cavi diversi — così i cavi trovano i loro jack nella pagina. Una modifica non ancora registrata viene registrata prima, così è quella che `undo()` annulla. Una volta rimesso uno stato, la sua voce diventa ciò che il ripristino ha lasciato nella pagina (lo stato della pagina riletto, un capo il cui jack non è tornato come libero), così quella differenza non conta mai come un passo nuovo.
+- **Rifiutano (risolvono a `false`) mentre è in corso un gesto** nel mondo: quello è del controller, Escape lo annulla. Le chiamate girano una dopo l'altra, quindi premere Ctrl+Z tre volte di fila annulla tre passi.
+- **Lo stato della pagina viene salvato come JSON:** modifiche successive all'oggetto restituito da `capture` non arrivano alla history, e `restore` riceve sempre una copia nuova.
+- **`batch(fn)`** registra tutto ciò che fa `fn` come un solo passo, assorbendo le chiamate a `commit()` e i gesti che finiscono nel frattempo; per un `fn` che restituisce una promise restituisce una promise e registra quando si conclude. Il caso tipico è la rimozione di un modulo: i suoi jack spariscono e i capi dei cavi collegati vengono lasciati andare — `captureCables` conta già come libero un capo in un jack rimosso.
+- **`load(entry)`** rimette uno stato ottenuto da `capture()` — salvato prima, magari in un'altra visita — come un passo nuovo, annullabile come gli altri. **`clear()`** dimentica tutti i passi; **`destroy()`** smette di ascoltare il mondo.
+- **`change`** (un semplice `Event`) viene emesso ogni volta che `canUndo`/`canRedo` possono essere cambiati.
+
+Va creata quando il mondo è pronto (`caviready`): lo stato in quel momento è il primo passo. `examples/demo-d3-interaction.ts` (`bindHistory`) la usa con le posizioni delle unità come stato della pagina, Ctrl/Cmd+Z e Ctrl/Cmd+Shift+Z, e i pulsanti Save/Load.
+
 ## `Jack` / `Plug`
 
 Vedi [Componenti Jack & Plug](./05-jack-plug.md).

@@ -307,6 +307,7 @@ export class Plug extends HTMLElement {
       this._node.fixed = this._freezeOnDrop;
       this.removeAttribute('plugged');
     }
+    emitCaviEvent(Cavi.for(this), this, 'cavi-change', { cause: 'plug-drop' });
   }
 
   /** Pins this Plug's node on `jack` and plugs it in — no checks (see connect). */

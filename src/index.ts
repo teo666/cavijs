@@ -29,6 +29,8 @@ export { Plug } from './component/plug';
 export { CaviWireElement } from './component/wirewc';
 export { applyCables, captureCables } from './component/cables';
 export type { CableState, CablesSnapshot } from './component/cables';
+export { CaviHistory } from './component/history';
+export type { CaviHistoryOptions, HistoryEntry } from './component/history';
 export { CaviWorldElement } from './component/worldwc';
 export { CaviInteractionElement } from './component/interactionwc';
 export { CaviDebugElement } from './debug/debugwc';
