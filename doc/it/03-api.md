@@ -290,6 +290,35 @@ Tutti live: cambiarne uno aggiorna il cavo in esecuzione.
 | `type`        | `''`      | Tipo di connessione, dato ai suoi plug; vuoto fa da jolly                       |
 | `render-type` | bezier    | `segments` per segmenti dritti (la vecchia grafia `renderType` funziona ancora) |
 
+`id` non è live ma c'è sempre: un `<cavi-wire>` che non ce l'ha ne riceve uno generato alla connessione (vedi [Salvare e ripristinare i cavi](#salvare-e-ripristinare-i-cavi)).
+
+## Salvare e ripristinare i cavi
+
+`captureCables(cavi)` e `applyCables(cavi, snapshot)` (`src/component/cables.ts`) leggono i cavi di un mondo come dati semplici e li rimettono a posto. I dati si possono passare a `JSON.stringify`, per salvare una configurazione o tenere una history di annullamento:
+
+```json
+{
+  "version": 1,
+  "wires": [
+    { "id": "w-3", "ends": ["out-1", "in-4"], "type": "audio", "color": "#ffaa00", "length": 14 },
+    { "id": "w-4", "ends": ["out-2", null], "type": "audio", "length": 9 }
+  ]
+}
+```
+
+- **Cosa viene salvato:** per ogni `<cavi-wire>` nel container del mondo, il suo `id`, gli id dei jack in cui sono collegati il primo e l'ultimo nodo (`null` per un capo libero), e gli attributi impostati tra `type`, `color`, `length`, `tension`, `size` e `render-type` (come `renderType`). Lo stato fisico non viene salvato: un cavo ripristinato parte dritto tra i suoi jack e si assesta da solo.
+- **Cosa resta fuori:** un cavo non collegato a niente (sta cadendo via, vedi l'eliminazione dei cavi orfani), e un capo in un jack senza `id`, che non si potrebbe ritrovare. Un capo in un jack rimosso dalla pagina conta già come libero, anche prima che il jack rilasci i suoi plug.
+- **I jack non vengono salvati.** Appartengono alla pagina: vanno rimessi prima, con gli stessi id. Un capo il cui jack non è nella pagina resta libero; un cavo senza nessuno dei due jack non viene ripristinato.
+- **`applyCables` tocca solo ciò che è diverso**, cavo per cavo, per `id`: un cavo che il mondo ha e lo snapshot no viene cancellato (`CaviWireElement.delete()`, così i suoi jack si liberano subito); uno che hanno entrambi mantiene il suo stato fisico, aggiorna gli attributi e sposta solo i capi che hanno cambiato jack (`Plug.disconnect`/`connect`); uno che manca viene creato nel container. Ogni capo che lascia un jack viene staccato prima che si colleghi qualunque cosa, così i cavi possono scambiarsi jack a `max-plugs`. Un capo che non si può collegare (jack pieno, tipo sbagliato) resta libero, con un `console.warn`.
+- Lancia un errore per uno snapshot che non sia di versione 1, e per un `Cavi` senza container del renderer. Va chiamata tra un gesto e l'altro: un plug che si sta trascinando resta dov'è.
+
+```ts
+const cavi = worldEl.getCavi()!;
+localStorage.setItem('cables', JSON.stringify(captureCables(cavi)));
+// più tardi, una volta che i jack sono di nuovo nella pagina:
+applyCables(cavi, JSON.parse(localStorage.getItem('cables')!));
+```
+
 ## `Jack` / `Plug`
 
 Vedi [Componenti Jack & Plug](./05-jack-plug.md).

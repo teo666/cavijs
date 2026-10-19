@@ -27,6 +27,8 @@ export { Jack } from './component/jack';
 export type { CableSession } from './component/jack';
 export { Plug } from './component/plug';
 export { CaviWireElement } from './component/wirewc';
+export { applyCables, captureCables } from './component/cables';
+export type { CableState, CablesSnapshot } from './component/cables';
 export { CaviWorldElement } from './component/worldwc';
 export { CaviInteractionElement } from './component/interactionwc';
 export { CaviDebugElement } from './debug/debugwc';

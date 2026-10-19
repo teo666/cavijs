@@ -297,13 +297,7 @@ export class Plug extends HTMLElement {
     if (!this._node) return;
 
     if (bestJack) {
-      const local = bestJack.getWorldPosition();
-
-      this._node.setPosition(local.x, local.y);
-      this._node.fixed = true;
-      this.updatePosition();
-      this.attach(bestJack);
-      this.setAttribute('plugged', 'true');
+      this._pinTo(bestJack);
     } else {
       // Not dropped on any compatible Jack: stays unplugged. Unless
       // freeze-on-drop is set, unfix the node so it falls/moves freely
@@ -313,6 +307,46 @@ export class Plug extends HTMLElement {
       this._node.fixed = this._freezeOnDrop;
       this.removeAttribute('plugged');
     }
+  }
+
+  /** Pins this Plug's node on `jack` and plugs it in — no checks (see connect). */
+  private _pinTo(jack: Jack): void {
+    if (!this._node) return;
+    const local = jack.getWorldPosition();
+    this._node.setPosition(local.x, local.y);
+    this._node.fixed = true;
+    this.updatePosition();
+    this.attach(jack);
+    this.setAttribute('plugged', 'true');
+  }
+
+  /**
+   * Plugs this Plug into `jack` from code, as if it were dropped there: its
+   * node is pinned on the jack. Plugged into another jack, it moves. Returns
+   * false and changes nothing if its cable isn't set up yet, mid-drag, or if
+   * `jack` is not on the page, belongs to another world, doesn't accept this
+   * Plug's type or is at `max-plugs`.
+   */
+  public connect(jack: Jack): boolean {
+    if (!this._node || this._dragging) return false;
+    if (this._jack === jack) return true;
+    const ok =
+      jack.isConnected &&
+      Cavi.for(jack) === Cavi.for(this) &&
+      jack.canAccept(this._type) &&
+      jack.canAcceptMore();
+    if (!ok) return false;
+    this._pinTo(jack);
+    return true;
+  }
+
+  /**
+   * Pulls this Plug out of its jack from code, if it is in one, and lets its
+   * end go: it falls and moves freely under physics. No-op mid-drag. The
+   * counterpart of connect.
+   */
+  public disconnect(): void {
+    this.unplug();
   }
 
   /**

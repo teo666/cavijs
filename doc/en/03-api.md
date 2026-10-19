@@ -290,6 +290,35 @@ All live: changing one updates the running cable.
 | `type`        | `''`      | Connection type, given to its plugs; empty is a wildcard                     |
 | `render-type` | bezier    | `segments` for straight segments (the old `renderType` spelling still works) |
 
+`id` is not live but always there: a `<cavi-wire>` without one gets one generated when connected (see [Saving and restoring cables](#saving-and-restoring-cables)).
+
+## Saving and restoring cables
+
+`captureCables(cavi)` and `applyCables(cavi, snapshot)` (`src/component/cables.ts`) read the cables of one world as plain data and put them back. The data is safe to `JSON.stringify`, for saving a configuration or keeping an undo history:
+
+```json
+{
+  "version": 1,
+  "wires": [
+    { "id": "w-3", "ends": ["out-1", "in-4"], "type": "audio", "color": "#ffaa00", "length": 14 },
+    { "id": "w-4", "ends": ["out-2", null], "type": "audio", "length": 9 }
+  ]
+}
+```
+
+- **What is saved:** for each `<cavi-wire>` in the world's container, its `id`, the ids of the jacks its first and last node are plugged into (`null` for a free end), and the attributes it has set among `type`, `color`, `length`, `tension`, `size` and `render-type` (as `renderType`). The physics state is not saved: a restored cable starts straight between its jacks and settles on its own.
+- **What is left out:** a cable plugged into nothing (it is falling away, see orphan cleanup), and an end in a jack without an `id`, which could not be found again. An end in a jack removed from the page is free already, even before the jack lets its plugs go.
+- **Jacks are not saved.** They belong to the page: put them back first, with the same ids. An end whose jack isn't on the page is left free; a cable with neither jack there is not restored.
+- **`applyCables` touches only what differs**, cable by cable, by `id`: a cable the world has and the snapshot doesn't is deleted (`CaviWireElement.delete()`, so its jacks are free right away); one both have keeps its live physics state, gets its attributes updated and only the ends that changed jack moved (`Plug.disconnect`/`connect`); a missing one is created in the container. Every end that leaves a jack is pulled out before anything is plugged in, so cables can trade jacks at `max-plugs`. An end that can't be plugged in (full, wrong type) is left free with a `console.warn`.
+- It throws on anything but a version 1 snapshot, and on a `Cavi` without a renderer container. Call it between gestures: a plug being dragged stays where it is.
+
+```ts
+const cavi = worldEl.getCavi()!;
+localStorage.setItem('cables', JSON.stringify(captureCables(cavi)));
+// later, once the jacks are back on the page:
+applyCables(cavi, JSON.parse(localStorage.getItem('cables')!));
+```
+
 ## `Jack` / `Plug`
 
 See [Jack & Plug components](./05-jack-plug.md).

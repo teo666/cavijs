@@ -278,6 +278,12 @@ Several `<cavi-world>`s can coexist on one page, also inside shadow roots: every
 
 Details: [doc/en/06-zoom-multiworld.md](doc/en/06-zoom-multiworld.md).
 
+## Saving and restoring cables
+
+`captureCables(cavi)` reads a world's cables as plain JSON-safe data — for each cable its `id`, the ids of the jacks its two ends are plugged into, and its attributes — and `applyCables(cavi, snapshot)` puts them back, touching only the cables that differ. Jacks are not saved: the page restores them first, with the same ids. `Plug.connect(jack)`/`disconnect()` plug and unplug from code, and `CaviWireElement.delete()` deletes a cable freeing its jacks right away.
+
+Details: [doc/en/03-api.md](doc/en/03-api.md#saving-and-restoring-cables).
+
 ## Debug overlay and events
 
 Drop `<cavi-debug>` next to (or inside) a world for live stats — FPS, wires, nodes, jacks/plugs, physics and view parameters, a per-wire table — and a log of the events the world emits (`cavi-wire-add`, `cavi-plug-attach`, `cavi-cable-end`, …). `mode="floating"` is a draggable window, `mode="panel"` a panel docked to the right edge; `Alt+Shift+D` toggles it.
