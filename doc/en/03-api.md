@@ -103,6 +103,8 @@ addNodeAt(index: number, x: number, y: number, fixed?: boolean): void
 removeNode(index: number): boolean        // false if it would leave fewer than 2 nodes
 getNodeCount(): number
 setNodeCount(count: number): void
+growTo(count: number, spawn?: 'interpolate' | 'stack'): void
+shrinkTo(count: number): void
 getNode(index: number): Node | null
 setMetaData(key: string, value: any): void
 getMetaData(key: string): any
@@ -132,11 +134,47 @@ A `Wire` constructed without `(world, wireIndex)` args is "detached" — all its
 
 `setNodeCount(count)` resizes the wire at runtime: it rebuilds the entire node vector, preserving the position and `fixed` state of the two terminal nodes and evenly redistributing intermediate nodes between them (any state on previously-existing intermediate nodes is lost).
 
+`growTo(count, spawn?)` and `shrinkTo(count)` resize it without that: they insert or remove nodes one at a time right before the last node, so every other node keeps its live physics state and the cable doesn't snap straight — how a cable grows while it is pulled out of a jack. New nodes start evenly on the line from the node before the last to the last (`'interpolate'`, default), or on top of the node before the last (`'stack'`). `shrinkTo` never goes below 2 nodes; the cable pulls itself in over the next steps. Size them with `nodeCountForDistance` (see [`cavijs/core`](#cavijscore-srccoreindexts)).
+
 `getNode(index)` returns one handle per node, and the handle follows its node when nodes are inserted or removed before it through this `Wire` (`addNodeAt`, `removeNode`, `setNodeCount`): a `Plug` bound to the terminal stays on the terminal when [`Jack`](./05-jack-plug.md) grows a cable by inserting nodes, or when nodes are added from code. The handle of a removed node (or of an intermediate node dropped by `setNodeCount`) is invalidated: its methods then do nothing. Node edits made directly on the `WasmWorld` (`getWasmWorld()`) bypass this bookkeeping.
 
 ### Tearing a world down
 
 `Cavi.destroy()` stops the renderer, frees the WASM world, unregisters the renderer container from `Cavi.for`, and clears `Cavi.shared` if it points at this instance. Every `Wire` and `Node` handle of the world is invalidated, so elements still holding one clean up without touching freed memory. The instance must not be used afterwards (`isDestroyed()` tells). `<cavi-world>` does this by itself when it is removed from the page — not when it is just moved — and builds a new world if it is inserted again later, keeping the coordinate transform registered with `setCoordinateTransform`.
+
+## `cavijs/core` (`src/core/index.ts`)
+
+The simulation without the page: `import { … } from 'cavijs/core'` registers no custom element and touches no DOM, on import or after. For code that brings its own rendering and interaction — a graph library's edges (Vue Flow, React Flow), a framework's components, a worker. Everything in it is also exported by `cavijs`.
+
+| Export                                                                        | What                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `initWasm(source?)`, `isWasmReady()`, `getWasm()`                             | Loads the cavi WASM module once per page (later calls share the load; a failed one is forgotten, so the next call retries). `source` — a URL, a `Response`, the bytes or a compiled module — is where the `.wasm` comes from when the bundler doesn't serve it next to `cavi`'s JS (CDN, CSP, a bundler other than Vite). On a page with `<cavi-world>`s, call it before they connect and they share it. `Cavi.initWasm()` is the same load. |
+| `World`, `Wire`, `Node`, `DEFAULT_WIRE_COLORS`                                | As above. A `World` needs no renderer: call `advance(elapsedMs)` from your own frame loop.                                                                                                                                                                                                                                                                                                                                                   |
+| `nodeCountForDistance(distance, { min, perUnit, max }?)`                      | How many nodes a cable reaching `distance` should have: `min + floor(distance × perUnit)`, at most `max` (defaults 4, 1/30, 60: the rule a cable pulled out of a jack grows by). Pair it with `Wire.growTo`/`shrinkTo`.                                                                                                                                                                                                                      |
+| `forEachWireRender(world, fn)`                                                | Calls `fn` with each wire's render data as the last `advance()` built it: `{ wire, index, radius, renderType, path, record }`, views into WASM memory, valid until the next `advance()`. `record` equal to last frame's means the wire looks the same: nothing to redraw.                                                                                                                                                                    |
+| `svgPathData(path, renderType)`, `tracePath(target, path, renderType)`        | A `path` as SVG path data (the `d` of a `<path>`, in world coordinates), or traced through the `moveTo`/`lineTo`/`bezierCurveTo` of a canvas context or `Path2D`. Both renderers draw with these.                                                                                                                                                                                                                                            |
+| `wirePath(world, wire)`                                                       | One wire's SVG path data. Walks the buffer up to it: for many wires, use `forEachWireRender` once per frame.                                                                                                                                                                                                                                                                                                                                 |
+| `RENDER_SEGMENTS`, `RENDER_BEZIER`                                            | The two `renderType`s.                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `IDENTITY_TRANSFORM`, `screenToWorld`, `worldToScreen`, `CoordinateTransform` | The pure coordinate math, for mapping a library's viewport (`{ x, y, zoom }` is `{ translateX, translateY, scale }`).                                                                                                                                                                                                                                                                                                                        |
+
+```ts
+import { World, initWasm, forEachWireRender, svgPathData } from 'cavijs/core';
+
+await initWasm();
+const world = new World();
+const wire = world.addWire(0, 0, 200, 0, 8, 20, 5);
+let last = performance.now();
+requestAnimationFrame(function frame(now) {
+  world.advance(now - last);
+  last = now;
+  forEachWireRender(world, ({ index, path, renderType }) => {
+    pathEls[index].setAttribute('d', svgPathData(path, renderType));
+  });
+  requestAnimationFrame(frame);
+});
+```
+
+`World` reads the page only to measure the view for its frame tasks (orphan cleanup), and only with a renderer set: never with `cavijs/core` alone.
 
 ## `Node` (`src/core/node.ts`)
 

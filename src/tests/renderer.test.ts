@@ -150,6 +150,7 @@ function makeWorldWithWires(count: number) {
       wire_data_len: () => data.length,
     }),
     getWireCount: () => count,
+    getWiresView: () => Array.from({ length: count }, () => ({ getColor: () => '#fff' })),
   };
 }
 

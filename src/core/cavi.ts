@@ -1,4 +1,5 @@
-import initSync, { type InitOutput } from 'cavi';
+import type { InitOutput } from 'cavi';
+import { _setWasm, getWasm, initWasm } from './wasm';
 
 import type { IRenderer } from './types';
 import { Wire } from './wire';
@@ -10,7 +11,14 @@ import { type CoordinateTransform, IDENTITY_TRANSFORM, clientToWorld } from './c
  * It handles WASM initialization and provides a wrapper around the World simulation.
  */
 export class Cavi {
-  static wasm: InitOutput;
+  /** The loaded WASM module — see initWasm/getWasm (src/core/wasm.ts). Throws before it loaded. */
+  static get wasm(): InitOutput {
+    return getWasm();
+  }
+
+  static set wasm(loaded: InitOutput) {
+    _setWasm(loaded);
+  }
   /**
    * The most recently created <cavi-world>'s Cavi (or whatever a manual
    * setup assigns here). Kept as a fallback for elements that live outside
@@ -161,13 +169,9 @@ export class Cavi {
     this.world = new World();
   }
 
-  /**
-   * Initialize WASM module (static method)
-   */
+  /** Loads the WASM module, once per page — see initWasm (src/core/wasm.ts). */
   static initWasm(): Promise<void> {
-    return initSync().then((wasmModule: InitOutput) => {
-      Cavi.wasm = wasmModule;
-    });
+    return initWasm().then(() => undefined);
   }
 
   /**

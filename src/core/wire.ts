@@ -3,6 +3,31 @@ import type { WasmWorld } from 'cavi';
 import type { World } from './world';
 import { Node } from './node';
 
+/** Where Wire.growTo places the nodes it inserts. */
+export type NodeSpawn = 'interpolate' | 'stack';
+
+/** See nodeCountForDistance. */
+export interface NodeCountOptions {
+  /** Nodes of a cable spanning no distance (default 4). */
+  min?: number;
+  /** Nodes added per world unit of distance (default 1/30). */
+  perUnit?: number;
+  /** Most nodes, however far (default 60). */
+  max?: number;
+}
+
+/**
+ * How many nodes a cable reaching `distance` world units should have — the
+ * rule a cable pulled out of a jack grows by (see Jack.updateCableSession),
+ * for any code sizing cables the same way: `min + floor(distance ×
+ * perUnit)`, at most `max`. Pair it with Wire.growTo/shrinkTo.
+ */
+export function nodeCountForDistance(distance: number, options: NodeCountOptions = {}): number {
+  const { min = 4, perUnit = 1 / 30, max = 60 } = options;
+  const count = min + Math.floor(Math.max(0, distance) * perUnit);
+  return Math.min(max, Math.max(min, count));
+}
+
 /**
  * Wire is the TypeScript wrapper for the WASM Wire class.
  * It contains methods to change properties like radius and tension,
@@ -110,6 +135,47 @@ export class Wire {
       this.nodes[count - 1] = last;
       last._setIndex(count - 1);
     }
+  }
+
+  /**
+   * Grows the wire to `count` nodes by inserting the missing ones, one at a
+   * time, right before its last node. Unlike setNodeCount, every node
+   * already there keeps its live physics state — a cable growing while it
+   * is pulled doesn't snap straight — and handles to them stay valid, the
+   * last node's following it to the new last index. Where new nodes start:
+   * - 'interpolate' (default): evenly on the straight line from the node
+   *   before the last to the last — smooth at once;
+   * - 'stack': on top of the node before the last, left for the
+   *   constraint solver to spread out over the next steps.
+   *
+   * No-op if the wire already has `count` nodes or more, or fewer than 2.
+   */
+  public growTo(count: number, spawn: NodeSpawn = 'interpolate'): void {
+    let current = this.getNodeCount();
+    const missing = Math.round(count) - current;
+    if (missing <= 0 || current < 2) return;
+    const ax = this.getNodeX(current - 2);
+    const ay = this.getNodeY(current - 2);
+    const bx = this.getNodeX(current - 1);
+    const by = this.getNodeY(current - 1);
+    for (let i = 1; i <= missing; i++) {
+      const t = spawn === 'stack' ? 0 : i / (missing + 1);
+      this.addNodeAt(current - 1, ax + (bx - ax) * t, ay + (by - ay) * t, false);
+      current++;
+    }
+  }
+
+  /**
+   * Shrinks the wire to `count` nodes (2 at least) by removing the ones
+   * right before its last node — the counterpart of growTo: the remaining
+   * nodes keep their physics state, and the last node's handle follows it.
+   * The cable then pulls itself in over the next steps. No-op if the wire
+   * has `count` nodes or fewer.
+   */
+  public shrinkTo(count: number): void {
+    const target = Math.max(2, Math.round(count));
+    let current = this.getNodeCount();
+    while (current > target && this.removeNode(current - 2)) current--;
   }
 
   /**
