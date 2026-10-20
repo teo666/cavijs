@@ -39,7 +39,9 @@
     }
   },
   "sideEffects": [
-    "./dist-lib/cavijs.js"
+    "./dist-lib/cavijs.js",
+    "./src/**",
+    "./examples/**"
   ],
   "packageManager": "pnpm@11.5.2",
   "scripts": {
