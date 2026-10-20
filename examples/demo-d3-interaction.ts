@@ -8,6 +8,7 @@ import type { CaviInteractionElement } from '../src/component/interactionwc';
 import { Jack } from '../src/component/jack';
 import { Plug } from '../src/component/plug';
 import { KeyboardInteractionController } from '../src/interaction/keyboard';
+import { CaviHistory, type HistoryEntry } from '../src/component/history';
 import {
   D3InteractionController,
   clientPointFromSourceEvent,
@@ -85,13 +86,11 @@ function targetsD3DragOwnedElement(event: Event): boolean {
 function makeDraggableUnit(
   unitEl: HTMLElement,
   handleEl: HTMLElement,
-  worldEl: CaviWorldElement
+  worldEl: CaviWorldElement,
+  onEnd: () => void
 ): void {
   const currentScale = (): number => worldEl.getCavi()?.getCoordinateTransform().scale ?? 1;
 
-  // Current translate offset of this unit, in its local (pre-zoom) space.
-  let offsetX = 0;
-  let offsetY = 0;
   let originX = 0;
   let originY = 0;
   let startX = 0;
@@ -99,8 +98,7 @@ function makeDraggableUnit(
 
   const behavior = drag<HTMLElement, unknown>()
     .on('start', (event: D3DragEvent<HTMLElement, unknown, unknown>) => {
-      originX = offsetX;
-      originY = offsetY;
+      [originX, originY] = unitOffsets[unitEl.id] ?? [0, 0];
       const p = clientPointFromSourceEvent(event.sourceEvent);
       startX = p.x;
       startY = p.y;
@@ -108,12 +106,88 @@ function makeDraggableUnit(
     .on('drag', (event: D3DragEvent<HTMLElement, unknown, unknown>) => {
       const scale = currentScale();
       const p = clientPointFromSourceEvent(event.sourceEvent);
-      offsetX = originX + (p.x - startX) / scale;
-      offsetY = originY + (p.y - startY) / scale;
-      unitEl.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
-    });
+      moveUnit(unitEl, originX + (p.x - startX) / scale, originY + (p.y - startY) / scale);
+    })
+    .on('end', onEnd);
 
   select(handleEl).call(behavior);
+}
+
+/**
+ * Translate offset of each `.jack-unit`, by id, in its local (pre-zoom)
+ * space. The page's own state: cavijs knows nothing about the units, so the
+ * history saves this next to the cables (see bindHistory).
+ */
+type UnitOffsets = Record<string, [number, number]>;
+const unitOffsets: UnitOffsets = {};
+
+function moveUnit(unitEl: HTMLElement, x: number, y: number): void {
+  unitOffsets[unitEl.id] = [x, y];
+  unitEl.style.transform = `translate(${x}px, ${y}px)`;
+}
+
+const SAVE_KEY = 'cavijs-demo-d3-interaction';
+
+/**
+ * Undo/redo for the cables *and* the units: a CaviHistory records the
+ * cables at the end of every gesture by itself, and the units' offsets
+ * through `app` — committed by hand when a unit is dropped. Undo puts the
+ * units back first, then the cables, which follow their jacks. Save/Load
+ * keep one state in localStorage; loading is a step like any other.
+ * Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z (or Ctrl+Y) redoes.
+ */
+function bindHistory(worldEl: CaviWorldElement): CaviHistory<UnitOffsets> {
+  const units = (): HTMLElement[] =>
+    Array.from(worldEl.querySelectorAll<HTMLElement>('.jack-unit'));
+  const history = new CaviHistory<UnitOffsets>(worldEl.getCavi()!, {
+    app: {
+      capture: () => ({ ...unitOffsets }),
+      restore: (offsets) => {
+        for (const unitEl of units()) moveUnit(unitEl, ...(offsets[unitEl.id] ?? [0, 0]));
+      },
+    },
+  });
+
+  const button = (id: string) => document.getElementById(id) as HTMLButtonElement;
+  const refresh = (): void => {
+    button('undo').disabled = !history.canUndo;
+    button('redo').disabled = !history.canRedo;
+    button('load').disabled = readSaved() === null;
+  };
+  const readSaved = (): HistoryEntry<UnitOffsets> | null => {
+    try {
+      const saved = localStorage.getItem(SAVE_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  button('undo').addEventListener('click', () => void history.undo());
+  button('redo').addEventListener('click', () => void history.redo());
+  button('save').addEventListener('click', () => {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(history.capture()));
+    } catch {
+      // storage unavailable (private mode, blocked): nothing to keep it in
+    }
+    refresh();
+  });
+  button('load').addEventListener('click', () => {
+    const saved = readSaved();
+    if (saved) void history.load(saved);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const key = e.key.toLowerCase();
+    if (key === 'z' && !e.shiftKey) void history.undo();
+    else if ((key === 'z' && e.shiftKey) || key === 'y') void history.redo();
+    else return;
+    e.preventDefault();
+  });
+  history.addEventListener('change', refresh);
+  refresh();
+  return history;
 }
 
 async function main(): Promise<void> {
@@ -157,10 +231,11 @@ async function main(): Promise<void> {
     .call(zoomBehavior)
     .call(zoomBehavior.transform, zoomIdentity);
 
+  const history = bindHistory(worldEl);
   for (const id of ['unit-a', 'unit-b', 'unit-c']) {
     const unitEl = document.getElementById(id) as HTMLElement;
     const handleEl = unitEl.querySelector('.jack-unit-handle') as HTMLElement;
-    makeDraggableUnit(unitEl, handleEl, worldEl);
+    makeDraggableUnit(unitEl, handleEl, worldEl, () => history.commit());
   }
 }
 

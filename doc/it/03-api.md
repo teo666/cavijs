@@ -290,6 +290,69 @@ Tutti live: cambiarne uno aggiorna il cavo in esecuzione.
 | `type`        | `''`      | Tipo di connessione, dato ai suoi plug; vuoto fa da jolly                       |
 | `render-type` | bezier    | `segments` per segmenti dritti (la vecchia grafia `renderType` funziona ancora) |
 
+`id` non è live ma c'è sempre: un `<cavi-wire>` che non ce l'ha ne riceve uno generato alla connessione (vedi [Salvare e ripristinare i cavi](#salvare-e-ripristinare-i-cavi)).
+
+## Salvare e ripristinare i cavi
+
+`captureCables(cavi)` e `applyCables(cavi, snapshot)` (`src/component/cables.ts`) leggono i cavi di un mondo come dati semplici e li rimettono a posto. I dati si possono passare a `JSON.stringify`, per salvare una configurazione o tenere una history di annullamento:
+
+```json
+{
+  "version": 1,
+  "wires": [
+    { "id": "w-3", "ends": ["out-1", "in-4"], "type": "audio", "color": "#ffaa00", "length": 14 },
+    { "id": "w-4", "ends": ["out-2", null], "type": "audio", "length": 9 }
+  ]
+}
+```
+
+- **Cosa viene salvato:** per ogni `<cavi-wire>` nel container del mondo, il suo `id`, gli id dei jack in cui sono collegati il primo e l'ultimo nodo (`null` per un capo libero), e gli attributi impostati tra `type`, `color`, `length`, `tension`, `size` e `render-type` (come `renderType`). Lo stato fisico non viene salvato: un cavo ripristinato parte dritto tra i suoi jack e si assesta da solo.
+- **Cosa resta fuori:** un cavo non collegato a niente (sta cadendo via, vedi l'eliminazione dei cavi orfani), e un capo in un jack senza `id`, che non si potrebbe ritrovare. Un capo in un jack rimosso dalla pagina conta già come libero, anche prima che il jack rilasci i suoi plug.
+- **I jack non vengono salvati.** Appartengono alla pagina: vanno rimessi prima, con gli stessi id. Un capo il cui jack non è nella pagina resta libero; un cavo senza nessuno dei due jack non viene ripristinato.
+- **`applyCables` tocca solo ciò che è diverso**, cavo per cavo, per `id`: un cavo che il mondo ha e lo snapshot no viene cancellato (`CaviWireElement.delete()`, così i suoi jack si liberano subito); uno che hanno entrambi mantiene il suo stato fisico, aggiorna gli attributi e sposta solo i capi che hanno cambiato jack (`Plug.disconnect`/`connect`); uno che manca viene creato nel container. Ogni capo che lascia un jack viene staccato prima che si colleghi qualunque cosa, così i cavi possono scambiarsi jack a `max-plugs`. Un capo che non si può collegare (jack pieno, tipo sbagliato) resta libero, con un `console.warn`.
+- Lancia un errore per uno snapshot che non sia di versione 1, e per un `Cavi` senza container del renderer. Va chiamata tra un gesto e l'altro: un plug che si sta trascinando resta dov'è.
+
+```ts
+const cavi = worldEl.getCavi()!;
+localStorage.setItem('cables', JSON.stringify(captureCables(cavi)));
+// più tardi, una volta che i jack sono di nuovo nella pagina:
+applyCables(cavi, JSON.parse(localStorage.getItem('cables')!));
+```
+
+## Annullare e ripristinare: `CaviHistory`
+
+`CaviHistory` (`src/component/history.ts`) tiene i passi di annullamento/ripristino di un mondo. Ogni passo (`HistoryEntry`) è lo stato dei cavi come lo legge `captureCables` più, facoltativamente, lo stato della pagina:
+
+```ts
+const history = new CaviHistory(worldEl.getCavi()!, {
+  // facoltativo: ciò che cavijs non possiede e da cui dipendono i cavi
+  app: {
+    capture: () => app.getModules(), // serializzabile in JSON
+    restore: async (modules) => app.setModules(modules), // jack rimessi, stessi id
+  },
+  limit: 100, // passi di annullamento conservati al massimo (default)
+});
+
+history.commit(); // dopo una modifica fatta dalla pagina
+history.batch(() => app.removeModule(m)); // più modifiche, un solo passo
+await history.undo();
+await history.redo();
+history.canUndo; // e canRedo
+history.addEventListener('change', updateButtons);
+localStorage.setItem('state', JSON.stringify(history.capture()));
+await history.load(JSON.parse(localStorage.getItem('state')!));
+```
+
+- **Quando si registra un passo:** alla fine di ogni gesto dell'utente sui cavi (`cavi-change`), da solo, e ogni volta che la pagina chiama `commit()`. Mai due volte lo stesso stato: un gesto che non ha cambiato niente (un plug rimesso dov'era) non registra nulla. I cavi vengono confrontati indipendentemente dal loro ordine nella pagina. Il passo di un gesto viene registrato un microtask dopo `cavi-change`, quando nel mondo non c'è più nessun altro gesto in corso (`Jack.isDragActive`): con due dita, il passo è lo stato che lasciano entrambi.
+- **Undo, redo e load rimettono uno stato in ordine:** prima `app.restore`, atteso, poi `applyCables`, che tocca solo i cavi diversi — così i cavi trovano i loro jack nella pagina. Una modifica non ancora registrata viene registrata prima, così è quella che `undo()` annulla. Una volta rimesso uno stato, la sua voce diventa ciò che il ripristino ha lasciato nella pagina (lo stato della pagina riletto, un capo il cui jack non è tornato come libero), così quella differenza non conta mai come un passo nuovo.
+- **Rifiutano (risolvono a `false`) mentre è in corso un gesto** nel mondo: quello è del controller, Escape lo annulla. Le chiamate girano una dopo l'altra, quindi premere Ctrl+Z tre volte di fila annulla tre passi.
+- **Lo stato della pagina viene salvato come JSON:** modifiche successive all'oggetto restituito da `capture` non arrivano alla history, e `restore` riceve sempre una copia nuova.
+- **`batch(fn)`** registra tutto ciò che fa `fn` come un solo passo, assorbendo le chiamate a `commit()` e i gesti che finiscono nel frattempo; per un `fn` che restituisce una promise restituisce una promise e registra quando si conclude. Il caso tipico è la rimozione di un modulo: i suoi jack spariscono e i capi dei cavi collegati vengono lasciati andare — `captureCables` conta già come libero un capo in un jack rimosso.
+- **`load(entry)`** rimette uno stato ottenuto da `capture()` — salvato prima, magari in un'altra visita — come un passo nuovo, annullabile come gli altri. **`clear()`** dimentica tutti i passi; **`destroy()`** smette di ascoltare il mondo.
+- **`change`** (un semplice `Event`) viene emesso ogni volta che `canUndo`/`canRedo` possono essere cambiati.
+
+Va creata quando il mondo è pronto (`caviready`): lo stato in quel momento è il primo passo. `examples/demo-d3-interaction.ts` (`bindHistory`) la usa con le posizioni delle unità come stato della pagina, Ctrl/Cmd+Z e Ctrl/Cmd+Shift+Z, e i pulsanti Save/Load.
+
 ## `Jack` / `Plug`
 
 Vedi [Componenti Jack & Plug](./05-jack-plug.md).
