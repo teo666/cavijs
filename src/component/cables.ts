@@ -20,6 +20,8 @@ export interface CableState {
   length?: number;
   tension?: number;
   size?: number;
+  /** Bend stiffness, 0..1 (see Wire.setBendStiffness). */
+  bend?: number;
   renderType?: 'bezier' | 'segments';
 }
 
@@ -78,7 +80,7 @@ function readAttributes(el: CaviWireElement): Omit<CableState, 'id' | 'ends'> {
   if (type !== null) state.type = type;
   const color = el.getAttribute('color');
   if (color !== null) state.color = color;
-  for (const name of ['length', 'tension', 'size'] as const) {
+  for (const name of ['length', 'tension', 'size', 'bend'] as const) {
     const value = el.getAttribute(name);
     if (value === null) continue;
     const n = Number(value);
@@ -104,6 +106,7 @@ function writeAttributes(el: CaviWireElement, state: CableState): void {
     const value = state[name];
     setAttribute(el, name, Number.isFinite(value) && value! > 0 ? value : undefined);
   }
+  setAttribute(el, 'bend', Number.isFinite(state.bend) ? state.bend : undefined);
   // The legacy spelling would win over the default if left behind.
   el.removeAttribute('renderType');
   setAttribute(el, 'render-type', state.renderType);

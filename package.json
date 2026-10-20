@@ -13,8 +13,15 @@
     ".": {
       "types": "./dist-lib/types/index.d.ts",
       "import": "./dist-lib/cavijs.js"
+    },
+    "./core": {
+      "types": "./dist-lib/types/core/index.d.ts",
+      "import": "./dist-lib/core.js"
     }
   },
+  "sideEffects": [
+    "./dist-lib/cavijs.js"
+  ],
   "packageManager": "pnpm@11.5.2",
   "scripts": {
     "dev": "vite",
@@ -46,6 +53,6 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
-    "cavi": "^0.2.0"
+    "cavi": "^0.3.0"
   }
 }

@@ -62,7 +62,7 @@ export class CaviWireElement extends HTMLElement {
    * spelling (HTML lowercases attribute names); prefer `render-type`.
    */
   static get observedAttributes() {
-    return ['length', 'tension', 'size', 'render-type', 'rendertype', 'color', 'type'];
+    return ['length', 'tension', 'size', 'render-type', 'rendertype', 'color', 'type', 'bend'];
   }
 
   attributeChangedCallback(name: string, oldValue: string | null, value: string | null): void {
@@ -85,6 +85,9 @@ export class CaviWireElement extends HTMLElement {
       case 'type':
         for (const plug of this._plugs) plug.setType(value ?? '');
         break;
+      case 'bend':
+        wire.setBendStiffness(this._bend());
+        break;
       case 'render-type':
       case 'rendertype':
         wire.setRenderType(this._renderType());
@@ -105,6 +108,12 @@ export class CaviWireElement extends HTMLElement {
         break;
       }
     }
+  }
+
+  /** The `bend` attribute as a bend stiffness (see Wire.setBendStiffness), 0 if unset or invalid. */
+  private _bend(): number {
+    const bend = parseFloat(this.getAttribute('bend') ?? '');
+    return Number.isFinite(bend) ? bend : 0;
   }
 
   /** 0 (segments) or 1 (bezier, the default) from `render-type` (or legacy `renderType`). */
@@ -226,6 +235,7 @@ export class CaviWireElement extends HTMLElement {
 
     const wire = cavi.addWire(x1, y1, x2, y2, nodeCount, tension, radius, renderType);
     wire.setColor(color);
+    if (this.hasAttribute('bend')) wire.setBendStiffness(this._bend());
     this._wire = wire;
     emitCaviEvent(cavi, this, 'cavi-wire-add', { wire, element: this });
 

@@ -286,6 +286,12 @@ Details: [doc/en/06-zoom-multiworld.md](doc/en/06-zoom-multiworld.md).
 
 Details: [doc/en/03-api.md](doc/en/03-api.md#saving-and-restoring-cables), [undo and redo](doc/en/03-api.md#undo-and-redo-cavihistory).
 
+## `cavijs/core`: the simulation alone
+
+`import { World, initWasm, forEachWireRender, svgPathData } from 'cavijs/core'` gets the engine without the page: no custom element registered, no DOM touched. `initWasm(source?)` loads the WASM once (from a URL of your choice if needed), a `World` runs from your own frame loop, `forEachWireRender`/`svgPathData` turn its cables into SVG path data, and `Wire.growTo`/`shrinkTo` with `nodeCountForDistance` keep a cable's length in step with its ends — the pieces to draw cavijs cables as another library's edges.
+
+Details: [doc/en/03-api.md](doc/en/03-api.md#cavijscore-srccoreindexts).
+
 ## Debug overlay and events
 
 Drop `<cavi-debug>` next to (or inside) a world for live stats — FPS, wires, nodes, jacks/plugs, physics and view parameters, a per-wire table — and a log of the events the world emits (`cavi-wire-add`, `cavi-plug-attach`, `cavi-cable-end`, …). `mode="floating"` is a draggable window, `mode="panel"` a panel docked to the right edge; `Alt+Shift+D` toggles it.
@@ -300,7 +306,7 @@ Details: [doc/en/07-debug.md](doc/en/07-debug.md).
 
 ```bash
 pnpm build       # type-check + demo site (dist/, deployed to GitHub Pages)
-pnpm build:lib   # library: dist-lib/cavijs.js + dist-lib/types/*.d.ts
+pnpm build:lib   # library: dist-lib/cavijs.js, dist-lib/core.js (cavijs/core) + dist-lib/types/*.d.ts
 pnpm test        # vitest (jsdom + the real cavi WASM module)
 pnpm test:e2e    # Playwright: the demos in Chrome, driven with a real mouse
 ```
@@ -345,7 +351,7 @@ Wire metadata allows attaching arbitrary rendering information without modifying
 ## Project Layout
 
 - `src/` — the library itself, nothing else. Organized by concern:
-  - `src/core/` — `Cavi`, `World`, `Wire`, `Node`, and the shared `types.ts` (`IRenderer`, `IInteractionController`, `WireMeta`, ...)
+  - `src/core/` — `Cavi`, `World`, `Wire`, `Node`, the WASM loader (`wasm.ts`), the render buffer reader (`render-data.ts`), and the shared `types.ts` (`IRenderer`, `IInteractionController`, `WireMeta`, ...); `index.ts` is the `cavijs/core` entry point
   - `src/renderer/` — `Renderer` (canvas), `SvgRenderer` (SVG), `StandardResizeController`
   - `src/interaction/` — `StandardInteractionController` (pointer), `KeyboardInteractionController` (keyboard)
   - `src/component/` — the custom elements: `<cavi-jack>`, `<cavi-plug>`, `<cavi-wire>`, `<cavi-world>`, `<cavi-interaction>`

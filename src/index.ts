@@ -10,6 +10,18 @@ export { Cavi } from './core/cavi';
 export { World } from './core/world';
 export { Wire } from './core/wire';
 export { Node } from './core/node';
+export { getWasm, initWasm, isWasmReady } from './core/wasm';
+export { nodeCountForDistance } from './core/wire';
+export type { NodeCountOptions, NodeSpawn } from './core/wire';
+export {
+  RENDER_BEZIER,
+  RENDER_SEGMENTS,
+  forEachWireRender,
+  svgPathData,
+  tracePath,
+  wirePath,
+} from './core/render-data';
+export type { WireRender } from './core/render-data';
 export {
   IDENTITY_TRANSFORM,
   clientToWorld,

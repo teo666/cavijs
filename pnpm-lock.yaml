@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       cavi:
-        specifier: ^0.2.0
-        version: 0.2.0
+        specifier: ^0.3.0
+        version: 0.3.0
     devDependencies:
       '@playwright/test':
         specifier: ^1.64.0
@@ -611,8 +611,8 @@ packages:
   bidi-js@1.0.3:
     resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
 
-  cavi@0.2.0:
-    resolution: {integrity: sha512-zpdICSIvChI0EpgmRuIBQTAy93uPCWFx98Rl5+Yfv1rXWdW/FOH8LywvfCypo30l4suQZ1BD1YeB76Xcr1TezQ==}
+  cavi@0.3.0:
+    resolution: {integrity: sha512-fbvWdpnDhu8oQNVAmRaRtVsyLyizYGY8NgvkLoypuHx5CqTsjiy7BoB2uuVQ4jFA+njQ+HO/xBtI/5XNL15TJA==}
 
   chai@6.2.2:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
@@ -1316,7 +1316,7 @@ snapshots:
     dependencies:
       require-from-string: 2.0.2
 
-  cavi@0.2.0: {}
+  cavi@0.3.0: {}
 
   chai@6.2.2: {}
 
