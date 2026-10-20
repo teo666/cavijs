@@ -177,6 +177,7 @@ describe('captureCables', () => {
     const el = makeCable(container, 'w', 'a', 'b', 12);
     el.setAttribute('color', '#ff0000');
     el.setAttribute('render-type', 'segments');
+    el.setAttribute('bend', '0.3');
 
     expect(captureCables(cavi)).toEqual({
       version: 1,
@@ -187,6 +188,7 @@ describe('captureCables', () => {
           type: 'audio',
           color: '#ff0000',
           length: 12,
+          bend: 0.3,
           renderType: 'segments',
         },
       ],
@@ -302,6 +304,20 @@ describe('applyCables', () => {
     expect(el.getWire()!.getColor()).toBe('#00ffff');
     expect(el.getWire()!.getNodeCount()).toBe(14);
     expect(plugsOf(el)[1].getAttribute('node')).toBe('13');
+  });
+
+  it("puts a cable's bend stiffness back, and takes it away when the snapshot has none", () => {
+    const { cavi, container } = setup();
+    const el = cable(container, 'w');
+    const state = { id: 'w', ends: ['a', 'b'] as [string, string], type: 'audio' };
+
+    applyCables(cavi, { version: 1, wires: [{ ...state, bend: 0.4 }] });
+    expect(el.getAttribute('bend')).toBe('0.4');
+    expect(el.getWire()!.getBendStiffness()).toBeCloseTo(0.4);
+
+    applyCables(cavi, { version: 1, wires: [state] });
+    expect(el.hasAttribute('bend')).toBe(false);
+    expect(el.getWire()!.getBendStiffness()).toBe(0);
   });
 
   it('deletes cables the snapshot does not have', () => {
