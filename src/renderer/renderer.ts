@@ -1,7 +1,7 @@
 import type { WasmWorld } from 'cavi';
 import type { IRenderer, RendererOptions } from '../core/types';
 import { DEFAULT_WIRE_COLORS, type World } from '../core/world';
-import { Cavi } from '../core/cavi';
+import { forEachWireRender, tracePath } from '../core/render-data';
 import { containerOrigin } from '../core/coords';
 import { sizeCanvasToHost } from './resize';
 import { PointerTracker } from './pointer';
@@ -236,59 +236,10 @@ export class Renderer implements IRenderer {
     ctx: CanvasRenderingContext2D,
     visit: (wireIdx: number, radius: number) => void
   ): void {
-    const ptr = this.wasmWorld.wire_data_ptr();
-    const len = this.wasmWorld.wire_data_len();
-
-    if (len === 0) return;
-
-    // Create Float32Array view directly into WASM memory (buffer is now f32)
-    const wireData = new Float32Array(Cavi.wasm.memory.buffer, ptr, len);
-
-    let offset = 0;
-    const wireCount = this.world.getWireCount();
-
-    for (let wireIdx = 0; wireIdx < wireCount; wireIdx++) {
-      offset++; // node count — unused here
-      const radius = wireData[offset++]!;
-      const renderType = wireData[offset++]!;
-      const pathLength = wireData[offset++]!;
-
-      if (pathLength < 2) {
-        offset += pathLength;
-        continue;
-      }
-
+    forEachWireRender(this.world, ({ index, radius, renderType, path }) => {
       ctx.beginPath();
-
-      // Start at first point
-      ctx.moveTo(wireData[offset]!, wireData[offset + 1]!);
-
-      offset += 2;
-
-      const targetOffset = offset + pathLength - 2;
-      if (renderType === 0) {
-        // Render as segments
-        while (offset < targetOffset) {
-          const x = wireData[offset++]!;
-          const y = wireData[offset++]!;
-          ctx.lineTo(x, y);
-        }
-      } else {
-        // Render as Bezier curves
-        while (offset < targetOffset) {
-          const cp1x = wireData[offset++]!;
-          const cp1y = wireData[offset++]!;
-          const cp2x = wireData[offset++]!;
-          const cp2y = wireData[offset++]!;
-          const x = wireData[offset++]!;
-          const y = wireData[offset++]!;
-
-          ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
-        }
-      }
-
-      visit(wireIdx, radius);
-    }
+      if (tracePath(ctx, path, renderType)) visit(index, radius);
+    });
   }
 
   /**

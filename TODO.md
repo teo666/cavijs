@@ -50,7 +50,8 @@ reinserito. Restano i giudizi a occhio:
 
 ## Rilascio di `cavi`
 
-Fatto: `cavi` 0.2.0 è su npm, il suo `main` contiene tutto, cavijs ne dipende con `^0.2.0`.
+Fatto: `cavi` 0.3.0 è su npm (rigidità alla flessione e direzione dei capi), il suo `main` contiene
+tutto, cavijs ne dipende con `^0.3.0`.
 
 - [ ] cavijs: push di `d3-interaction` (26 commit avanti rispetto a `origin`) e PR verso `main`. Si
       unisce senza conflitti con i 3 commit arrivati nel frattempo su `origin/main`.
@@ -71,16 +72,25 @@ Tutto fatto.
 
 - [ ] La libreria non è pubblicabile: `private: true` in `package.json`, nessuno script
       `prepublishOnly`/`prepare` che costruisca `dist-lib`.
-- [ ] Inizializzazione del WASM non configurabile: non si può passare l'URL del `.wasm` (CDN, CSP,
-      bundler diversi da Vite). Documentare il setup per i bundler. (Un caricamento fallito ora dà un
-      errore e l'evento `cavierror`, e il `<cavi-world>` successivo riprova.)
-- [ ] Importare la libreria registra tutti i custom element, compreso `<cavi-debug>`.
-      Proteggere ogni `customElements.define` con `customElements.get`, aggiungere `sideEffects` in
-      `package.json` e separare i punti d'ingresso (`cavijs`, `cavijs/elements`, `cavijs/debug`).
+- [x] Inizializzazione del WASM configurabile: `initWasm(source?)` accetta URL, `Response`, byte o
+      modulo, una sola volta per pagina, e i `<cavi-world>` la condividono se chiamata prima.
+- [ ] Documentare il setup per i bundler diversi da Vite (dove finisce `cavi_bg.wasm`).
+- [x] Ingresso `cavijs/core` senza DOM né custom element (`World`, `Wire`, `Node`, `initWasm`,
+      `forEachWireRender`/`svgPathData`/`tracePath`/`wirePath`, `Wire.growTo`/`shrinkTo`,
+      `nodeCountForDistance`), `sideEffects` in `package.json`. Base per l'integrazione con Vue Flow.
+- [ ] Importare `cavijs` registra ancora tutti i custom element, compreso `<cavi-debug>`.
+      Proteggere ogni `customElements.define` con `customElements.get` e separare `cavijs/elements` e
+      `cavijs/debug`.
 
 ## API e usabilità
 
-Tutto fatto.
+- [x] Fase 1 di salva/ripristina: id stabili sui `<cavi-wire>`, `Plug.connect`/`disconnect`,
+      `CaviWireElement.delete()` (jack liberati subito), `captureCables`/`applyCables` con aggiornamento
+      per id (`src/component/cables.ts`), capo libero che pende dall'altro capo.
+- [x] Fase 2: evento `cavi-change` a fine gesto, `CaviHistory` (`src/component/history.ts`) con
+      `capture`/`restore` dell'app (prima i jack, poi i cavi), `commit`, `batch`, undo/redo, `load`;
+      Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z e Salva/Carica nell'esempio d3, con le posizioni delle unità come
+      stato dell'app.
 
 ## Manutenzione
 

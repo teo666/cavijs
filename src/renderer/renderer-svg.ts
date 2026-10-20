@@ -1,7 +1,7 @@
 import type { WasmWorld } from 'cavi';
 import type { IRenderer, RendererOptions } from '../core/types';
 import { DEFAULT_WIRE_COLORS, type World } from '../core/world';
-import { Cavi } from '../core/cavi';
+import { forEachWireRender, svgPathData } from '../core/render-data';
 import { containerOrigin } from '../core/coords';
 import { PointerTracker } from './pointer';
 
@@ -213,73 +213,28 @@ export class SvgRenderer implements IRenderer {
   }
 
   private drawAllWires(): void {
-    const ptr = this.wasmWorld.wire_data_ptr();
-    const len = this.wasmWorld.wire_data_len();
-    const wireCount = this.world.getWireCount();
-    this.syncPoolSize(wireCount);
-
-    if (len === 0) return;
-
-    const wireData = new Float32Array(Cavi.wasm.memory.buffer, ptr, len);
-    const wires = this.world.getWiresView();
-
-    let offset = 0;
-    for (let wireIdx = 0; wireIdx < wireCount; wireIdx++) {
-      const start = offset;
-      offset++; // node count — unused here
-      const radius = wireData[offset++]!;
-      const renderType = wireData[offset++]!;
-      const pathLength = wireData[offset++]!;
-      const end = offset + pathLength;
-
-      const pathEl = this.wirePaths[wireIdx]!;
+    this.syncPoolSize(this.world.getWireCount());
+    forEachWireRender(this.world, ({ index, radius, renderType, path, record, wire }) => {
+      const pathEl = this.wirePaths[index]!;
       // See Renderer.drawAllWires: colors are fixed at creation.
-      const wireColor = wires[wireIdx]?.getColor() || DEFAULT_WIRE_COLORS[0];
+      const wireColor = wire.getColor() || DEFAULT_WIRE_COLORS[0];
 
       // Same data and color as last frame: nothing to rewrite.
-      const slice = wireData.subarray(start, end);
-      const drawn = this.wireDrawn[wireIdx]!;
-      if (drawn.color === wireColor && sameValues(drawn.data, slice)) {
-        offset = end;
-        continue;
-      }
-      drawn.data = slice.slice();
+      const drawn = this.wireDrawn[index]!;
+      if (drawn.color === wireColor && sameValues(drawn.data, record)) return;
+      drawn.data = record.slice();
       drawn.color = wireColor;
 
-      if (pathLength >= 2) {
-        let d = `M ${wireData[offset]!} ${wireData[offset + 1]!}`;
-        offset += 2;
-
-        if (renderType === 0) {
-          const targetOffset = offset + pathLength - 2;
-          while (offset < targetOffset) {
-            const x = wireData[offset++]!;
-            const y = wireData[offset++]!;
-            d += ` L ${x} ${y}`;
-          }
-        } else {
-          const targetOffset = offset + pathLength - 2;
-          while (offset < targetOffset) {
-            const cp1x = wireData[offset++]!;
-            const cp1y = wireData[offset++]!;
-            const cp2x = wireData[offset++]!;
-            const cp2y = wireData[offset++]!;
-            const x = wireData[offset++]!;
-            const y = wireData[offset++]!;
-            d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${x} ${y}`;
-          }
-        }
-
-        pathEl.setAttribute('d', d);
+      const d = svgPathData(path, renderType);
+      pathEl.setAttribute('d', d);
+      if (d) {
         pathEl.setAttribute('stroke', wireColor);
         pathEl.setAttribute('stroke-width', String(radius * 2));
         pathEl.style.display = '';
       } else {
-        offset += pathLength;
-        pathEl.setAttribute('d', '');
         pathEl.style.display = 'none';
       }
-    }
+    });
   }
 
   /**

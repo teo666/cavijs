@@ -103,6 +103,8 @@ addNodeAt(index: number, x: number, y: number, fixed?: boolean): void
 removeNode(index: number): boolean        // false se lascerebbe meno di 2 nodi
 getNodeCount(): number
 setNodeCount(count: number): void
+growTo(count: number, spawn?: 'interpolate' | 'stack'): void
+shrinkTo(count: number): void
 getNode(index: number): Node | null
 setMetaData(key: string, value: any): void
 getMetaData(key: string): any
@@ -115,6 +117,10 @@ setRenderType(renderType: number): void  // 0 = segmenti, 1 = bezier
 getRenderType(): number
 setLinkDistance(distance: number): void  // distanza a riposo tra i nodi (setRadius non la cambia più)
 getLinkDistance(): number
+setBendStiffness(stiffness: number): void   // da 0 (default, una catena) a 1
+getBendStiffness(): number
+setEndDirection(end: 0 | 1, direction: { x: number; y: number } | null): void
+getEndDirection(end: 0 | 1): { x: number; y: number } | null
 isSleeping(): boolean
 getIndex(): number
 ```
@@ -132,11 +138,49 @@ Un `Wire` costruito senza argomenti `(world, wireIndex)` è "scollegato" — tut
 
 `setNodeCount(count)` ridimensiona il cavo a runtime: ricostruisce l'intero vettore di nodi, preservando posizione e stato `fixed` dei due nodi terminali e ridistribuendo linearmente i nodi intermedi tra di essi (lo stato di eventuali nodi intermedi preesistenti viene perso).
 
+`growTo(count, spawn?)` e `shrinkTo(count)` lo ridimensionano senza farlo: inseriscono o tolgono nodi uno alla volta subito prima dell'ultimo, così tutti gli altri nodi mantengono il loro stato fisico e il cavo non torna dritto di colpo — è così che cresce un cavo mentre lo tiri fuori da un jack. I nodi nuovi partono distribuiti sulla linea dal penultimo all'ultimo nodo (`'interpolate'`, il default), o sopra il penultimo (`'stack'`). `shrinkTo` non scende mai sotto 2 nodi; il cavo poi si ritira da solo nei passi successivi. Il numero di nodi si sceglie con `nodeCountForDistance` (vedi [`cavijs/core`](#cavijscore-srccoreindexts)).
+
+`setBendStiffness(k)` fa resistere il cavo alla flessione. A 0 (il default) è una catena di maglie: appeso a un punto scende dritto come un filo a piombo e si piega dove la corda finisce. Più rigido, si curva lungo tutta la lunghezza, come un cavo vero. Il motore riduce di `k` la curvatura di ogni terna di nodi consecutivi una volta per iterazione dei vincoli, quindi l'effetto si somma con `World.setConstraintIterations` (circa `1 − (1 − k)^n`); i nodi fissi non si muovono mai. `setEndDirection(end, { x, y })` dà a un capo la direzione con cui esce dal suo aggancio — una spina dal jack, un edge dal suo handle — e, con una rigidità, il cavo esce da quel capo in quella direzione e poi curva gradualmente (nel motore, un nodo fisso virtuale dietro il capo). Entrambi svegliano il cavo.
+
 `getNode(index)` restituisce un solo handle per nodo, e l'handle segue il suo nodo quando vengono inseriti o tolti nodi prima di lui tramite questo `Wire` (`addNodeAt`, `removeNode`, `setNodeCount`): un `Plug` legato al terminale resta sul terminale quando [`Jack`](./05-jack-plug.md) allunga un cavo inserendo nodi, o quando si aggiungono nodi da codice. L'handle di un nodo rimosso (o di un nodo intermedio scartato da `setNodeCount`) viene invalidato: i suoi metodi non fanno più niente. Le modifiche ai nodi fatte direttamente sul `WasmWorld` (`getWasmWorld()`) aggirano questo meccanismo.
 
 ### Smontare un mondo
 
 `Cavi.destroy()` ferma il renderer, libera il mondo WASM, toglie il container del renderer da `Cavi.for` e azzera `Cavi.shared` se punta a questa istanza. Tutti gli handle `Wire` e `Node` del mondo vengono invalidati, così gli elementi che ne tengono ancora uno fanno pulizia senza toccare memoria liberata. L'istanza non va più usata (lo dice `isDestroyed()`). `<cavi-world>` lo fa da solo quando viene rimosso dalla pagina (non quando viene solo spostato) e, se viene inserito di nuovo più tardi, crea un mondo nuovo mantenendo la trasformazione di coordinate registrata con `setCoordinateTransform`.
+
+## `cavijs/core` (`src/core/index.ts`)
+
+La simulazione senza la pagina: `import { … } from 'cavijs/core'` non registra nessun custom element e non tocca il DOM, né all'import né dopo. Per il codice che porta un proprio disegno e una propria interazione — gli edge di una libreria di grafi (Vue Flow, React Flow), i componenti di un framework, un worker. Tutto ciò che contiene è esportato anche da `cavijs`.
+
+| Export                                                                        | Cosa fa                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `initWasm(source?)`, `isWasmReady()`, `getWasm()`                             | Carica il modulo WASM di cavi una volta per pagina (le chiamate successive condividono lo stesso caricamento; uno fallito viene dimenticato, così la chiamata dopo riprova). `source` — un URL, una `Response`, i byte o un modulo compilato — dice da dove prendere il `.wasm` quando il bundler non lo serve accanto al JS di `cavi` (CDN, CSP, un bundler diverso da Vite). In una pagina con dei `<cavi-world>`, va chiamata prima che si connettano, e loro la condividono. `Cavi.initWasm()` è lo stesso caricamento. |
+| `World`, `Wire`, `Node`, `DEFAULT_WIRE_COLORS`                                | Come sopra. Un `World` non ha bisogno di un renderer: si chiama `advance(elapsedMs)` dal proprio ciclo di frame.                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `nodeCountForDistance(distance, { min, perUnit, max }?)`                      | Quanti nodi deve avere un cavo che arriva a `distance`: `min + floor(distance × perUnit)`, al massimo `max` (default 4, 1/30, 60: la regola con cui cresce un cavo tirato fuori da un jack). Va usata con `Wire.growTo`/`shrinkTo`.                                                                                                                                                                                                                                                                                         |
+| `forEachWireRender(world, fn)`                                                | Chiama `fn` con i dati di disegno di ogni cavo come li ha costruiti l'ultimo `advance()`: `{ wire, index, radius, renderType, path, record }`, viste sulla memoria WASM, valide fino al prossimo `advance()`. Un `record` uguale a quello del frame prima vuol dire che il cavo è uguale: niente da ridisegnare.                                                                                                                                                                                                            |
+| `svgPathData(path, renderType)`, `tracePath(target, path, renderType)`        | Un `path` come dati di path SVG (il `d` di un `<path>`, in coordinate del mondo), o tracciato con `moveTo`/`lineTo`/`bezierCurveTo` di un contesto canvas o di un `Path2D`. Entrambi i renderer disegnano con queste.                                                                                                                                                                                                                                                                                                       |
+| `wirePath(world, wire)`                                                       | I dati di path SVG di un solo cavo. Scorre il buffer fino a lui: per molti cavi, meglio `forEachWireRender` una volta per frame.                                                                                                                                                                                                                                                                                                                                                                                            |
+| `RENDER_SEGMENTS`, `RENDER_BEZIER`                                            | I due `renderType`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `IDENTITY_TRANSFORM`, `screenToWorld`, `worldToScreen`, `CoordinateTransform` | La matematica delle coordinate, senza DOM, per collegare il viewport di una libreria (`{ x, y, zoom }` è `{ translateX, translateY, scale }`).                                                                                                                                                                                                                                                                                                                                                                              |
+
+```ts
+import { World, initWasm, forEachWireRender, svgPathData } from 'cavijs/core';
+
+await initWasm();
+const world = new World();
+const wire = world.addWire(0, 0, 200, 0, 8, 20, 5);
+let last = performance.now();
+requestAnimationFrame(function frame(now) {
+  world.advance(now - last);
+  last = now;
+  forEachWireRender(world, ({ index, path, renderType }) => {
+    pathEls[index].setAttribute('d', svgPathData(path, renderType));
+  });
+  requestAnimationFrame(frame);
+});
+```
+
+`World` legge la pagina solo per misurare la vista per i suoi frame task (eliminazione dei cavi orfani), e solo quando ha un renderer: mai con `cavijs/core` da solo.
 
 ## `Node` (`src/core/node.ts`)
 
@@ -281,14 +325,78 @@ Letti solo quando il mondo viene creato:
 
 Tutti live: cambiarne uno aggiorna il cavo in esecuzione.
 
-| Attributo     | Default   | Descrizione                                                                     |
-| ------------- | --------- | ------------------------------------------------------------------------------- |
-| `length`      | `10`      | Numero di nodi (cambiarlo ridistribuisce i nodi tra i due capi)                 |
-| `tension`     | `20`      | Distanza a riposo tra nodi vicini                                               |
-| `size`        | `5`       | Raggio (metà dello spessore)                                                    |
-| `color`       | `#ffffff` | Colore                                                                          |
-| `type`        | `''`      | Tipo di connessione, dato ai suoi plug; vuoto fa da jolly                       |
-| `render-type` | bezier    | `segments` per segmenti dritti (la vecchia grafia `renderType` funziona ancora) |
+| Attributo     | Default   | Descrizione                                                                                                                    |
+| ------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `length`      | `10`      | Numero di nodi (cambiarlo ridistribuisce i nodi tra i due capi)                                                                |
+| `tension`     | `20`      | Distanza a riposo tra nodi vicini                                                                                              |
+| `size`        | `5`       | Raggio (metà dello spessore)                                                                                                   |
+| `color`       | `#ffffff` | Colore                                                                                                                         |
+| `type`        | `''`      | Tipo di connessione, dato ai suoi plug; vuoto fa da jolly                                                                      |
+| `render-type` | bezier    | `segments` per segmenti dritti (la vecchia grafia `renderType` funziona ancora)                                                |
+| `bend`        | `0`       | Rigidità alla flessione, da 0 a 1 (vedi `Wire.setBendStiffness`): più alta, il cavo si curva invece di pendere come una catena |
+
+`id` non è live ma c'è sempre: un `<cavi-wire>` che non ce l'ha ne riceve uno generato alla connessione (vedi [Salvare e ripristinare i cavi](#salvare-e-ripristinare-i-cavi)).
+
+## Salvare e ripristinare i cavi
+
+`captureCables(cavi)` e `applyCables(cavi, snapshot)` (`src/component/cables.ts`) leggono i cavi di un mondo come dati semplici e li rimettono a posto. I dati si possono passare a `JSON.stringify`, per salvare una configurazione o tenere una history di annullamento:
+
+```json
+{
+  "version": 1,
+  "wires": [
+    { "id": "w-3", "ends": ["out-1", "in-4"], "type": "audio", "color": "#ffaa00", "length": 14 },
+    { "id": "w-4", "ends": ["out-2", null], "type": "audio", "length": 9 }
+  ]
+}
+```
+
+- **Cosa viene salvato:** per ogni `<cavi-wire>` nel container del mondo, il suo `id`, gli id dei jack in cui sono collegati il primo e l'ultimo nodo (`null` per un capo libero), e gli attributi impostati tra `type`, `color`, `length`, `tension`, `size`, `bend` e `render-type` (come `renderType`). Lo stato fisico non viene salvato: un cavo ripristinato parte dritto tra i suoi jack e si assesta da solo.
+- **Cosa resta fuori:** un cavo non collegato a niente (sta cadendo via, vedi l'eliminazione dei cavi orfani), e un capo in un jack senza `id`, che non si potrebbe ritrovare. Un capo in un jack rimosso dalla pagina conta già come libero, anche prima che il jack rilasci i suoi plug.
+- **I jack non vengono salvati.** Appartengono alla pagina: vanno rimessi prima, con gli stessi id. Un capo il cui jack non è nella pagina resta libero; un cavo senza nessuno dei due jack non viene ripristinato.
+- **`applyCables` tocca solo ciò che è diverso**, cavo per cavo, per `id`: un cavo che il mondo ha e lo snapshot no viene cancellato (`CaviWireElement.delete()`, così i suoi jack si liberano subito); uno che hanno entrambi mantiene il suo stato fisico, aggiorna gli attributi e sposta solo i capi che hanno cambiato jack (`Plug.disconnect`/`connect`); uno che manca viene creato nel container. Ogni capo che lascia un jack viene staccato prima che si colleghi qualunque cosa, così i cavi possono scambiarsi jack a `max-plugs`. Un capo che non si può collegare (jack pieno, tipo sbagliato) resta libero, con un `console.warn`.
+- Lancia un errore per uno snapshot che non sia di versione 1, e per un `Cavi` senza container del renderer. Va chiamata tra un gesto e l'altro: un plug che si sta trascinando resta dov'è.
+
+```ts
+const cavi = worldEl.getCavi()!;
+localStorage.setItem('cables', JSON.stringify(captureCables(cavi)));
+// più tardi, una volta che i jack sono di nuovo nella pagina:
+applyCables(cavi, JSON.parse(localStorage.getItem('cables')!));
+```
+
+## Annullare e ripristinare: `CaviHistory`
+
+`CaviHistory` (`src/component/history.ts`) tiene i passi di annullamento/ripristino di un mondo. Ogni passo (`HistoryEntry`) è lo stato dei cavi come lo legge `captureCables` più, facoltativamente, lo stato della pagina:
+
+```ts
+const history = new CaviHistory(worldEl.getCavi()!, {
+  // facoltativo: ciò che cavijs non possiede e da cui dipendono i cavi
+  app: {
+    capture: () => app.getModules(), // serializzabile in JSON
+    restore: async (modules) => app.setModules(modules), // jack rimessi, stessi id
+  },
+  limit: 100, // passi di annullamento conservati al massimo (default)
+});
+
+history.commit(); // dopo una modifica fatta dalla pagina
+history.batch(() => app.removeModule(m)); // più modifiche, un solo passo
+await history.undo();
+await history.redo();
+history.canUndo; // e canRedo
+history.addEventListener('change', updateButtons);
+localStorage.setItem('state', JSON.stringify(history.capture()));
+await history.load(JSON.parse(localStorage.getItem('state')!));
+```
+
+- **Quando si registra un passo:** alla fine di ogni gesto dell'utente sui cavi (`cavi-change`), da solo, e ogni volta che la pagina chiama `commit()`. Mai due volte lo stesso stato: un gesto che non ha cambiato niente (un plug rimesso dov'era) non registra nulla. I cavi vengono confrontati indipendentemente dal loro ordine nella pagina. Il passo di un gesto viene registrato un microtask dopo `cavi-change`, quando nel mondo non c'è più nessun altro gesto in corso (`Jack.isDragActive`): con due dita, il passo è lo stato che lasciano entrambi.
+- **Undo, redo e load rimettono uno stato in ordine:** prima `app.restore`, atteso, poi `applyCables`, che tocca solo i cavi diversi — così i cavi trovano i loro jack nella pagina. Una modifica non ancora registrata viene registrata prima, così è quella che `undo()` annulla. Una volta rimesso uno stato, la sua voce diventa ciò che il ripristino ha lasciato nella pagina (lo stato della pagina riletto, un capo il cui jack non è tornato come libero), così quella differenza non conta mai come un passo nuovo.
+- **Rifiutano (risolvono a `false`) mentre è in corso un gesto** nel mondo: quello è del controller, Escape lo annulla. Le chiamate girano una dopo l'altra, quindi premere Ctrl+Z tre volte di fila annulla tre passi.
+- **Lo stato della pagina viene salvato come JSON:** modifiche successive all'oggetto restituito da `capture` non arrivano alla history, e `restore` riceve sempre una copia nuova.
+- **`batch(fn)`** registra tutto ciò che fa `fn` come un solo passo, assorbendo le chiamate a `commit()` e i gesti che finiscono nel frattempo; per un `fn` che restituisce una promise restituisce una promise e registra quando si conclude. Il caso tipico è la rimozione di un modulo: i suoi jack spariscono e i capi dei cavi collegati vengono lasciati andare — `captureCables` conta già come libero un capo in un jack rimosso.
+- **`load(entry)`** rimette uno stato ottenuto da `capture()` — salvato prima, magari in un'altra visita — come un passo nuovo, annullabile come gli altri. **`clear()`** dimentica tutti i passi; **`destroy()`** smette di ascoltare il mondo.
+- **`change`** (un semplice `Event`) viene emesso ogni volta che `canUndo`/`canRedo` possono essere cambiati.
+
+Va creata quando il mondo è pronto (`caviready`): lo stato in quel momento è il primo passo. `examples/demo-d3-interaction.ts` (`bindHistory`) la usa con le posizioni delle unità come stato della pagina, Ctrl/Cmd+Z e Ctrl/Cmd+Shift+Z, e i pulsanti Save/Load.
 
 ## `Jack` / `Plug`
 

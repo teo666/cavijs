@@ -69,22 +69,25 @@ The same snapshot the panel uses, exported for use elsewhere (tests, telemetry, 
 
 All are `CustomEvent`s with `bubbles: true`, dispatched on the renderer container (the `<cavi-world>` element), so you can listen on the world or on `document`. `detail` types are in `CaviEventDetailMap`; the full list is `CAVI_EVENT_NAMES`.
 
-| Event                   | When                                                                             | `detail`                           |
-| ----------------------- | -------------------------------------------------------------------------------- | ---------------------------------- |
-| `caviready`             | the `<cavi-world>` created its `Cavi`                                            | `{ cavi }`                         |
-| `cavierror`             | the WASM module failed to load (logged too; the next `<cavi-world>` tries again) | `{ error }`                        |
-| `cavi-resize`           | the container changed size                                                       | `{ width, height }`                |
-| `cavi-transform-change` | `notifyCoordinateTransformChanged()`                                             | —                                  |
-| `cavi-wire-add`         | a `<cavi-wire>` created its WASM wire                                            | `{ wire, element }`                |
-| `cavi-wire-remove`      | a `<cavi-wire>` deleted its wire                                                 | `{ wire, element, index, reason }` |
-| `cavi-plug-attach`      | a plug attaches to a jack                                                        | `{ plug, jack }`                   |
-| `cavi-plug-detach`      | a plug detaches from a jack                                                      | `{ plug, jack }`                   |
-| `cavi-cable-start`      | a new cable starts being pulled from a jack                                      | `{ jack, wire }`                   |
-| `cavi-cable-end`        | cable creation finished                                                          | `{ jack, wire, result, target }`   |
+| Event                   | When                                                                                               | `detail`                           |
+| ----------------------- | -------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `caviready`             | the `<cavi-world>` created its `Cavi`                                                              | `{ cavi }`                         |
+| `cavierror`             | the WASM module failed to load (logged too; the next `<cavi-world>` tries again)                   | `{ error }`                        |
+| `cavi-resize`           | the container changed size                                                                         | `{ width, height }`                |
+| `cavi-transform-change` | `notifyCoordinateTransformChanged()`                                                               | —                                  |
+| `cavi-wire-add`         | a `<cavi-wire>` created its WASM wire                                                              | `{ wire, element }`                |
+| `cavi-wire-remove`      | a `<cavi-wire>` deleted its wire                                                                   | `{ wire, element, index, reason }` |
+| `cavi-plug-attach`      | a plug attaches to a jack                                                                          | `{ plug, jack }`                   |
+| `cavi-plug-detach`      | a plug detaches from a jack                                                                        | `{ plug, jack }`                   |
+| `cavi-cable-start`      | a new cable starts being pulled from a jack                                                        | `{ jack, wire }`                   |
+| `cavi-cable-end`        | cable creation finished                                                                            | `{ jack, wire, result, target }`   |
+| `cavi-change`           | a gesture that may have changed the cables ended: a plug dropped, or a cable-creation gesture over | `{ cause }`                        |
 
 `cavi-wire-remove`'s `reason`: `cleanup` (an orphaned cable deleted once out of view, see [orphan cleanup](./05-jack-plug.md#deleting-orphaned-cables-once-out-of-view-orphan-cleanup)) or `removed` (the element left the DOM).
 
 `cavi-cable-end`'s `result`: `connected` (to `target`), `dangle`, `detach`, `cancel` (per `cable-drop-behavior`) or `abort` (`cancelCableSession`).
+
+`cavi-change`'s `cause`: `plug-drop` (a plug dropped, plugged in or not: `endDrag`, `endDragAt`, `cancelDrag`) or `cable-end` (right after `cavi-cable-end`, whatever its result). The cables are in their final state by then: the moment to record an undo step ([`CaviHistory`](./03-api.md#undo-and-redo-cavihistory)). Changes made from code (`Plug.connect`/`disconnect`, `applyCables`, markup) don't emit it.
 
 Without a `Cavi` (e.g. a jack outside any world) plug/cable events are dispatched on the jack itself, and still bubble up to `document`.
 

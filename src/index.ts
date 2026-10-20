@@ -10,6 +10,18 @@ export { Cavi } from './core/cavi';
 export { World } from './core/world';
 export { Wire } from './core/wire';
 export { Node } from './core/node';
+export { getWasm, initWasm, isWasmReady } from './core/wasm';
+export { nodeCountForDistance } from './core/wire';
+export type { NodeCountOptions, NodeSpawn } from './core/wire';
+export {
+  RENDER_BEZIER,
+  RENDER_SEGMENTS,
+  forEachWireRender,
+  svgPathData,
+  tracePath,
+  wirePath,
+} from './core/render-data';
+export type { WireRender } from './core/render-data';
 export {
   IDENTITY_TRANSFORM,
   clientToWorld,
@@ -27,6 +39,10 @@ export { Jack } from './component/jack';
 export type { CableSession } from './component/jack';
 export { Plug } from './component/plug';
 export { CaviWireElement } from './component/wirewc';
+export { applyCables, captureCables } from './component/cables';
+export type { CableState, CablesSnapshot } from './component/cables';
+export { CaviHistory } from './component/history';
+export type { CaviHistoryOptions, HistoryEntry } from './component/history';
 export { CaviWorldElement } from './component/worldwc';
 export { CaviInteractionElement } from './component/interactionwc';
 export { CaviDebugElement } from './debug/debugwc';

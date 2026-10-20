@@ -1,5 +1,5 @@
 import type { Plug } from './plug';
-import type { Wire } from '../core/wire';
+import { nodeCountForDistance, type Wire } from '../core/wire';
 import type { Node } from '../core/node';
 import type { CaviWireElement } from './wirewc';
 import { Cavi } from '../core/cavi';
@@ -8,10 +8,8 @@ import { emitCaviEvent, type CableEndResult } from '../core/events';
 import type { FrameTask } from '../core/frame';
 import './wirewc';
 
-/** Node count/distance growth used while dragging a cable out of a Jack. */
+/** Nodes of a cable just pulled out of a Jack (see nodeCountForDistance). */
 const CABLE_MIN_NODES = 4;
-const CABLE_NODES_PER_PX = 1 / 30;
-const CABLE_MAX_NODES = 60;
 /** Same snap threshold used by Plug's own drag-to-jack magnet effect. */
 const CABLE_SNAP_DISTANCE = 20;
 
@@ -995,51 +993,19 @@ export class Jack extends HTMLElement {
   }
 
   /**
-   * Grows `wire` from its current node count up to `desired`, inserting only
-   * the missing nodes (Wire.addNodeAt) one at a time rather than rebuilding
-   * the whole vector — every already-settled node keeps its live physics
-   * state (position/velocity), unlike Wire.setNodeCount which reinterpolates
-   * everything from scratch and visibly snaps the cable straight on every
-   * growth step during a drag.
-   *
-   * Each new node is inserted right before the current free terminal. Where
-   * it initially spawns is controlled by the `cable-node-spawn` attribute on
-   * this Jack:
-   * - "interpolate" (default): placed on the straight line between the last
-   *   already-settled node and the cursor (the free terminal's current
-   *   position) — smooth immediately, without touching the settled part.
-   * - "stack": placed exactly on top of the last already-settled node, then
-   *   left for the constraint solver to spread out over following frames
-   *   (same pattern used by WasmWire::new_wire for a freshly created cable).
-   *
-   * Returns the new last node, so the caller can rebind the free Plug to it.
+   * Grows `wire` up to `desired` nodes with Wire.growTo — the settled part
+   * keeps its physics state, new nodes go in right before the free
+   * terminal. This Jack's `cable-node-spawn` attribute picks where they
+   * start: "interpolate" (default) on the line to the cursor, or "stack" on
+   * the last settled node. Returns the new last node, so the caller can
+   * rebind the free Plug to it.
    */
   public growCable(wire: Wire, desired: number): Node {
-    const stack = this.getAttribute('cable-node-spawn') === 'stack';
-    let count = wire.getNodeCount();
-    const remaining = desired - count;
-    const anchor = wire.getNode(count - 2)!;
-    const target = wire.getNode(count - 1)!;
-    const targetX = target.x;
-    const targetY = target.y;
-
-    for (let i = 1; i <= remaining; i++) {
-      const insertIndex = count - 1;
-      let nx: number;
-      let ny: number;
-      if (stack) {
-        nx = anchor.x;
-        ny = anchor.y;
-      } else {
-        const t = i / (remaining + 1);
-        nx = anchor.x + (targetX - anchor.x) * t;
-        ny = anchor.y + (targetY - anchor.y) * t;
-      }
-      wire.addNodeAt(insertIndex, nx, ny, false);
-      count++;
-    }
-
-    return wire.getNode(count - 1)!;
+    wire.growTo(
+      desired,
+      this.getAttribute('cable-node-spawn') === 'stack' ? 'stack' : 'interpolate'
+    );
+    return wire.getNode(wire.getNodeCount() - 1)!;
   }
 
   /** The magnet highlight of a cable-creation session (see switchMagnet). */
@@ -1082,10 +1048,7 @@ export class Jack extends HTMLElement {
     // the same logical reach regardless of the current zoom level.
     const center = session.jack.getWorldPosition();
     const distance = Math.hypot(x - center.x, y - center.y);
-    const desired = Math.min(
-      CABLE_MAX_NODES,
-      Math.max(CABLE_MIN_NODES, CABLE_MIN_NODES + Math.floor(distance * CABLE_NODES_PER_PX))
-    );
+    const desired = nodeCountForDistance(distance, { min: CABLE_MIN_NODES });
 
     // Only ever grow the cable while dragging, never shorten it back down
     // as the cursor approaches again — once pulled out, it stays out.
@@ -1199,7 +1162,9 @@ export class Jack extends HTMLElement {
     target: Jack | null
   ): void {
     const { jack, wire } = session;
-    emitCaviEvent(Cavi.for(jack), jack, 'cavi-cable-end', { jack, wire, result, target });
+    const cavi = Cavi.for(jack);
+    emitCaviEvent(cavi, jack, 'cavi-cable-end', { jack, wire, result, target });
+    emitCaviEvent(cavi, jack, 'cavi-change', { cause: 'cable-end' });
   }
 }
 

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Fake } from './fake';
-import type { Wire } from '../core/wire';
+import { Wire, type NodeSpawn } from '../core/wire';
 import { Jack, type CableSession } from '../component/jack';
 import { Cavi } from '../core/cavi';
 import type { FrameTask } from '../core/frame';
@@ -88,7 +88,15 @@ function makePositionedJack(
  */
 class FakeWire implements Fake<
   Wire,
-  'getNode' | 'getIndex' | 'getNodeCount' | 'setNodeCount' | 'addNodeAt' | 'setColor'
+  | 'getNode'
+  | 'getIndex'
+  | 'getNodeCount'
+  | 'getNodeX'
+  | 'getNodeY'
+  | 'setNodeCount'
+  | 'addNodeAt'
+  | 'growTo'
+  | 'setColor'
 > {
   private nodes: Node[];
 
@@ -136,6 +144,19 @@ class FakeWire implements Fake<
   /** Mirrors WasmWire::add_node_at's real semantics: a plain Vec::insert — every other node is left untouched. */
   addNodeAt(index: number, x: number, y: number, fixed = false): void {
     this.nodes.splice(index, 0, new Node(x, y, fixed));
+  }
+
+  getNodeX(index: number): number {
+    return this.nodes[index]?.x ?? 0;
+  }
+
+  getNodeY(index: number): number {
+    return this.nodes[index]?.y ?? 0;
+  }
+
+  /** The real algorithm, run against this fake's nodes. */
+  growTo(count: number, spawn?: NodeSpawn): void {
+    Wire.prototype.growTo.call(this as unknown as Wire, count, spawn);
   }
 
   setColor(): void {}
