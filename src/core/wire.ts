@@ -291,6 +291,47 @@ export class Wire {
     return 0;
   }
 
+  /**
+   * How much the wire resists bending, from 0 (the default: a chain of
+   * links, which hangs straight down from a point and folds anywhere) to 1.
+   * Stiffer, it curves smoothly like a real cable. It acts once per
+   * constraint iteration, so it adds up with World.setConstraintIterations
+   * (about 1 − (1 − k)^n). Wakes the wire.
+   */
+  public setBendStiffness(stiffness: number): void {
+    if (this.world && this.wireIndex >= 0) {
+      this.world.set_wire_bend_stiffness(this.wireIndex, stiffness);
+    }
+  }
+
+  public getBendStiffness(): number {
+    if (this.world && this.wireIndex >= 0) {
+      return this.world.get_wire_bend_stiffness(this.wireIndex);
+    }
+    return 0;
+  }
+
+  /**
+   * The way end `end` (0: the first node, 1: the last) leaves what it is
+   * plugged into — a plug's direction out of its jack, an edge's out of its
+   * handle — as a vector (normalized by the engine); null clears it. With a
+   * bend stiffness, the wire then leaves that end along it and curves away
+   * gradually. Wakes the wire.
+   */
+  public setEndDirection(end: 0 | 1, direction: { x: number; y: number } | null): void {
+    if (this.world && this.wireIndex >= 0) {
+      this.world.set_wire_end_direction(this.wireIndex, end, direction?.x ?? 0, direction?.y ?? 0);
+    }
+  }
+
+  /** The direction of end `end` (see setEndDirection), null if it has none. */
+  public getEndDirection(end: 0 | 1): { x: number; y: number } | null {
+    if (!this.world || this.wireIndex < 0) return null;
+    const x = this.world.get_wire_end_direction_x(this.wireIndex, end);
+    const y = this.world.get_wire_end_direction_y(this.wireIndex, end);
+    return x === 0 && y === 0 ? null : { x, y };
+  }
+
   /** How the wire is drawn: 0 = straight segments, 1 = bezier curve. */
   public setRenderType(renderType: number): void {
     if (this.world && this.wireIndex >= 0) {

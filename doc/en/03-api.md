@@ -117,6 +117,10 @@ setRenderType(renderType: number): void  // 0 = segments, 1 = bezier
 getRenderType(): number
 setLinkDistance(distance: number): void  // rest distance between nodes (setRadius no longer changes it)
 getLinkDistance(): number
+setBendStiffness(stiffness: number): void   // 0 (default, a chain) to 1
+getBendStiffness(): number
+setEndDirection(end: 0 | 1, direction: { x: number; y: number } | null): void
+getEndDirection(end: 0 | 1): { x: number; y: number } | null
 isSleeping(): boolean
 getIndex(): number
 ```
@@ -135,6 +139,8 @@ A `Wire` constructed without `(world, wireIndex)` args is "detached" — all its
 `setNodeCount(count)` resizes the wire at runtime: it rebuilds the entire node vector, preserving the position and `fixed` state of the two terminal nodes and evenly redistributing intermediate nodes between them (any state on previously-existing intermediate nodes is lost).
 
 `growTo(count, spawn?)` and `shrinkTo(count)` resize it without that: they insert or remove nodes one at a time right before the last node, so every other node keeps its live physics state and the cable doesn't snap straight — how a cable grows while it is pulled out of a jack. New nodes start evenly on the line from the node before the last to the last (`'interpolate'`, default), or on top of the node before the last (`'stack'`). `shrinkTo` never goes below 2 nodes; the cable pulls itself in over the next steps. Size them with `nodeCountForDistance` (see [`cavijs/core`](#cavijscore-srccoreindexts)).
+
+`setBendStiffness(k)` makes the wire resist bending. At 0 (the default) it is a chain of links: hung from a point it drops straight down like a plumb line and folds where the rope runs out. Stiffer, it curves all along, like a real cable. The engine reduces the curvature of every three consecutive nodes by `k` once per constraint iteration, so it adds up with `World.setConstraintIterations` (about `1 − (1 − k)^n`); fixed nodes never move. `setEndDirection(end, { x, y })` gives an end the direction it leaves its anchor by — a plug out of its jack, an edge out of its handle — and, with a bend stiffness, the wire leaves that end along it and curves away gradually (a virtual fixed node behind the end, in the engine). Both wake the wire.
 
 `getNode(index)` returns one handle per node, and the handle follows its node when nodes are inserted or removed before it through this `Wire` (`addNodeAt`, `removeNode`, `setNodeCount`): a `Plug` bound to the terminal stays on the terminal when [`Jack`](./05-jack-plug.md) grows a cable by inserting nodes, or when nodes are added from code. The handle of a removed node (or of an intermediate node dropped by `setNodeCount`) is invalidated: its methods then do nothing. Node edits made directly on the `WasmWorld` (`getWasmWorld()`) bypass this bookkeeping.
 
@@ -319,14 +325,15 @@ Read only when the world is set up:
 
 All live: changing one updates the running cable.
 
-| Attribute     | Default   | Description                                                                  |
-| ------------- | --------- | ---------------------------------------------------------------------------- |
-| `length`      | `10`      | Node count (changing it redistributes the nodes between the two ends)        |
-| `tension`     | `20`      | Rest distance between neighbouring nodes                                     |
-| `size`        | `5`       | Radius (half the thickness)                                                  |
-| `color`       | `#ffffff` | Stroke color                                                                 |
-| `type`        | `''`      | Connection type, given to its plugs; empty is a wildcard                     |
-| `render-type` | bezier    | `segments` for straight segments (the old `renderType` spelling still works) |
+| Attribute     | Default   | Description                                                                                                   |
+| ------------- | --------- | ------------------------------------------------------------------------------------------------------------- |
+| `length`      | `10`      | Node count (changing it redistributes the nodes between the two ends)                                         |
+| `tension`     | `20`      | Rest distance between neighbouring nodes                                                                      |
+| `size`        | `5`       | Radius (half the thickness)                                                                                   |
+| `color`       | `#ffffff` | Stroke color                                                                                                  |
+| `type`        | `''`      | Connection type, given to its plugs; empty is a wildcard                                                      |
+| `render-type` | bezier    | `segments` for straight segments (the old `renderType` spelling still works)                                  |
+| `bend`        | `0`       | Bend stiffness, 0 to 1 (see `Wire.setBendStiffness`): stiffer curves smoothly instead of hanging like a chain |
 
 ## `Jack` / `Plug`
 

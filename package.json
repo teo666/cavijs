@@ -53,6 +53,6 @@
     "vitest": "^4.1.11"
   },
   "dependencies": {
-    "cavi": "^0.2.0"
+    "cavi": "link:../cavi/pkg"
   }
 }

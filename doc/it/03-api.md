@@ -117,6 +117,10 @@ setRenderType(renderType: number): void  // 0 = segmenti, 1 = bezier
 getRenderType(): number
 setLinkDistance(distance: number): void  // distanza a riposo tra i nodi (setRadius non la cambia più)
 getLinkDistance(): number
+setBendStiffness(stiffness: number): void   // da 0 (default, una catena) a 1
+getBendStiffness(): number
+setEndDirection(end: 0 | 1, direction: { x: number; y: number } | null): void
+getEndDirection(end: 0 | 1): { x: number; y: number } | null
 isSleeping(): boolean
 getIndex(): number
 ```
@@ -135,6 +139,8 @@ Un `Wire` costruito senza argomenti `(world, wireIndex)` è "scollegato" — tut
 `setNodeCount(count)` ridimensiona il cavo a runtime: ricostruisce l'intero vettore di nodi, preservando posizione e stato `fixed` dei due nodi terminali e ridistribuendo linearmente i nodi intermedi tra di essi (lo stato di eventuali nodi intermedi preesistenti viene perso).
 
 `growTo(count, spawn?)` e `shrinkTo(count)` lo ridimensionano senza farlo: inseriscono o tolgono nodi uno alla volta subito prima dell'ultimo, così tutti gli altri nodi mantengono il loro stato fisico e il cavo non torna dritto di colpo — è così che cresce un cavo mentre lo tiri fuori da un jack. I nodi nuovi partono distribuiti sulla linea dal penultimo all'ultimo nodo (`'interpolate'`, il default), o sopra il penultimo (`'stack'`). `shrinkTo` non scende mai sotto 2 nodi; il cavo poi si ritira da solo nei passi successivi. Il numero di nodi si sceglie con `nodeCountForDistance` (vedi [`cavijs/core`](#cavijscore-srccoreindexts)).
+
+`setBendStiffness(k)` fa resistere il cavo alla flessione. A 0 (il default) è una catena di maglie: appeso a un punto scende dritto come un filo a piombo e si piega dove la corda finisce. Più rigido, si curva lungo tutta la lunghezza, come un cavo vero. Il motore riduce di `k` la curvatura di ogni terna di nodi consecutivi una volta per iterazione dei vincoli, quindi l'effetto si somma con `World.setConstraintIterations` (circa `1 − (1 − k)^n`); i nodi fissi non si muovono mai. `setEndDirection(end, { x, y })` dà a un capo la direzione con cui esce dal suo aggancio — una spina dal jack, un edge dal suo handle — e, con una rigidità, il cavo esce da quel capo in quella direzione e poi curva gradualmente (nel motore, un nodo fisso virtuale dietro il capo). Entrambi svegliano il cavo.
 
 `getNode(index)` restituisce un solo handle per nodo, e l'handle segue il suo nodo quando vengono inseriti o tolti nodi prima di lui tramite questo `Wire` (`addNodeAt`, `removeNode`, `setNodeCount`): un `Plug` legato al terminale resta sul terminale quando [`Jack`](./05-jack-plug.md) allunga un cavo inserendo nodi, o quando si aggiungono nodi da codice. L'handle di un nodo rimosso (o di un nodo intermedio scartato da `setNodeCount`) viene invalidato: i suoi metodi non fanno più niente. Le modifiche ai nodi fatte direttamente sul `WasmWorld` (`getWasmWorld()`) aggirano questo meccanismo.
 
@@ -319,14 +325,15 @@ Letti solo quando il mondo viene creato:
 
 Tutti live: cambiarne uno aggiorna il cavo in esecuzione.
 
-| Attributo     | Default   | Descrizione                                                                     |
-| ------------- | --------- | ------------------------------------------------------------------------------- |
-| `length`      | `10`      | Numero di nodi (cambiarlo ridistribuisce i nodi tra i due capi)                 |
-| `tension`     | `20`      | Distanza a riposo tra nodi vicini                                               |
-| `size`        | `5`       | Raggio (metà dello spessore)                                                    |
-| `color`       | `#ffffff` | Colore                                                                          |
-| `type`        | `''`      | Tipo di connessione, dato ai suoi plug; vuoto fa da jolly                       |
-| `render-type` | bezier    | `segments` per segmenti dritti (la vecchia grafia `renderType` funziona ancora) |
+| Attributo     | Default   | Descrizione                                                                                                                    |
+| ------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `length`      | `10`      | Numero di nodi (cambiarlo ridistribuisce i nodi tra i due capi)                                                                |
+| `tension`     | `20`      | Distanza a riposo tra nodi vicini                                                                                              |
+| `size`        | `5`       | Raggio (metà dello spessore)                                                                                                   |
+| `color`       | `#ffffff` | Colore                                                                                                                         |
+| `type`        | `''`      | Tipo di connessione, dato ai suoi plug; vuoto fa da jolly                                                                      |
+| `render-type` | bezier    | `segments` per segmenti dritti (la vecchia grafia `renderType` funziona ancora)                                                |
+| `bend`        | `0`       | Rigidità alla flessione, da 0 a 1 (vedi `Wire.setBendStiffness`): più alta, il cavo si curva invece di pendere come una catena |
 
 ## `Jack` / `Plug`
 

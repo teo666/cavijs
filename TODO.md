@@ -50,6 +50,11 @@ reinserito. Restano i giudizi a occhio:
 
 ## Rilascio di `cavi`
 
+- [ ] Rigidità alla flessione e direzione dei capi (`set_wire_bend_stiffness`,
+      `set_wire_end_direction`): branch `feat/bend-stiffness` di `cavi`, non pubblicato. Il branch
+      `feat/bend-stiffness` di cavijs dipende da `link:../cavi/pkg`: prima di unirlo pubblicare
+      `cavi` 0.3.0 e tornare a `^0.3.0`.
+
 Fatto: `cavi` 0.2.0 è su npm, il suo `main` contiene tutto, cavijs ne dipende con `^0.2.0`.
 
 - [ ] cavijs: push di `d3-interaction` (26 commit avanti rispetto a `origin`) e PR verso `main`. Si
