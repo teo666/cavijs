@@ -1,7 +1,26 @@
 {
   "name": "cavijs",
-  "private": true,
   "version": "0.1.0",
+  "description": "Physics cables for the web: custom elements and a DOM-free core over the cavi WebAssembly engine.",
+  "license": "MIT",
+  "author": "Teo Basili",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/teo666/cavijs.git"
+  },
+  "homepage": "https://github.com/teo666/cavijs#readme",
+  "bugs": {
+    "url": "https://github.com/teo666/cavijs/issues"
+  },
+  "keywords": [
+    "cables",
+    "wires",
+    "physics",
+    "verlet",
+    "webassembly",
+    "web-components",
+    "patchbay"
+  ],
   "type": "module",
   "files": [
     "dist-lib"
@@ -26,7 +45,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:lib": "vite build --config vite.lib.config.ts && tsc -p tsconfig.lib.json",
+    "build:lib": "vite build --config vite.lib.config.ts && tsc -p tsconfig.lib.json && node scripts/fix-dts-imports.mjs",
+    "prepublishOnly": "pnpm build:lib",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
