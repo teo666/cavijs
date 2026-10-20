@@ -1162,7 +1162,9 @@ export class Jack extends HTMLElement {
     target: Jack | null
   ): void {
     const { jack, wire } = session;
-    emitCaviEvent(Cavi.for(jack), jack, 'cavi-cable-end', { jack, wire, result, target });
+    const cavi = Cavi.for(jack);
+    emitCaviEvent(cavi, jack, 'cavi-cable-end', { jack, wire, result, target });
+    emitCaviEvent(cavi, jack, 'cavi-change', { cause: 'cable-end' });
   }
 }
 

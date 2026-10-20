@@ -38,6 +38,15 @@ export interface CaviEventDetailMap {
   'cavi-cable-start': { jack: Jack; wire: Wire };
   /** A cable-creation gesture finished — see CableEndResult and Cavi.getCableDropBehavior. */
   'cavi-cable-end': { jack: Jack; wire: Wire; result: CableEndResult; target: Jack | null };
+  /**
+   * A user gesture that may have changed which cables are plugged where is
+   * over, its cables in their final state: a plug was dropped (plugged in
+   * or not — `plug-drop`), or a cable-creation gesture ended, whatever its
+   * result (`cable-end`, right after `cavi-cable-end`). The moment to
+   * record an undo step (see CaviHistory). Not emitted for changes made
+   * from code (Plug.connect/disconnect, applyCables, markup).
+   */
+  'cavi-change': { cause: 'plug-drop' | 'cable-end' };
 }
 
 export type CaviEventName = keyof CaviEventDetailMap;
@@ -54,6 +63,7 @@ export const CAVI_EVENT_NAMES: readonly string[] = [
   'cavi-plug-detach',
   'cavi-cable-start',
   'cavi-cable-end',
+  'cavi-change',
 ];
 
 /**

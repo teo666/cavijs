@@ -278,6 +278,14 @@ Several `<cavi-world>`s can coexist on one page, also inside shadow roots: every
 
 Details: [doc/en/06-zoom-multiworld.md](doc/en/06-zoom-multiworld.md).
 
+## Saving and restoring cables
+
+`captureCables(cavi)` reads a world's cables as plain JSON-safe data — for each cable its `id`, the ids of the jacks its two ends are plugged into, and its attributes — and `applyCables(cavi, snapshot)` puts them back, touching only the cables that differ. Jacks are not saved: the page restores them first, with the same ids. `Plug.connect(jack)`/`disconnect()` plug and unplug from code, and `CaviWireElement.delete()` deletes a cable freeing its jacks right away.
+
+`CaviHistory` builds undo/redo on top: a step at the end of every gesture on the cables (the `cavi-change` event) and whenever the page commits a change of its own, with the page's own state (jacks, modules) put back before the cables. `examples/demo-d3-interaction.html` has Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z and Save/Load.
+
+Details: [doc/en/03-api.md](doc/en/03-api.md#saving-and-restoring-cables), [undo and redo](doc/en/03-api.md#undo-and-redo-cavihistory).
+
 ## `cavijs/core`: the simulation alone
 
 `import { World, initWasm, forEachWireRender, svgPathData } from 'cavijs/core'` gets the engine without the page: no custom element registered, no DOM touched. `initWasm(source?)` loads the WASM once (from a URL of your choice if needed), a `World` runs from your own frame loop, `forEachWireRender`/`svgPathData` turn its cables into SVG path data, and `Wire.growTo`/`shrinkTo` with `nodeCountForDistance` keep a cable's length in step with its ends — the pieces to draw cavijs cables as another library's edges.

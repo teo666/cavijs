@@ -335,6 +335,69 @@ All live: changing one updates the running cable.
 | `render-type` | bezier    | `segments` for straight segments (the old `renderType` spelling still works)                                  |
 | `bend`        | `0`       | Bend stiffness, 0 to 1 (see `Wire.setBendStiffness`): stiffer curves smoothly instead of hanging like a chain |
 
+`id` is not live but always there: a `<cavi-wire>` without one gets one generated when connected (see [Saving and restoring cables](#saving-and-restoring-cables)).
+
+## Saving and restoring cables
+
+`captureCables(cavi)` and `applyCables(cavi, snapshot)` (`src/component/cables.ts`) read the cables of one world as plain data and put them back. The data is safe to `JSON.stringify`, for saving a configuration or keeping an undo history:
+
+```json
+{
+  "version": 1,
+  "wires": [
+    { "id": "w-3", "ends": ["out-1", "in-4"], "type": "audio", "color": "#ffaa00", "length": 14 },
+    { "id": "w-4", "ends": ["out-2", null], "type": "audio", "length": 9 }
+  ]
+}
+```
+
+- **What is saved:** for each `<cavi-wire>` in the world's container, its `id`, the ids of the jacks its first and last node are plugged into (`null` for a free end), and the attributes it has set among `type`, `color`, `length`, `tension`, `size` and `render-type` (as `renderType`). The physics state is not saved: a restored cable starts straight between its jacks and settles on its own.
+- **What is left out:** a cable plugged into nothing (it is falling away, see orphan cleanup), and an end in a jack without an `id`, which could not be found again. An end in a jack removed from the page is free already, even before the jack lets its plugs go.
+- **Jacks are not saved.** They belong to the page: put them back first, with the same ids. An end whose jack isn't on the page is left free; a cable with neither jack there is not restored.
+- **`applyCables` touches only what differs**, cable by cable, by `id`: a cable the world has and the snapshot doesn't is deleted (`CaviWireElement.delete()`, so its jacks are free right away); one both have keeps its live physics state, gets its attributes updated and only the ends that changed jack moved (`Plug.disconnect`/`connect`); a missing one is created in the container. Every end that leaves a jack is pulled out before anything is plugged in, so cables can trade jacks at `max-plugs`. An end that can't be plugged in (full, wrong type) is left free with a `console.warn`.
+- It throws on anything but a version 1 snapshot, and on a `Cavi` without a renderer container. Call it between gestures: a plug being dragged stays where it is.
+
+```ts
+const cavi = worldEl.getCavi()!;
+localStorage.setItem('cables', JSON.stringify(captureCables(cavi)));
+// later, once the jacks are back on the page:
+applyCables(cavi, JSON.parse(localStorage.getItem('cables')!));
+```
+
+## Undo and redo: `CaviHistory`
+
+`CaviHistory` (`src/component/history.ts`) keeps undo/redo steps for one world. Each step (`HistoryEntry`) is the cables as `captureCables` reads them plus, optionally, the page's own state:
+
+```ts
+const history = new CaviHistory(worldEl.getCavi()!, {
+  // optional: what cavijs doesn't own and the cables depend on
+  app: {
+    capture: () => app.getModules(), // JSON-safe
+    restore: async (modules) => app.setModules(modules), // jacks back, same ids
+  },
+  limit: 100, // most undo steps kept (default)
+});
+
+history.commit(); // after a change of the page's own
+history.batch(() => app.removeModule(m)); // several changes, one step
+await history.undo();
+await history.redo();
+history.canUndo; // also canRedo
+history.addEventListener('change', updateButtons);
+localStorage.setItem('state', JSON.stringify(history.capture()));
+await history.load(JSON.parse(localStorage.getItem('state')!));
+```
+
+- **When a step is recorded:** at the end of every user gesture on the cables (`cavi-change`), by itself, and whenever the page calls `commit()`. Never twice the same state: a gesture that changed nothing (a plug put back where it was) records nothing. Cables are compared regardless of their order in the page. A gesture's step is recorded a microtask after `cavi-change`, once no other gesture is in progress in the world (`Jack.isDragActive`): with two fingers, the step is the state both leave.
+- **Undo, redo and load put a state back in order:** `app.restore` first, awaited, then `applyCables`, which only touches the cables that differ — so the cables find their jacks on the page. A change not recorded yet is recorded first, so it is what `undo()` undoes. Once a state is back, its entry becomes what restoring it left on the page (the page's state read back, an end whose jack didn't come back as free), so that difference never counts as a new step.
+- **They refuse (resolve to `false`) while a gesture is in progress** in the world: the controller owns that one, Escape cancels it. Calls run one after the other, so pressing Ctrl+Z three times quickly undoes three steps.
+- **The page's state is stored as JSON:** later changes to the object `capture` returned don't reach the history, and `restore` always gets a fresh copy.
+- **`batch(fn)`** records everything `fn` does as one step, folding in `commit()` calls and gestures ending meanwhile; for an `fn` returning a promise it returns a promise and records once it settles. Removing a module is the typical case: its jacks go, and the cable ends in them are let go — `captureCables` already counts an end in a removed jack as free.
+- **`load(entry)`** puts back a state from `capture()` — saved earlier, maybe in another visit — as a new step, undoable like any other. **`clear()`** forgets every step; **`destroy()`** stops listening to the world.
+- **`change`** (a plain `Event`) is dispatched whenever `canUndo`/`canRedo` may have changed.
+
+Create it once the world is ready (`caviready`): the state at that moment is the first step. `examples/demo-d3-interaction.ts` (`bindHistory`) uses it with the units' positions as the page's state, Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z, and Save/Load buttons.
+
 ## `Jack` / `Plug`
 
 See [Jack & Plug components](./05-jack-plug.md).

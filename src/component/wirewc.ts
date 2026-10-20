@@ -13,6 +13,18 @@ import './plug';
  */
 const OUT_OF_VIEW_MARGIN = 32;
 
+/** Wires given an id so far on this page — see newWireId. */
+let wireIdCount = 0;
+
+/**
+ * An id for a <cavi-wire> that has none. The time keeps it from matching an
+ * id saved in an earlier visit and restored into this one (applyCables);
+ * the counter, from another id given in the same millisecond.
+ */
+function newWireId(): string {
+  return `cavi-wire-${Date.now().toString(36)}-${(wireIdCount++).toString(36)}`;
+}
+
 export class CaviWireElement extends HTMLElement {
   /**
    * ~0.5s at 60fps — long enough that no momentary state (see
@@ -113,6 +125,9 @@ export class CaviWireElement extends HTMLElement {
   connectedCallback() {
     // Transparent to layout — child plugs position relative to the container
     this.style.display = 'contents';
+    // A stable identity, so a saved state can tell this cable apart from the
+    // others (see captureCables/applyCables). An author's own id wins.
+    if (!this.id) this.id = newWireId();
 
     // Reconnected after a DOM move (disconnect + connect in the same task):
     // the WASM wire is still alive (see disconnectedCallback), so just
@@ -199,22 +214,24 @@ export class CaviWireElement extends HTMLElement {
     }
 
     // Determine wire start/end from jack-bound plugs, else restored ends
-    let x1 = 100,
-      y1 = 100,
-      x2 = 300,
-      y2 = 300;
+    let start: { x: number; y: number } | null = null;
+    let end: { x: number; y: number } | null = null;
     for (const { plugEl, nodeIdx, jackId } of validPlugs) {
       const jack = jackId ? this._findJack(jackId) : null;
       const position = jack?.canAcceptMore() ? jack.getWorldPosition() : restored.get(plugEl);
       if (!position) continue;
-      if (nodeIdx === 0) {
-        x1 = position.x;
-        y1 = position.y;
-      } else if (nodeIdx === nodeCount - 1) {
-        x2 = position.x;
-        y2 = position.y;
-      }
+      if (nodeIdx === 0) start = position;
+      else if (nodeIdx === nodeCount - 1) end = position;
     }
+    // An end with nowhere to be while the other has a place (a cable
+    // restored with one end plugged in — see applyCables) hangs straight
+    // down from it, about the shape it settles into under the default
+    // gravity, instead of starting across the world from it.
+    const span = (nodeCount - 1) * tension;
+    if (start && !end) end = { x: start.x, y: start.y + span };
+    else if (end && !start) start = { x: end.x, y: end.y + span };
+    const { x: x1, y: y1 } = start ?? { x: 100, y: 100 };
+    const { x: x2, y: y2 } = end ?? { x: 300, y: 300 };
 
     const wire = cavi.addWire(x1, y1, x2, y2, nodeCount, tension, radius, renderType);
     wire.setColor(color);
@@ -400,13 +417,24 @@ export class CaviWireElement extends HTMLElement {
    * frame. Sibling wires need no rebinding: World.deleteWire() shifts their
    * Wire handles' indices in place (see Wire._setIndex).
    */
-  private _destroy(): void {
-    this._releaseWire('cleanup');
+  private _destroy(reason: 'cleanup' | 'removed' = 'cleanup'): void {
+    this._releaseWire(reason);
     // Plugs defer their own detach to a microtask (so a DOM move keeps them
     // plugged — see Plug.disconnectedCallback); a deletion is final, so
     // free the jacks right away.
     for (const plug of this._plugs) plug.detach();
     this.remove();
+  }
+
+  /**
+   * Deletes this cable for good, right away: frees its jacks and its WASM
+   * wire, then removes the element. Unlike a plain `.remove()` — which
+   * waits a microtask, in case the element is only being moved — a jack it
+   * leaves at `max-plugs` can take another plug immediately afterwards.
+   * Emits `cavi-wire-remove` with reason 'removed'.
+   */
+  public delete(): void {
+    this._destroy('removed');
   }
 
   public getWire(): Wire | null {
